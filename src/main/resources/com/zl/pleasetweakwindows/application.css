@@ -1,0 +1,57 @@
+.root {
+    -fx-font-family: "Segoe UI", sans-serif;
+    -fx-background-color: #2e2e2e;
+}
+
+.button {
+    -fx-background-color: #3c3f41;
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 14px;
+    -fx-padding: 10px 20px;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-border-color: #555555;
+    -fx-border-width: 1;
+}
+
+.button:hover {
+    -fx-background-color: #4b4f51;
+}
+
+.button:pressed {
+    -fx-background-color: #282a2d;
+}
+
+.titled-pane {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 16px;
+    -fx-background-color: #3c3f41;
+    -fx-border-color: #555555;
+    -fx-border-width: 1;
+    -fx-border-radius: 5;
+}
+
+.scroll-pane {
+    -fx-background: #2e2e2e;
+    -fx-padding: 10;
+}
+
+.titled-pane > .title > .arrow-button {
+    -fx-background-color: grey;
+    -fx-padding: 0;
+    -fx-shape: "";
+}
+
+.titled-pane > .title {
+    -fx-background-color: #3c3f41;
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-padding: 5px;
+}
+
+.titled-pane > .content {
+    -fx-background-color: #2e2e2e;
+    -fx-border-color: #555555;
+    -fx-border-width: 0 0 1px 0;
+}
