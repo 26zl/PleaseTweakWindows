@@ -1,0 +1,73 @@
+# Maven build directories
+/target/
+
+# Maven Wrapper
+.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.properties
+
+# IntelliJ IDEA project files
+.idea/
+*.iws
+*.iml
+*.ipr
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+
+# Eclipse project files
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# NetBeans project files
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code workspace settings
+.vscode/
+
+# Log files
+/log/
+*.log
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS Finder attributes
+Icon
+._*
+
+# macOS folder settings
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.metadata_never_index
+.fseventsd
+
+# Windows system files
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# Java compiled class files
+*.class
