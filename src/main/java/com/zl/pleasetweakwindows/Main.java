@@ -10,9 +10,7 @@ import javafx.scene.control.TitledPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.InputStreamReader;
 
 public class Main extends Application {
 
@@ -20,8 +18,8 @@ public class Main extends Application {
 
     @Override
     public void start(Stage stage) {
-        VBox root = new VBox(15);
-        root.setStyle("-fx-padding: 20;");
+        VBox root = new VBox(20);
+        root.setStyle("-fx-padding: 30;");
 
         root.getChildren().add(createTitledPane("All Windows Settings Optimized",
                 "Apply Windows Settings Tweaks",
@@ -59,17 +57,23 @@ public class Main extends Application {
                 this::applyUITweaks,
                 this::revertUITweaks));
 
+        root.getChildren().add(createTitledPane("Test Tweak",
+                "Apply testing",
+                "Revert testing",
+                this::testTweak,
+                this::reverttestTweak));
+
         ScrollPane scrollPane = new ScrollPane(root);
         scrollPane.setFitToWidth(true);
 
-        Scene scene = new Scene(scrollPane, 640, 480);
+        Scene scene = new Scene(scrollPane, 800, 600);
         stage.setScene(scene);
         stage.setTitle("PleaseTweakWindows");
         stage.show();
     }
 
     private TitledPane createTitledPane(String title, String applyText, String revertText, Runnable applyAction, Runnable revertAction) {
-        VBox box = new VBox(5);
+        VBox box = new VBox(10);
 
         Button applyButton = new Button(applyText);
         applyButton.setOnAction(e -> applyAction.run());
@@ -133,6 +137,14 @@ public class Main extends Application {
         runScript("Revert UI tweaks", "UI and general responsiveness" + File.separator + "Revert UI tweaks.bat");
     }
 
+    private void testTweak() {
+        runScript("Test Tweak", "test.ps1"); // Kjør test.ps1 i scripts-mappen
+    }
+
+    private void reverttestTweak() {
+        runScript("Revert Test Tweak", "revertTest.ps1"); // Kjør revertTest.ps1 for revert-handling
+    }
+
     private void runScript(String tweakName, String scriptFileName) {
         String scriptPath = scriptDirectory + scriptFileName;
 
@@ -153,26 +165,21 @@ public class Main extends Application {
 
     private void executeScript(String scriptPath, String tweakName) {
         try {
-            ProcessBuilder builder = new ProcessBuilder("cmd.exe", "/c", scriptPath);
-            Process process = builder.start();
-
-            try (BufferedReader output = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                 BufferedReader error = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-
-                output.lines().forEach(System.out::println);
-                error.lines().forEach(System.err::println);
-            }
-
-            int exitCode = process.waitFor();
-            if (exitCode == 0) {
-                showAlert(Alert.AlertType.INFORMATION, tweakName + " script applied successfully.");
+            ProcessBuilder builder;
+            if (scriptPath.endsWith(".ps1")) {
+                builder = new ProcessBuilder("cmd.exe", "/c", "start", "powershell.exe", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-Verbose");
             } else {
-                showAlert(Alert.AlertType.ERROR, tweakName + " script failed with exit code: " + exitCode);
+                builder = new ProcessBuilder("cmd.exe", "/c", "start", "cmd.exe", "/k", scriptPath);
             }
+
+            builder.start(); // Starter prosessen og åpner et nytt vindu
+            showAlert(Alert.AlertType.INFORMATION, tweakName + " script is running in a new window.");
+
         } catch (Exception e) {
             showAlert(Alert.AlertType.ERROR, tweakName + " script error: " + e.getMessage());
         }
     }
+
 
     private void showAlert(Alert.AlertType alertType, String message) {
         Alert alert = new Alert(alertType);
