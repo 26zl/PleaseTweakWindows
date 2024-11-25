@@ -1,7 +1,6 @@
 package com.zl.pleasetweakwindows;
 
 import javafx.application.Application;
-import javafx.concurrent.Task;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -11,57 +10,25 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main extends Application {
 
     private final String scriptDirectory = System.getProperty("user.dir") + File.separator + "scripts" + File.separator;
 
+    private final List<Tweak> tweaks = new ArrayList<>();
+
     @Override
     public void start(Stage stage) {
+        initTweaks();
+
         VBox root = new VBox(20);
         root.setStyle("-fx-padding: 30;");
 
-        root.getChildren().add(createTitledPane("All Windows Settings Optimized",
-                "Apply Windows Settings Tweaks",
-                "Revert Windows Settings Tweaks",
-                this::applyWindowsSettings,
-                this::revertWindowsSettings));
-
-        root.getChildren().add(createTitledPane("Bcdedit Tweaks",
-                "Apply Bcdedit Tweaks",
-                "Revert Bcdedit Tweaks",
-                this::applyBcdeditTweaks,
-                this::revertBcdeditTweaks));
-
-        root.getChildren().add(createTitledPane("Gaming Optimizations",
-                "Apply Gaming Tweaks",
-                "Revert Gaming Tweaks",
-                this::applyGamingTweaks,
-                this::revertGamingTweaks));
-
-        root.getChildren().add(createTitledPane("Network Optimizations",
-                "Apply Network Tweaks",
-                "Revert Network Tweaks",
-                this::applyNetworkTweaks,
-                this::revertNetworkTweaks));
-
-        root.getChildren().add(createTitledPane("Services Tweaks",
-                "Apply Services Tweaks",
-                "Revert Services Tweaks",
-                this::applyServiceTweaks,
-                this::revertServiceTweaks));
-
-        root.getChildren().add(createTitledPane("UI and General Responsiveness",
-                "Apply UI Tweaks",
-                "Revert UI Tweaks",
-                this::applyUITweaks,
-                this::revertUITweaks));
-
-        root.getChildren().add(createTitledPane("Test Tweak",
-                "Apply testing",
-                "Revert testing",
-                this::testTweak,
-                this::reverttestTweak));
+        for (Tweak tweak : tweaks) {
+            root.getChildren().add(createTitledPane(tweak));
+        }
 
         ScrollPane scrollPane = new ScrollPane(root);
         scrollPane.setFitToWidth(true);
@@ -72,77 +39,45 @@ public class Main extends Application {
         stage.show();
     }
 
-    private TitledPane createTitledPane(String title, String applyText, String revertText, Runnable applyAction, Runnable revertAction) {
+    private void initTweaks() {
+        tweaks.add(new Tweak("All Windows Settings Optimized",
+                "All windows settings optimized" + File.separator + "Windows-settings-tweaked.bat",
+                "All windows settings optimized" + File.separator + "Revert.bat"));
+        tweaks.add(new Tweak("Bcdedit Tweaks",
+                "Bcdedit tweaks" + File.separator + "bcdedit-tweaks.bat",
+                "Bcdedit tweaks" + File.separator + "Revert bcedits to default.bat"));
+        tweaks.add(new Tweak("Gaming Optimizations",
+                "Gaming optimizations" + File.separator + "gaming-tweaks.bat",
+                "Gaming optimizations" + File.separator + "revert gaming tweaks.bat"));
+        tweaks.add(new Tweak("Network Optimizations",
+                "Network optimizations" + File.separator + "network tweaks.bat",
+                "Network optimizations" + File.separator + "revert for network tweaks.bat"));
+        tweaks.add(new Tweak("Services Tweaks",
+                "Services disable and revert" + File.separator + "Services-disabled.bat",
+                "Services disable and revert" + File.separator + "Revert services to default.bat"));
+        tweaks.add(new Tweak("UI and General Responsiveness",
+                "UI and general responsiveness" + File.separator + "ui-tweaks.bat",
+                "UI and general responsiveness" + File.separator + "Revert UI tweaks.bat"));
+        tweaks.add(new Tweak("Test Tweak",
+                "test.ps1",
+                "revertTest.ps1"));
+    }
+
+    private TitledPane createTitledPane(Tweak tweak) {
         VBox box = new VBox(10);
 
-        Button applyButton = new Button(applyText);
-        applyButton.setOnAction(e -> applyAction.run());
+        Button applyButton = new Button("Apply " + tweak.getTitle());
+        applyButton.setOnAction(e -> runScript(tweak.getTitle(), tweak.getApplyScript()));
 
-        Button revertButton = new Button(revertText);
-        revertButton.setOnAction(e -> revertAction.run());
+        Button revertButton = new Button("Revert " + tweak.getTitle());
+        revertButton.setOnAction(e -> runScript(tweak.getTitle(), tweak.getRevertScript()));
 
         box.getChildren().addAll(applyButton, revertButton);
 
-        TitledPane titledPane = new TitledPane(title, box);
+        TitledPane titledPane = new TitledPane(tweak.getTitle(), box);
         titledPane.setCollapsible(false);
 
         return titledPane;
-    }
-
-    private void applyWindowsSettings() {
-        runScript("Windows settings optimization", "All windows settings optimized" + File.separator + "Windows-settings-tweaked.bat");
-    }
-
-    private void revertWindowsSettings() {
-        runScript("Revert Windows settings", "All windows settings optimized" + File.separator + "Revert.bat");
-    }
-
-    private void applyBcdeditTweaks() {
-        runScript("Bcdedit tweaks", "Bcdedit tweaks" + File.separator + "bcdedit-tweaks.bat");
-    }
-
-    private void revertBcdeditTweaks() {
-        runScript("Revert Bcdedit tweaks", "Bcdedit tweaks" + File.separator + "Revert bcedits to default.bat");
-    }
-
-    private void applyGamingTweaks() {
-        runScript("Gaming tweaks", "Gaming optimizations" + File.separator + "gaming-tweaks.bat");
-    }
-
-    private void revertGamingTweaks() {
-        runScript("Revert Gaming tweaks", "Gaming optimizations" + File.separator + "revert gaming tweaks.bat");
-    }
-
-    private void applyNetworkTweaks() {
-        runScript("Network tweaks", "Network optimizations" + File.separator + "network tweaks.bat");
-    }
-
-    private void revertNetworkTweaks() {
-        runScript("Revert Network tweaks", "Network optimizations" + File.separator + "revert for network tweaks.bat");
-    }
-
-    private void applyServiceTweaks() {
-        runScript("Service tweaks", "Services disable and revert" + File.separator + "Services-disabled.bat");
-    }
-
-    private void revertServiceTweaks() {
-        runScript("Revert Service tweaks", "Services disable and revert" + File.separator + "Revert services to default.bat");
-    }
-
-    private void applyUITweaks() {
-        runScript("UI tweaks", "UI and general responsiveness" + File.separator + "ui-tweaks.bat");
-    }
-
-    private void revertUITweaks() {
-        runScript("Revert UI tweaks", "UI and general responsiveness" + File.separator + "Revert UI tweaks.bat");
-    }
-
-    private void testTweak() {
-        runScript("Test Tweak", "test.ps1"); // Kjør test.ps1 i scripts-mappen
-    }
-
-    private void reverttestTweak() {
-        runScript("Revert Test Tweak", "revertTest.ps1"); // Kjør revertTest.ps1 for revert-handling
     }
 
     private void runScript(String tweakName, String scriptFileName) {
@@ -153,14 +88,7 @@ public class Main extends Application {
             return;
         }
 
-        Task<Void> task = new Task<>() {
-            @Override
-            protected Void call() throws Exception {
-                executeScript(scriptPath, tweakName);
-                return null;
-            }
-        };
-        new Thread(task).start();
+        new Thread(() -> executeScript(scriptPath, tweakName)).start();
     }
 
     private void executeScript(String scriptPath, String tweakName) {
@@ -172,14 +100,13 @@ public class Main extends Application {
                 builder = new ProcessBuilder("cmd.exe", "/c", "start", "cmd.exe", "/k", scriptPath);
             }
 
-            builder.start(); // Starter prosessen og åpner et nytt vindu
+            builder.start();
             showAlert(Alert.AlertType.INFORMATION, tweakName + " script is running in a new window.");
 
         } catch (Exception e) {
             showAlert(Alert.AlertType.ERROR, tweakName + " script error: " + e.getMessage());
         }
     }
-
 
     private void showAlert(Alert.AlertType alertType, String message) {
         Alert alert = new Alert(alertType);
