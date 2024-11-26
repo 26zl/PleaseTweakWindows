@@ -31,8 +31,9 @@
 /nbdist/
 /.nb-gradle/
 
-# VS Code workspace settings
+# VS Code and VSCodium workspace settings
 .vscode/
+.vscode-oss/
 
 # Log files
 /log/
@@ -71,3 +72,81 @@ $RECYCLE.BIN/
 
 # Java compiled class files
 *.class
+
+# Linux system files
+*~
+.nfs*
+
+# Core dumps
+core
+*.core
+
+# Lock files
+*.lock
+
+# Trash directory for removable devices
+.Trash-*
+
+# Backup files
+*~
+
+# Package manager cache and temporary files
+
+## APT (Ubuntu, Debian, Mint)
+/var/cache/apt/archives/*.deb
+/var/lib/apt/lists/
+
+## DNF (Fedora, RHEL, CentOS)
+/var/cache/dnf/*
+/var/lib/dnf/
+
+## Zypper (openSUSE)
+/var/cache/zypp/
+.zypper-log
+
+## Pacman (Arch, Manjaro)
+/var/cache/pacman/pkg/*
+~/.cache/yay/
+~/.cache/paru/
+~/.cache/pikaur/
+
+## Flatpak
+/var/lib/flatpak/
+~/.local/share/flatpak/
+
+## Snap
+/snap/
+
+## Yay (AUR Helper)
+/tmp/yay/
+/var/tmp/yay/
+
+## Paru (AUR Helper)
+/tmp/paru/
+/var/tmp/paru/
+
+## General for all package managers
+*.lock
+*.bak
+*.tmp
+
+# AppImage
+*.AppImage
+*.appimage
+
+# Desktop environments
+
+## GNOME
+/keyring*
+.local/share/recently-used.xbel
+
+## KDE
+*.kdewallet
+.cache/konqueror/*
+
+## Xfce
+.cache/sessions/*
+
+## Common for all desktop environments
+.config/user-dirs.dirs
+.config/user-dirs.locale
