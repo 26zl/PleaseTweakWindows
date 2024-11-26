@@ -4,6 +4,7 @@
 # Maven Wrapper
 .mvn/wrapper/maven-wrapper.jar
 .mvn/wrapper/maven-wrapper.properties
+.mvn/timing.properties
 
 # IntelliJ IDEA project files
 .idea/
@@ -14,6 +15,8 @@
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
+out/
+.idea_modules/
 
 # Eclipse project files
 .apt_generated
@@ -23,6 +26,16 @@
 .settings/
 .springBeans
 .sts4-cache
+.metadata
+.tmp/
+.bin/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.loadpath
+.factorypath
 
 # NetBeans project files
 /nbproject/private/
@@ -30,10 +43,13 @@
 /dist/
 /nbdist/
 /.nb-gradle/
+nbactions.xml
+nb-configuration.xml
 
 # VS Code and VSCodium workspace settings
 .vscode/
 .vscode-oss/
+.code-workspace
 
 # Log files
 /log/
@@ -89,6 +105,33 @@ core
 
 # Backup files
 *~
+
+# Java
+.mtj.tmp/
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+pom.xml.bak
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+
+# Gradle
+bin/
+build/
+.gradle
+.gradletasknamecache
+gradle-app.setting
+!gradle-wrapper.jar
 
 # Package manager cache and temporary files
 
@@ -150,3 +193,6 @@ core
 ## Common for all desktop environments
 .config/user-dirs.dirs
 .config/user-dirs.locale
+
+# Miscellaneous
+*.log
