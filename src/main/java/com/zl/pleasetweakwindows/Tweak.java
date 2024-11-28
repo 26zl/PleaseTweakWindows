@@ -2,8 +2,8 @@ package com.zl.pleasetweakwindows;
 
 public class Tweak {
     private final String title;
-    private String applyScript;
-    private String revertScript;
+    private final String applyScript;
+    private final String revertScript;
 
     public Tweak(String title, String applyScript, String revertScript) {
         this.title = title;
