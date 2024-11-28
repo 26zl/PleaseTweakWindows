@@ -3,6 +3,31 @@
     -fx-background-color: #2e2e2e;
 }
 
+.tweaks-box {
+    -fx-padding: 20;
+    -fx-spacing: 20;
+    -fx-background-color: #f9f9f9;
+}
+
+.right-box {
+    -fx-padding: 10;
+    -fx-background-color: #2e2e2e;
+}
+
+.tweak-box {
+    -fx-padding: 10;
+    -fx-border-color: #ddd;
+    -fx-border-width: 1;
+    -fx-border-radius: 5;
+    -fx-background-color: #ffffff;
+}
+
+.tweak-title {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+    -fx-text-fill: #333333;
+}
+
 .button {
     -fx-background-color: #3c3f41;
     -fx-text-fill: #ffffff;
@@ -22,36 +47,17 @@
     -fx-background-color: #282a2d;
 }
 
-.titled-pane {
-    -fx-text-fill: #ffffff;
-    -fx-font-size: 16px;
-    -fx-background-color: #3c3f41;
-    -fx-border-color: #555555;
-    -fx-border-width: 1;
-    -fx-border-radius: 5;
-}
-
 .scroll-pane {
-    -fx-background: #2e2e2e;
+    -fx-background: #f9f9f9;
     -fx-padding: 10;
 }
 
-.titled-pane > .title > .arrow-button {
-    -fx-background-color: grey;
-    -fx-padding: 0;
-    -fx-shape: "";
-}
-
-.titled-pane > .title {
-    -fx-background-color: #3c3f41;
-    -fx-text-fill: #ffffff;
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-    -fx-padding: 5px;
-}
-
-.titled-pane > .content {
+#log-area {
     -fx-background-color: #2e2e2e;
+    -fx-text-fill: #ffffff;
+    -fx-font-family: "Consolas", monospace;
+    -fx-padding: 10;
     -fx-border-color: #555555;
-    -fx-border-width: 0 0 1px 0;
+    -fx-border-width: 1;
+    -fx-border-radius: 5;
 }
