@@ -8,5 +8,6 @@ The first version will be posted at the end of 2024
 - Nicer looking UI ✅
 - Need to add verbose when user applies the tweaks ✅
 - Optimize the tweaks
-- Privacy tweaks is being worked on
+- Privacy/Security tweaks is being worked on
+
 
