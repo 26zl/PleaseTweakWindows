@@ -11,19 +11,23 @@ This program is **not ready for general use** yet. Below are the current develop
 ✅ Object-oriented Java refactoring  
 ✅ Improved UI for better usability  
 ✅ Added verbose output when tweaks are applied  
-⏳ Optimizing all tweaks 
+⏳ Optimizing all tweaks  
 ⏳ Privacy & security tweaks are being developed  
 
 ---
 
 ## **📥 Installation**
-### **🔹 Download the latest release**
-1. **[Go to Releases](https://github.com/26zl/PleaseTweakWindows/releases)**
-2. Download the latest `PleaseTweakWindows.exe`
-3. Run the installer and follow the instructions.  
-   ⚠️ **No need for Java installed!!** The installer includes everything needed.
+### **🔹 Download the EXE File**
+1. **Click on the `.exe.zip` file** in this repository.
+2. **Press "Download"** to save the file to your computer.
+3. **Unzip the file** to extract `PleaseTweakWindows.exe`.
+4. **Run the `.exe` installer** and follow the on-screen instructions.
 
-### **🔹 Build from source (For developers)**
+⚠️ **No need for Java installed!!** The installer includes everything needed.
+
+---
+
+## **🔹 Build from Source (For Developers)**
 ```sh
 git clone https://github.com/26zl/PleaseTweakWindows.git
 cd PleaseTweakWindows
