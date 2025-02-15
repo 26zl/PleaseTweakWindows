@@ -14,6 +14,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -26,7 +27,7 @@ public class Main extends Application {
 
     @Override
     public void start(Stage stage) {
-        tweakManager.loadDefaultTweaks();
+        tweakManager.loadTweaks();
 
         logArea = new TextArea();
         logArea.setEditable(false);
@@ -55,7 +56,7 @@ public class Main extends Application {
         Button createRestorePointButton = new Button("Create Restore Point");
         createRestorePointButton.setOnAction(e -> {
             logArea.appendText("Creating restore point...\n");
-            backgroundExecutor.submit(() -> Executor.createRestorePoint("Restore Point", logArea));
+            backgroundExecutor.submit(() -> Executor.createRestorePoint(logArea));
         });
         rightBox.getChildren().add(createRestorePointButton);
 
@@ -64,7 +65,7 @@ public class Main extends Application {
         mainPane.setCenter(rightBox);
 
         Scene scene = new Scene(mainPane, 1000, 800);
-        scene.getStylesheets().add(getClass().getResource("/com/zl/pleasetweakwindows/application.css").toExternalForm());
+        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/com/zl/pleasetweakwindows/application.css")).toExternalForm());
         stage.setScene(scene);
         stage.setTitle("PleaseTweakWindows");
         stage.show();
