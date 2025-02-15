@@ -1,4 +1,4 @@
-name: "CodeQL Analysis and BAT File Linting"
+name: "CodeQL and PSScriptAnalyzer"
 
 on:
   push:
@@ -8,9 +8,12 @@ on:
   schedule:
     - cron: '0 0 * * 0'
 
+permissions:
+  contents: read
+
 jobs:
   analyze:
-    name: Analyze Code and Lint BAT Files
+    name: CodeQL Analysis (Java)
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -43,16 +46,32 @@ jobs:
       with:
         category: "/language:${{ matrix.language }}"
 
-    - name: Install BATLint
+  lint-scripts:
+    name: PSScriptAnalyzer for BAT & PowerShell
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install PowerShell Core
       run: |
         sudo apt-get update
-        sudo apt-get install -y dos2unix
-        git clone https://github.com/dbenham/batlint.git
+        sudo apt-get install -y powershell
 
-    - name: Give execute permissions to BATLint
-      run: chmod +x ./batlint/batlint.bash
+    - name: Run PSScriptAnalyzer
+      uses: microsoft/psscriptanalyzer-action@6b2948b1944407914a58661c49941824d149734f
+      with:
+        path: .\
+        recurse: true
+        includeRule: '"PSAvoidGlobalAliases", "PSAvoidUsingConvertToSecureStringWithPlainText"'
+        output: results.sarif
 
-    - name: Lint BAT Files
-      continue-on-error: true
-      run: |
-        find . -name "*.bat" -print0 | xargs -0 -I {} bash -c 'dos2unix "{}" && ./batlint/batlint.bash "{}" || echo "BATLint failed for {}"'
+    - name: Upload SARIF results file
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: results.sarif
