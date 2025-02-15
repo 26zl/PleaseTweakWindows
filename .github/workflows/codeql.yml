@@ -11,50 +11,41 @@ on:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Choose the appropriate runner based on the language.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     permissions:
-      # Required for all workflows
       security-events: write
-      # Required to fetch internal or private CodeQL packs
       packages: read
-      # Only required for workflows in private repositories
       actions: read
       contents: read
+
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Changed build-mode to manual for C/C++ to allow custom build steps.
           - language: c-cpp
             build-mode: manual
           - language: java-kotlin
             build-mode: none
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Install any required dependencies before initializing CodeQL (if needed)
-      # - name: Setup runtime
-      #   uses: actions/setup-node@v3
-
-      # Initialize CodeQL with the specified languages and build mode.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
 
-      # Add a manual build step for C/C++ when build-mode is set to 'manual'.
-      - name: Build code
-        if: matrix.build-mode == 'manual'
+      - if: matrix.language == 'c-cpp' && matrix.build-mode == 'manual'
+        name: Build C/C++ Code
+        shell: bash
         run: |
-          # Example build using CMake – modify as needed
-          mkdir build && cd build
+          echo "Building C/C++ code..."
+          mkdir build
+          cd build
           cmake ..
-          make -j$(nproc)
+          make
 
-      # Run CodeQL analysis
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
