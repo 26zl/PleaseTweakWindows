@@ -1,4 +1,4 @@
-name: "CodeQL Advanced"
+name: "CodeQL Analysis"
 
 on:
   push:
@@ -23,9 +23,9 @@ jobs:
       matrix:
         include:
           - language: c-cpp
-            build-mode: manual
+            build-mode: none  
           - language: java-kotlin
-            build-mode: none
+            build-mode: autobuild  
 
     steps:
       - name: Checkout repository
@@ -35,16 +35,13 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
 
-      - if: matrix.language == 'c-cpp' && matrix.build-mode == 'manual'
-        name: Build C/C++ Code
-        shell: bash
+      - if: matrix.language == 'java-kotlin' && matrix.build-mode == 'manual'
+        name: Manually Build Java/Kotlin
         run: |
-          echo "Building C/C++ code..."
-          mkdir build
-          cd build
-          cmake ..
-          make
+          echo "Running manual Java build..."
+          mvn clean package  # Erstatt med riktig build-kommando hvis nødvendig
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
