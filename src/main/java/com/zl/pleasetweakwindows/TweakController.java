@@ -39,7 +39,7 @@ public class TweakController {
 
         addTweak(new Tweak("UI and General Responsiveness",
                 "UI and general responsiveness" + File.separator + "ui-tweaks.bat",
-                "UI and general responsiveness" + File.separator + "Revert UI tweaks.bat"));
+                "UI and general responsiveness" + File.separator + "Revert UI and general responsiveness tweaks.bat"));
 
 
       }

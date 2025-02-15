@@ -1,6 +1,7 @@
 package com.zl.pleasetweakwindows;
 
 import javafx.application.Application;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -33,7 +34,7 @@ public class Main extends Application {
         logArea.setEditable(false);
         logArea.setFocusTraversable(false);
         logArea.setPromptText("Verbose output will appear here...");
-        logArea.setPrefHeight(600);
+        logArea.setPrefHeight(700);
 
         logArea.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
             if (!isEventOnScrollBar(event.getTarget())) {
@@ -41,15 +42,16 @@ public class Main extends Application {
             }
         });
 
-        VBox tweaksBox = new VBox(20);
+        VBox tweaksBox = new VBox(70);
         tweakManager.getTweaks().forEach(tweak ->
-                tweaksBox.getChildren().add(UI.createTweakItem(tweak, logArea, scriptDirectory))
+                tweaksBox.getChildren().add(UiLogic.createTweakItem(tweak, logArea, scriptDirectory))
         );
 
         ScrollPane tweaksScrollPane = new ScrollPane(tweaksBox);
         tweaksScrollPane.setFitToWidth(true);
 
         VBox rightBox = new VBox(10);
+        rightBox.setAlignment(Pos.CENTER);
         rightBox.getChildren().add(new Label("Verbose Output:"));
         rightBox.getChildren().add(logArea);
 
@@ -58,13 +60,14 @@ public class Main extends Application {
             logArea.appendText("Creating restore point...\n");
             backgroundExecutor.submit(() -> Executor.createRestorePoint(logArea));
         });
+
         rightBox.getChildren().add(createRestorePointButton);
 
         BorderPane mainPane = new BorderPane();
         mainPane.setLeft(tweaksScrollPane);
         mainPane.setCenter(rightBox);
 
-        Scene scene = new Scene(mainPane, 1000, 800);
+        Scene scene = new Scene(mainPane, 1200, 800);
         scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/com/zl/pleasetweakwindows/application.css")).toExternalForm());
         stage.setScene(scene);
         stage.setTitle("PleaseTweakWindows");
