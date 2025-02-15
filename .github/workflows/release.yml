@@ -3,7 +3,7 @@ name: Upload EXE to GitHub Releases
 on:
   push:
     branches:
-      - main 
+      - main  
   workflow_dispatch:  
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
       - name: Upload EXE to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
-          files: PleaseTweakWindows.exe  
+          files: "**/PleaseTweakWindows.exe"  
           tag_name: v1.0.${{ github.run_number }}
           release_name: "Release v1.0.${{ github.run_number }}"
           draft: false
