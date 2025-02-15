@@ -194,5 +194,8 @@ gradle-app.setting
 .config/user-dirs.dirs
 .config/user-dirs.locale
 
+# GitHub Actions workflow backup (Disabled workflows)
+.github/workflows/release.yml.disabled
+
 # Miscellaneous
 *.log
