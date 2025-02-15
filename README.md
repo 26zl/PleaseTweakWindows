@@ -19,7 +19,7 @@ This program is **not ready for general use** yet. Below are the current develop
 ## **📥 Installation**
 ### **🔹 Download the EXE File**
 1. **Click on the `.exe.zip` file** in this repository.
-2. **Press "Download"** to save the file to your computer.
+2. **Press "Download raw file"** to save the file to your computer.
 3. **Unzip the file** to extract `PleaseTweakWindows.exe`.
 4. **Run the `.exe` installer** and follow the on-screen instructions.
 
