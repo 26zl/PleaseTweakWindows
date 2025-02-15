@@ -23,27 +23,30 @@ jobs:
       matrix:
         include:
           - language: c-cpp
-            build-mode: none  
+            build-mode: manual  
           - language: java-kotlin
-            build-mode: autobuild  
+            build-mode: autobuild 
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
 
-      - if: matrix.language == 'java-kotlin' && matrix.build-mode == 'manual'
-        name: Manually Build Java/Kotlin
-        run: |
-          echo "Running manual Java build..."
-          mvn clean package  # Erstatt med riktig build-kommando hvis nødvendig
+   
+    - if: matrix.language == 'c-cpp'
+      name: Skip build for C/C++
+      run: echo "Skipping build step for C/C++"
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
+  
+    - if: matrix.language == 'java-kotlin'
+      name: Build Java project
+      run: mvn clean package
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
