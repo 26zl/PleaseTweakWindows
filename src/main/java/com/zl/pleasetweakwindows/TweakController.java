@@ -7,6 +7,7 @@ import java.util.List;
 public class TweakController {
     private final List<Tweak> tweaks = new ArrayList<>();
 
+
     public void addTweak(Tweak tweak) {
         tweaks.add(tweak);
     }
@@ -15,7 +16,7 @@ public class TweakController {
         return tweaks;
     }
 
-    public void loadDefaultTweaks() {
+    public void loadTweaks() {
         addTweak(new Tweak("All Windows Settings Optimized",
                 "All windows settings optimized" + File.separator + "Windows-settings-tweaked.bat",
                 "All windows settings optimized" + File.separator + "Revert.bat"));
@@ -39,5 +40,8 @@ public class TweakController {
         addTweak(new Tweak("UI and General Responsiveness",
                 "UI and general responsiveness" + File.separator + "ui-tweaks.bat",
                 "UI and general responsiveness" + File.separator + "Revert UI tweaks.bat"));
+
+
+      }
+
     }
-}
