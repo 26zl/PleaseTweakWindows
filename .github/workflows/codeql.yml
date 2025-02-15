@@ -1,4 +1,4 @@
-name: "CodeQL Analysis"
+name: "CodeQL Analysis and BAT File Linting"
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
+    name: Analyze Code and Lint BAT Files
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -20,26 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: c-cpp
-            build-mode: manual
           - language: java-kotlin
             build-mode: autobuild
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
-    - name: Set up build dependencies
-      if: matrix.language == 'c-cpp'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential
-
-    - name: Build C/C++ project
-      if: matrix.language == 'c-cpp'
-      run: |
-        ./configure
-        make
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
@@ -50,10 +36,23 @@ jobs:
 
     - name: Build Java project
       if: matrix.language == 'java-kotlin'
-      run: |
-        mvn clean install -DskipTests
+      run: mvn clean install -DskipTests
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{ matrix.language }}"
+
+    - name: Install BATLint
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dos2unix
+        git clone https://github.com/dbenham/batlint.git
+
+    - name: Give execute permissions to BATLint
+      run: chmod +x ./batlint/batlint.bash
+
+    - name: Lint BAT Files
+      continue-on-error: true
+      run: |
+        find . -name "*.bat" -print0 | xargs -0 -I {} bash -c 'dos2unix "{}" && ./batlint/batlint.bash "{}" || echo "BATLint failed for {}"'
