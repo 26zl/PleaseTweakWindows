@@ -1,21 +1,27 @@
 package com.zl.pleasetweakwindows;
 
+import javafx.application.Platform;
 import javafx.scene.control.TextArea;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Executor {
 
+    private static final ExecutorService executorService = Executors.newCachedThreadPool();
+
     public static void runScript(String scriptPath, TextArea logArea) {
-        if (!new File(scriptPath).exists()) {
+        File scriptFile = new File(scriptPath);
+        if (!scriptFile.exists()) {
             logMessage(logArea, "Error: Script not found: " + scriptPath);
             return;
         }
 
         logMessage(logArea, "Running script: " + scriptPath);
-
-        new Thread(() -> executeScript(scriptPath, logArea)).start();
+        executorService.submit(() -> executeScript(scriptPath, logArea));
     }
 
     private static void executeScript(String scriptPath, TextArea logArea) {
@@ -41,13 +47,14 @@ public class Executor {
             logMessage(logArea, "Script finished: " + scriptPath);
         } catch (Exception e) {
             logMessage(logArea, "Error: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    public static void RestorePoint(String description, TextArea logArea) {
+    public static void createRestorePoint(String description, TextArea logArea) {
         String command = "powershell.exe -Command \"Checkpoint-Computer -Description '" + description + "' -RestorePointType 'MODIFY_SETTINGS'\"";
         try {
-            logMessage(logArea, "Creating restore point " + description);
+            logMessage(logArea, "Creating restore point: " + description);
 
             ProcessBuilder builder = new ProcessBuilder("cmd.exe", "/c", command);
             builder.redirectErrorStream(true);
@@ -62,15 +69,15 @@ public class Executor {
 
             process.waitFor();
             logMessage(logArea, "Restore point created successfully!");
-
         } catch (Exception e) {
             logMessage(logArea, "Failed to create restore point: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     private static void logMessage(TextArea logArea, String message) {
         if (logArea != null) {
-            logArea.appendText(message + "\n");
+            Platform.runLater(() -> logArea.appendText(message + "\n"));
         }
     }
 }

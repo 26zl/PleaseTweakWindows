@@ -1,22 +1,28 @@
 package com.zl.pleasetweakwindows;
 
 import javafx.application.Application;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Main extends Application {
 
     private final String scriptDirectory = System.getProperty("user.dir") + File.separator + "scripts" + File.separator;
     private final TweakController tweakManager = new TweakController();
     private TextArea logArea;
+    private final ExecutorService backgroundExecutor = Executors.newCachedThreadPool();
 
     @Override
     public void start(Stage stage) {
@@ -24,8 +30,15 @@ public class Main extends Application {
 
         logArea = new TextArea();
         logArea.setEditable(false);
+        logArea.setFocusTraversable(false);
         logArea.setPromptText("Verbose output will appear here...");
         logArea.setPrefHeight(600);
+
+        logArea.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+            if (!isEventOnScrollBar(event.getTarget())) {
+                event.consume();
+            }
+        });
 
         VBox tweaksBox = new VBox(20);
         tweakManager.getTweaks().forEach(tweak ->
@@ -42,10 +55,8 @@ public class Main extends Application {
         Button createRestorePointButton = new Button("Create Restore Point");
         createRestorePointButton.setOnAction(e -> {
             logArea.appendText("Creating restore point...\n");
-            Executor.RestorePoint("Restore Point", logArea);
-            logArea.appendText("Restore point created.\n");
+            backgroundExecutor.submit(() -> Executor.createRestorePoint("Restore Point", logArea));
         });
-
         rightBox.getChildren().add(createRestorePointButton);
 
         BorderPane mainPane = new BorderPane();
@@ -57,6 +68,25 @@ public class Main extends Application {
         stage.setScene(scene);
         stage.setTitle("PleaseTweakWindows");
         stage.show();
+    }
+
+    @Override
+    public void stop() throws Exception {
+        backgroundExecutor.shutdown();
+        super.stop();
+    }
+
+    private boolean isEventOnScrollBar(Object target) {
+        if (!(target instanceof Node node)) {
+            return false;
+        }
+        while (node != null) {
+            if (node instanceof ScrollBar) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
     }
 
     public static void main(String[] args) {

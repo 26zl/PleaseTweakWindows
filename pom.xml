@@ -11,7 +11,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
-        <java.version>17</java.version> <!-- Endre Java-versjonen hvis nødvendig -->
+        <java.version>17</java.version>
     </properties>
 
     <dependencies>
@@ -21,7 +21,7 @@
             <artifactId>javafx-controls</artifactId>
             <version>21</version>
         </dependency>
-        <!-- Optional: ControlsFX if you need it -->
+        <!-- Optional: ControlsFX if needed -->
         <dependency>
             <groupId>org.controlsfx</groupId>
             <artifactId>controlsfx</artifactId>
@@ -44,7 +44,7 @@
 
     <build>
         <plugins>
-            <!-- Compiler plugin for Java version -->
+            <!-- Maven Compiler Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -54,7 +54,8 @@
                     <target>${java.version}</target>
                 </configuration>
             </plugin>
-            <!-- JavaFX plugin -->
+
+            <!-- JavaFX Maven Plugin -->
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
@@ -63,6 +64,38 @@
                     <mainClass>com.zl.pleasetweakwindows.Main</mainClass>
                 </configuration>
             </plugin>
+
+            <!-- Maven Shade Plugin for creating an executable fat jar -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Exclude module-info.class to avoid module issues -->
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.zl.pleasetweakwindows.Main</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 </project>

@@ -19,23 +19,25 @@ public class TweakController {
         addTweak(new Tweak("All Windows Settings Optimized",
                 "All windows settings optimized" + File.separator + "Windows-settings-tweaked.bat",
                 "All windows settings optimized" + File.separator + "Revert.bat"));
+
         addTweak(new Tweak("Bcdedit Tweaks",
                 "Bcdedit tweaks" + File.separator + "bcdedit-tweaks.bat",
-                "Bcdedit tweaks" + File.separator + "Revert bcedits to default.bat"));
+                "Bcdedit tweaks" + File.separator + "Revert bcdedits to default.bat"));
+
         addTweak(new Tweak("Gaming Optimizations",
                 "Gaming optimizations" + File.separator + "gaming-tweaks.bat",
                 "Gaming optimizations" + File.separator + "revert gaming tweaks.bat"));
+
         addTweak(new Tweak("Network Optimizations",
                 "Network optimizations" + File.separator + "network tweaks.bat",
                 "Network optimizations" + File.separator + "revert for network tweaks.bat"));
+
         addTweak(new Tweak("Services Tweaks",
                 "Services disable and revert" + File.separator + "Services-disabled.bat",
                 "Services disable and revert" + File.separator + "Revert services to default.bat"));
-        addTweak(new Tweak("UI tweaks",
-                "UI tweaks" + File.separator + "ui-tweaks.bat",
-                "UI tweaks" + File.separator + "Revert UI tweaks.bat"));
-        addTweak(new Tweak("Test Tweak",
-                "test.ps1",
-                "revertTest.ps1"));
+
+        addTweak(new Tweak("UI and General Responsiveness",
+                "UI and general responsiveness" + File.separator + "ui-tweaks.bat",
+                "UI and general responsiveness" + File.separator + "Revert UI tweaks.bat"));
     }
 }
