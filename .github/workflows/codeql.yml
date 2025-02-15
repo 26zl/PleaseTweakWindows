@@ -1,4 +1,4 @@
-name: "CodeQL Advanced"
+name: "CodeQL Analysis"
 
 on:
   push:
@@ -6,38 +6,40 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: '41 21 * * 6'
+    - cron: '0 0 * * 0'
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     permissions:
       security-events: write
-      packages: read
-      actions: read
       contents: read
 
     strategy:
       fail-fast: false
       matrix:
         include:
-        - language: c-cpp
-          build-mode: manual
-        - language: java-kotlin
-          build-mode: autobuild
+          - language: c-cpp
+            build-mode: manual
+          - language: java-kotlin
+            build-mode: autobuild
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - if: matrix.language == 'java-kotlin'
-      name: Build Java project
-      run: mvn clean install -DskipTests
+    - name: Set up build dependencies
+      if: matrix.language == 'c-cpp'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
 
-    - if: matrix.language == 'c-cpp'
-      name: Fake C/C++ build
-      run: echo "Skipping C/C++ build"
+    - name: Build C/C++ project
+      if: matrix.language == 'c-cpp'
+      run: |
+        ./configure
+        make
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
@@ -46,7 +48,12 @@ jobs:
         build-mode: ${{ matrix.build-mode }}
         queries: +security-extended,security-and-quality
 
+    - name: Build Java project
+      if: matrix.language == 'java-kotlin'
+      run: |
+        mvn clean install -DskipTests
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
-        category: "/language:${{matrix.language}}"
+        category: "/language:${{ matrix.language }}"
