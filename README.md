@@ -32,25 +32,35 @@ This program is **not yet fully stable**. Current development tasks include:
 If you prefer to build the project yourself, follow these steps (all commands assume a Windows environment):
 
 1. **Clone the Repository**
+
 Open a command prompt (or PowerShell) and run:
 
 git clone https://github.com/26zl/PleaseTweakWindows.git
+
 cd PleaseTweakWindows
 
 3. **Build the Project**
+
 Use the Maven Wrapper to build:
 
 Execute the built JAR:
+
 java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar
 
 4. **Build the EXE Installer**
 
 Install Java 21, JavaFX SDK and Jmods
-From here: https://gluonhq.com/products/javafx/
+
+From here: 
+
+https://gluonhq.com/products/javafx/
 
 To package the application into a Windows EXE installer, ensure you have the WiX Toolset installed (download from https://wixtoolset.org/releases/ and install it so that `candle.exe` and `light.exe` are in your PATH). 
+
 Then run:
+
 “C:\Program Files\Java\jdk-21\bin\jpackage.exe” –name PleaseTweakWindows –input “target” –main-jar “PleaseTweakWindows-1.0-SNAPSHOT.jar” –main-class “com.zl.pleasetweakwindows.Main” –type exe –runtime-image “custom-runtime” –dest “installers” –win-shortcut –win-menu –resource-dir “scripts”
+
 This command will create the EXE installer in the `installers` folder and set up desktop shortcuts.
 
 ---
