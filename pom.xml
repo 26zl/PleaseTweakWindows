@@ -77,7 +77,6 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <!-- Exclude module-info.class to avoid module issues -->
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -96,6 +95,19 @@
                 </executions>
             </plugin>
 
+            <!-- Maven Clean Plugin to remove custom build folders -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.2.0</version>
+                <configuration>
+                    <filesets>
+                        <fileset>
+                            <directory>${basedir}/build</directory>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
