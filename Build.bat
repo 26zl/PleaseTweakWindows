@@ -12,7 +12,7 @@ set "SCRIPTS_DIR=C:\Users\Lenti\Documents\PleaseTweakWindows\scripts"
 set "ICON_FILE=C:\Users\Lenti\Documents\PleaseTweakWindows\daemonWindows.ico"
 set "INPUT_DIR=C:\Users\Lenti\Documents\PleaseTweakWindows\target"
 set "APP_IMAGE_DIR=C:\Users\Lenti\Documents\PleaseTweakWindows\build\AppImage"
-set "INSTALLER_OUT=C:\Users\Lenti\Documents\PleaseTweakWindows\installerOutput"
+set "INSTALLER_OUT=C:\Users\Lenti\Documents\PleaseTweakWindows"
 set "SEVEN_ZIP=C:\Program Files\7-Zip\7z.exe"
 
 :: Replace spaces in APP_NAME with dashes (optional)
@@ -33,20 +33,14 @@ if exist "%APP_IMAGE_DIR%\%APP_NAME%" (
     )
 )
 
-echo Deleting old installer output folder if it exists...
-:DELETE_INSTALLER_OUT
-if exist "%INSTALLER_OUT%" (
-    rd /S /Q "%INSTALLER_OUT%"
-    if exist "%INSTALLER_OUT%" (
-        echo Failed to delete "%INSTALLER_OUT%" because files are in use.
-        echo Close any programs using these files, then press a key to try again...
-        pause
-        goto DELETE_INSTALLER_OUT
-    )
-)
+echo Deleting old installer files from the project folder if they exist...
+:: Delete previous installer EXE and ZIP files
+del /Q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" 2>nul
+del /Q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" 2>nul
+del /Q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" 2>nul
 
 :: ----------------------------
-:: STEP 1: Create app-image
+:: STEP 1: Create app image
 :: ----------------------------
 echo ==== STEP 1: Creating app image ====
 "%JPACKAGE_EXE%" ^
@@ -59,7 +53,7 @@ echo ==== STEP 1: Creating app image ====
   --dest "%APP_IMAGE_DIR%"
 
 echo.
-echo Copying script files outside "app" folder...
+echo Copying script files outside the "app" folder...
 xcopy "%SCRIPTS_DIR%\*" "%APP_IMAGE_DIR%\%APP_NAME%\scripts\" /E /I /Y
 
 echo.
@@ -77,7 +71,8 @@ echo ==== STEP 2: Creating EXE installer ====
   --dest "%INSTALLER_OUT%" ^
   --win-shortcut ^
   --win-menu ^
-  --icon "%ICON_FILE%"
+  --icon "%ICON_FILE%" ^
+  --win-upgrade-uuid "12345678-1234-1234-1234-123456789abc"
 
 echo.
 echo The EXE installer was created in:
@@ -85,7 +80,7 @@ echo   %INSTALLER_OUT%
 pause
 
 :: ----------------------------
-:: STEP 3: Zip the installer
+:: STEP 3: Zip the installer with 7-Zip
 :: ----------------------------
 echo ==== STEP 3: Zipping the installer with 7-Zip ====
 "%SEVEN_ZIP%" a "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" "%INSTALLER_OUT%\*"
