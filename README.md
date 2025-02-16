@@ -37,47 +37,80 @@ This program is **not yet fully stable**. Current development tasks include:
 
 If you prefer to build the project yourself, follow these steps (all commands assume a Windows environment):
 
-### 1. **Clone the Repository**  
+### 1. **Clone the Repository**
 
-Open a command prompt (or PowerShell) and run:  
+Open a command prompt or PowerShell and run:
 
-`git clone https://github.com/26zl/PleaseTweakWindows.git`  
+```bash
+git clone https://github.com/26zl/PleaseTweakWindows.git
+cd PleaseTweakWindows
+```
 
-`cd PleaseTweakWindows`
+### 2. **Build the Project**
 
-### 2. **Build the Project**  
+Use the Maven Wrapper to build:
 
-Use the Maven Wrapper to build:  
+```batch
+mvnw clean package
+```
 
-`mvnw clean package`
+This command generates the necessary artifacts in the `target` folder. The `target` folder is automatically re-created during each build and is typically excluded from version control.
 
-### 3. **Run the Application**  
+### 3. **Run the Application (Using Installed Java)**
 
-Execute the built JAR:  
+If you have Java installed globally, you can run the JAR file with:
 
-`java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar`
+```batch
+java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar
+```
 
-### 4. **Build the EXE Installer**  
+### 4. **Run the Application (Using Custom Runtime)**
 
-1. Install **Java 21**, **JavaFX SDK**, and **Jmods** from [GluonHQ](https://gluonhq.com/products/javafx/).  
+If you want to run the application using the **custom runtime** (which was generated with jlink), use the following command:
 
-2. Install the **WiX Toolset** from [WiX Toolset Releases](https://wixtoolset.org/releases/) and ensure `candle.exe` and `light.exe` are in your PATH.  
+```powershell
+& "C:\Users\Lenti\Documents\PleaseTweakWindows\custom-runtime\bin\java.exe" -jar "C:\Users\Lenti\Documents\PleaseTweakWindows\target\PleaseTweakWindows-1.0-SNAPSHOT.jar"
+```
 
-3. Run the following command to package the application into a Windows EXE installer:  
-`"C:\Program Files\Java\jdk-21\bin\jpackage.exe" --name PleaseTweakWindows --input target --main-jar PleaseTweakWindows-1.0-SNAPSHOT.jar --main-class com.zl.pleasetweakwindows.Main --type exe --runtime-image custom-runtime --dest installers --win-shortcut --win-menu --resource-dir scripts`  
+> **Note:** This method allows the application to run on a machine **without** requiring a full Java installation.
 
-This command will create the EXE installer in the `installers` folder and set up desktop shortcuts.
+### 5. **Build the EXE Installer**
+
+A batch script is provided to automate the creation of the EXE installer. This script performs the following steps:
+
+- **Deletes** any previous build of the app image and installer files from the project folder.
+- **Creates an app image** using `jpackage`.
+- **Copies** your external scripts into a `scripts` folder directly under the generated app image (outside the `app` folder) so that your application can access them as expected.
+- **Zips** the installer output directly into the project folder.
+- **Removes** the standalone EXE so that only the ZIP file remains.
+
+#### Prerequisites:
+- **Java 21** (or a compatible version with jpackage) must be installed.
+- **JavaFX SDK**, and **Jmods** from [GluonHQ](https://gluonhq.com/products/javafx/).
+- Install the **WiX Toolset** from [WiX Toolset Releases](https://wixtoolset.org/releases/) and ensure candle.exe and light.exe are in your PATH.  
+- **7‑Zip** must be installed (with the executable at the specified path).
+- Ensure your project folder structure matches the paths in the script.
+
+#### Running the Script
+
+Simply run the provided batch script from the project root:
+
+```batch
+Build.bat
+```
+
+After the script finishes, you will find the installer ZIP file (e.g., `PleaseTweakWindows-1.0-win-x64.zip`) directly in the project folder. Unzip it and run the `PleaseTweakWindows.exe` installer.
 
 ---
 
-## 🚀 Contributing  
+## 🚀 Contributing
 
 Pull requests are welcome! If you want to contribute, please open an issue or submit a pull request. Any help in optimizing tweaks, improving the UI, or adding security features is greatly appreciated.
 
 ---
 
-## 📜 License  
+## 📜 License
 
-This project is licensed under the [MIT License](LICENSE).  
+This project is licensed under the [MIT License](LICENSE).
 
 🚀 Happy Tweaking!
