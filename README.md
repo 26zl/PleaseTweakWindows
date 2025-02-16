@@ -1,12 +1,13 @@
 # PleaseTweakWindows
 
-🚀 **A small program for tweaking Windows settings to improve performance, security, and privacy.**  
-🔧 Designed for power users who want to easily optimize Windows settings.
+🚀 **A lightweight tool for optimizing Windows settings to enhance performance, security, and privacy.**  
+🔧 Designed for power users who want a simple way to tweak Windows settings.
 
 ---
 
 ## ⚠️ Status: In Development
-This program is **not yet fully stable**. Under development:
+
+This program is **not yet fully stable**. Current development tasks include:
 
 - ✅ Object-oriented Java refactoring
 - ✅ Improved UI for better usability
@@ -18,10 +19,15 @@ This program is **not yet fully stable**. Under development:
 
 ## 📥 Installation
 
-### 🔹 Download and Install
+### Download and Install
+
 1. Click on `PleaseTweakWindows.exe.zip` in this repository.
-2. Press **"Download Raw File"** to save the file.
-3. Run the `.exe` installer and follow the on-screen instructions.
+
+2. Press **"Download Raw File"** to save it to your computer.
+
+3. Unzip the file to extract `PleaseTweakWindows.exe`.
+
+4. Run the `.exe` installer and follow the on-screen instructions.
 
 ⚠️ **No need to install Java!** The installer includes everything required.
 
@@ -29,28 +35,49 @@ This program is **not yet fully stable**. Under development:
 
 ## 🔨 Build from Source (For Developers)
 
-If you prefer to **build the project yourself**, follow these steps:
+If you prefer to build the project yourself, follow these steps (all commands assume a Windows environment):
 
-```sh
-# Build for Windows
-mvnw.cmd clean package
+### 1. **Clone the Repository**  
 
-# Run the application
-java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar
+Open a command prompt (or PowerShell) and run:  
 
-# Build the exe installer (run this PowerShell command)
-& "C:\Program Files\Java\jdk-21\bin\jpackage.exe" `
-  --name PleaseTweakWindows `
-  --input "target" `
-  --main-jar "PleaseTweakWindows-1.0-SNAPSHOT.jar" `
-  --main-class "com.zl.pleasetweakwindows.Main" `
-  --type exe `
-  --runtime-image "custom-runtime" `
-  --dest "installers" `
-  --win-shortcut `
-  --win-menu `
-  --resource-dir "scripts"
+`git clone https://github.com/26zl/PleaseTweakWindows.git`  
 
-# Clone the repository
-git clone https://github.com/26zl/PleaseTweakWindows.git
-cd PleaseTweakWindows
+`cd PleaseTweakWindows`
+
+### 2. **Build the Project**  
+
+Use the Maven Wrapper to build:  
+
+`mvnw clean package`
+
+### 3. **Run the Application**  
+
+Execute the built JAR:  
+
+`java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar`
+
+### 4. **Build the EXE Installer**  
+
+1. Install **Java 21**, **JavaFX SDK**, and **Jmods** from [GluonHQ](https://gluonhq.com/products/javafx/).  
+
+2. Install the **WiX Toolset** from [WiX Toolset Releases](https://wixtoolset.org/releases/) and ensure `candle.exe` and `light.exe` are in your PATH.  
+
+3. Run the following command to package the application into a Windows EXE installer:  
+`"C:\Program Files\Java\jdk-21\bin\jpackage.exe" --name PleaseTweakWindows --input target --main-jar PleaseTweakWindows-1.0-SNAPSHOT.jar --main-class com.zl.pleasetweakwindows.Main --type exe --runtime-image custom-runtime --dest installers --win-shortcut --win-menu --resource-dir scripts`  
+
+This command will create the EXE installer in the `installers` folder and set up desktop shortcuts.
+
+---
+
+## 🚀 Contributing  
+
+Pull requests are welcome! If you want to contribute, please open an issue or submit a pull request. Any help in optimizing tweaks, improving the UI, or adding security features is greatly appreciated.
+
+---
+
+## 📜 License  
+
+This project is licensed under the [MIT License](LICENSE).  
+
+🚀 Happy Tweaking!
