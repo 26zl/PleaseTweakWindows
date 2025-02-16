@@ -41,7 +41,6 @@ public class TweakController {
                 "UI and general responsiveness" + File.separator + "ui-tweaks.bat",
                 "UI and general responsiveness" + File.separator + "Revert UI and general responsiveness tweaks.bat"));
 
-
       }
 
     }
