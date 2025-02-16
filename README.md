@@ -54,7 +54,7 @@ java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar
 If you want to run the application using the custom runtime, use the following command:
 
 ```powershell
-& "C:\Users\Lenti\Documents\PleaseTweakWindows\custom-runtime\bin\java.exe" -jar "C:\Users\Lenti\Documents\PleaseTweakWindows\target\PleaseTweakWindows-1.0-SNAPSHOT.jar"
+& "C:\Users\user\Documents\PleaseTweakWindows\custom-runtime\bin\java.exe" -jar "C:\Users\user\Documents\PleaseTweakWindows\target\PleaseTweakWindows-1.0-SNAPSHOT.jar"
 ```
 
 This method allows the application to run on a machine without requiring a full Java installation.
