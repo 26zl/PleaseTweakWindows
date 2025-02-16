@@ -7,12 +7,12 @@ set "APP_NAME=PleaseTweakWindows"
 set "APP_VERSION=1.0"
 set "MAIN_JAR=PleaseTweakWindows-1.0-SNAPSHOT.jar"
 set "MAIN_CLASS=com.zl.pleasetweakwindows.Main"
-set "RUNTIME_IMAGE=C:\Users\User\Documents\PleaseTweakWindows\custom-runtime"
-set "SCRIPTS_DIR=C:\Users\User\Documents\PleaseTweakWindows\scripts"
-set "ICON_FILE=C:\Users\User\Documents\PleaseTweakWindows\daemonWindows.ico"
-set "INPUT_DIR=C:\Users\User\Documents\PleaseTweakWindows\target"
-set "APP_IMAGE_DIR=C:\Users\User\Documents\PleaseTweakWindows\build\AppImage"
-set "INSTALLER_OUT=C:\Users\User\Documents\PleaseTweakWindows"
+set "RUNTIME_IMAGE=C:\Users\user\Documents\PleaseTweakWindows\custom-runtime"
+set "SCRIPTS_DIR=C:\Users\user\Documents\PleaseTweakWindows\scripts"
+set "ICON_FILE=C:\Users\user\Documents\PleaseTweakWindows\daemonWindows.ico"
+set "INPUT_DIR=C:\Users\user\Documents\PleaseTweakWindows\target"
+set "APP_IMAGE_DIR=C:\Users\user\Documents\PleaseTweakWindows\build\AppImage"
+set "INSTALLER_OUT=C:\Users\user\Documents\PleaseTweakWindows\installerOutput"
 set "SEVEN_ZIP=C:\Program Files\7-Zip\7z.exe"
 
 :: Replace spaces in APP_NAME with dashes (optional)
@@ -33,11 +33,17 @@ if exist "%APP_IMAGE_DIR%\%APP_NAME%" (
     )
 )
 
-echo Deleting old installer files from the project folder if they exist...
-:: Delete previous installer EXE and ZIP files
-del /Q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" 2>nul
-del /Q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" 2>nul
-del /Q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" 2>nul
+echo Deleting old installer output folder if it exists...
+:DELETE_INSTALLER_OUT
+if exist "%INSTALLER_OUT%" (
+    rd /S /Q "%INSTALLER_OUT%"
+    if exist "%INSTALLER_OUT%" (
+        echo Failed to delete "%INSTALLER_OUT%" because files are in use.
+        echo Close any programs using these files, then press a key to try again...
+        pause
+        goto DELETE_INSTALLER_OUT
+    )
+)
 
 :: ----------------------------
 :: STEP 1: Create app image
@@ -53,7 +59,7 @@ echo ==== STEP 1: Creating app image ====
   --dest "%APP_IMAGE_DIR%"
 
 echo.
-echo Copying script files outside the "app" folder...
+echo Copying script files outside "app" folder...
 xcopy "%SCRIPTS_DIR%\*" "%APP_IMAGE_DIR%\%APP_NAME%\scripts\" /E /I /Y
 
 echo.
@@ -80,14 +86,14 @@ echo   %INSTALLER_OUT%
 pause
 
 :: ----------------------------
-:: STEP 3: Zip the installer with 7-Zip
+:: STEP 3: Zip the installer with 7-Zip (FIXED DESTINATION)
 :: ----------------------------
 echo ==== STEP 3: Zipping the installer with 7-Zip ====
-"%SEVEN_ZIP%" a "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" "%INSTALLER_OUT%\*"
+"%SEVEN_ZIP%" a "C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe"
 
 echo.
 echo The installer ZIP file was created at:
-echo   %INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip
+echo   C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip
 pause
 
 :: ----------------------------
@@ -99,5 +105,5 @@ del /q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" 2>nul
 
 echo.
 echo The EXE file(s) have been removed. The only file left should be the ZIP in:
-echo   %INSTALLER_OUT%
+echo   C:\Users\user\Documents\PleaseTweakWindows\
 pause
