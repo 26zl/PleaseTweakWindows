@@ -5,13 +5,7 @@ Designed for power users who want a simple way to tweak Windows settings.
 
 ## Status: In Development
 
-This program is not yet fully stable. Current development tasks include:
-
-- Object-oriented Java refactoring
-- Improved UI for better usability
-- Added verbose output when tweaks are applied
-- Optimizing all tweaks
-- Privacy and security tweaks are under development
+This program is not yet fully stable. See Issues.
 
 ## Installation
 
