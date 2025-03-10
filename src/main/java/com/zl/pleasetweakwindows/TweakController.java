@@ -37,9 +37,9 @@ public class TweakController {
                 "Services disable and revert" + File.separator + "Services-disabled.bat",
                 "Services disable and revert" + File.separator + "Revert services to default.bat"));
 
-        addTweak(new Tweak("UI and General Responsiveness",
-                "UI and general responsiveness" + File.separator + "ui-tweaks.bat",
-                "UI and general responsiveness" + File.separator + "Revert UI and general responsiveness tweaks.bat"));
+        addTweak(new Tweak("General Tweaks",
+                "General Tweaks" + File.separator + "GeneralTweaks.bat",
+                "General Tweaks Revert" + File.separator + "GeneralTweaksRevert.bat"));
 
       }
 
