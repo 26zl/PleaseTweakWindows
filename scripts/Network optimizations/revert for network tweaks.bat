@@ -1,73 +1,86 @@
 @echo off
 color b
+echo Reverting Network Optimization and Privacy Tweaks...
+echo.
 
-:: Revert Teredo state
+REM ==============================
+REM REVERT LEGACY NETWORKING PROTOCOLS
+REM ==============================
+REM Restores the default state of Teredo, ISATAP, and 6to4 tunneling protocols.
 netsh interface teredo set state default
-
-:: Revert 6to4 state
 netsh interface 6to4 set state default
-
-:: Revert Winsock to original state
-netsh winsock reset
-
-:: Revert ISATAP state
 netsh int isatap set state default
 
-:: Re-enable TCP/IP Task Offload
+REM Resets the Windows network stack (Winsock) to default.
+netsh winsock reset
+
+REM ==============================
+REM RE-ENABLE NETWORK PERFORMANCE FEATURES
+REM ==============================
+REM Restores TCP/IP task offloading to default.
 netsh int ip set global taskoffload=enabled
 
-:: Revert Neighbor Cache Limit
+REM Resets neighbor cache limit to Windows default.
 netsh int ip set global neighborcachelimit=default
 
-:: Re-enable TCP timestamps
+REM Re-enables TCP timestamps for accurate RTT measurements.
 netsh int tcp set global timestamps=enabled
 
-:: Re-enable TCP heuristic processing
+REM Enables TCP heuristic processing for auto-optimization.
 netsh int tcp set heuristics enabled
 
-:: Re-enable TCP autotuning
+REM Restores TCP autotuning to Windows default behavior.
 netsh int tcp set global autotuninglevel=normal
 
-:: Re-enable TCP chimney offload
+REM Re-enables TCP chimney offload for optimized network processing.
 netsh int tcp set global chimney=enabled
 
-:: Re-enable ECN capability
+REM Enables Explicit Congestion Notification (ECN).
 netsh int tcp set global ecncapability=enabled
 
-:: Disable TCP RSS (Receive Side Scaling)
+REM ==============================
+REM REVERT NETWORK ADAPTER SETTINGS
+REM ==============================
+REM Disables Receive Side Scaling (RSS) to revert to default.
 netsh int tcp set global rss=disabled
 
-:: Re-enable TCP RSC (Receive Segment Coalescing)
+REM Enables Receive Segment Coalescing (RSC) to optimize large packet processing.
 netsh int tcp set global rsc=enabled
 
-:: Disable TCP DCA (Direct Cache Access)
+REM Disables Direct Cache Access (DCA) to revert to default behavior.
 netsh int tcp set global dca=disabled
 
-:: Disable TCP NetDMA
+REM Disables NetDMA to prevent potential conflicts with modern NICs.
 netsh int tcp set global netdma=disabled
 
-:: Re-enable TCP Non-SACK RTT Resiliency
+REM Re-enables TCP Non-SACK RTT Resiliency for better loss recovery.
 netsh int tcp set global nonsackrttresiliency=enabled
 
-:: Re-enable TCP MPP (Multipath Provider Path)
+REM Re-enables Multipath Provider Path (MPP) for secure multipath routing.
 netsh int tcp set security mpp=enabled
 
-:: Re-enable TCP security profiles
+REM Re-enables TCP security profiles for additional protection.
 netsh int tcp set security profiles=enabled
 
-:: Re-enable ICMP redirects
+REM Re-enables ICMP redirects to allow legitimate network path adjustments.
 netsh int ip set global icmpredirects=enabled
 
-:: Re-enable QoS on network adapters
+REM ==============================
+REM RESTORE DEFAULT NETWORK ADAPTER SETTINGS
+REM ==============================
+REM Re-enables QoS on all network adapters to restore bandwidth prioritization.
 powershell -Command "Enable-NetAdapterQoS -Name '*'"
 
-:: Re-enable power management on network adapters
+REM Re-enables power management on network adapters to improve energy efficiency.
 powershell -Command "ForEach($adapter In Get-NetAdapter){Enable-NetAdapterPowerManagement -Name $adapter.Name -ErrorAction SilentlyContinue}"
 
-:: Re-enable Large Send Offload (LSO) on network adapters
+REM Re-enables Large Send Offload (LSO) on network adapters for optimized TCP performance.
 powershell -Command "ForEach($adapter In Get-NetAdapter){Enable-NetAdapterLso -Name $adapter.Name -ErrorAction SilentlyContinue}"
 
-:: Revert Registry settings
+REM ==============================
+REM REVERT REGISTRY SETTINGS TO DEFAULT
+REM ==============================
+REM Deletes manually added registry keys to restore Windows defaults.
 Reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v "EnableICMPRedirect" /f
 Reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v "EnablePMTUDiscovery" /f
 Reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v "Tcp1323Opts" /f
@@ -81,13 +94,19 @@ Reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v "Sac
 Reg.exe delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v "DefaultTTL" /f
 Reg.exe delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v "NetworkThrottlingIndex" /f
 
-:: Revert Tcpip\ServiceProvider settings
+REM ==============================
+REM REVERT TCPIP\SERVICE PROVIDER PRIORITY SETTINGS
+REM ==============================
+REM Removes custom TCP/IP service priority settings.
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\ServiceProvider" /v LocalPriority /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\ServiceProvider" /v HostsPriority /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\ServiceProvider" /v DnsPriority /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\ServiceProvider" /v NetbtPriority /f
 
-:: Revert Tcpip\Parameters settings
+REM ==============================
+REM REVERT TCPIP\PARAMETERS SETTINGS
+REM ==============================
+REM Deletes custom TCP/IP tweaks and restores Windows defaults.
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v DisableLargeMtu /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v DisableTaskOffload /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v DelayedAckFrequency /f
@@ -97,7 +116,10 @@ reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v Multihop
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v FastCopyReceiveThreshold /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v FastSendDatagramThreshold /f
 
-:: Revert AFD\Parameters settings
+REM ==============================
+REM REVERT AFD\PARAMETERS SETTINGS
+REM ==============================
+REM Removes custom network stack parameters in the Ancillary Function Driver (AFD).
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\AFD\Parameters" /v DefaultReceiveWindow /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\AFD\Parameters" /v DefaultSendWindow /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\AFD\Parameters" /v FastCopyReceiveThreshold /f
@@ -107,8 +129,13 @@ reg delete "HKLM\SYSTEM\CurrentControlSet\Services\AFD\Parameters" /v IgnorePush
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\AFD\Parameters" /v NonBlockingSendSpecialBuffering /f
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\AFD\Parameters" /v DisableRawSecurity /f
 
-:: Re-enable settings for LanmanWorkstation\Parameters
+REM ==============================
+REM REVERT LANMANWORKSTATION SETTINGS
+REM ==============================
+REM Restores default settings for Large MTU.
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v DisableLargeMtu /f
 
-echo All settings have been reverted to their defaults.
+echo All network settings have been reverted to their defaults.
+echo Please restart your computer for changes to take effect.
+
 pause

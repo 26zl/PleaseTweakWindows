@@ -1,4 +1,10 @@
 @echo off
+color b
+echo ===============================
+echo   PleaseTweakWindows Installer
+echo ===============================
+echo.
+
 :: ----------------------------
 :: Configuration
 :: ----------------------------
@@ -19,36 +25,53 @@ set "SEVEN_ZIP=C:\Program Files\7-Zip\7z.exe"
 set "APP_NAME_NO_SPACE=%APP_NAME: =-%"
 
 :: ----------------------------
-:: STEP 0: Remove old folders
+:: STEP 0: Check for dependencies
 :: ----------------------------
-echo Deleting old app-image folder if it exists...
-:DELETE_APP_IMAGE
+echo Checking dependencies...
+if not exist "%JPACKAGE_EXE%" (
+    echo ERROR: jpackage.exe not found in "%JPACKAGE_EXE%".
+    echo Make sure you have JDK 21 installed and jpackage is available.
+    pause
+    exit /b 1
+)
+
+if not exist "%SEVEN_ZIP%" (
+    echo ERROR: 7z.exe not found in "%SEVEN_ZIP%".
+    echo Please install 7-Zip and make sure it's correctly set in the script.
+    pause
+    exit /b 1
+)
+echo Dependencies found!
+echo.
+
+:: ----------------------------
+:: STEP 1: Remove old folders
+:: ----------------------------
+echo Removing old app-image folder...
 if exist "%APP_IMAGE_DIR%\%APP_NAME%" (
-    rd /S /Q "%APP_IMAGE_DIR%\%APP_NAME%"
-    if exist "%APP_IMAGE_DIR%\%APP_NAME%" (
-        echo Failed to delete "%APP_IMAGE_DIR%\%APP_NAME%" because files are in use.
+    rd /S /Q "%APP_IMAGE_DIR%\%APP_NAME%" || (
+        echo ERROR: Failed to delete "%APP_IMAGE_DIR%\%APP_NAME%".
         echo Close any programs using these files, then press a key to try again...
         pause
-        goto DELETE_APP_IMAGE
+        goto STEP_1
     )
 )
 
-echo Deleting old installer output folder if it exists...
-:DELETE_INSTALLER_OUT
+echo Removing old installer output folder...
 if exist "%INSTALLER_OUT%" (
-    rd /S /Q "%INSTALLER_OUT%"
-    if exist "%INSTALLER_OUT%" (
-        echo Failed to delete "%INSTALLER_OUT%" because files are in use.
+    rd /S /Q "%INSTALLER_OUT%" || (
+        echo ERROR: Failed to delete "%INSTALLER_OUT%".
         echo Close any programs using these files, then press a key to try again...
         pause
-        goto DELETE_INSTALLER_OUT
+        goto STEP_1
     )
 )
 
+:STEP_1
 :: ----------------------------
-:: STEP 1: Create app image
+:: STEP 2: Create app image
 :: ----------------------------
-echo ==== STEP 1: Creating app image ====
+echo ==== STEP 2: Creating app image ====
 "%JPACKAGE_EXE%" ^
   --type app-image ^
   --name "%APP_NAME%" ^
@@ -56,21 +79,27 @@ echo ==== STEP 1: Creating app image ====
   --main-jar "%MAIN_JAR%" ^
   --main-class "%MAIN_CLASS%" ^
   --runtime-image "%RUNTIME_IMAGE%" ^
-  --dest "%APP_IMAGE_DIR%"
+  --dest "%APP_IMAGE_DIR%" || (
+    echo ERROR: Failed to create app image.
+    pause
+    exit /b 1
+)
+echo App image created successfully.
 
+echo Copying script files...
+xcopy "%SCRIPTS_DIR%\*" "%APP_IMAGE_DIR%\%APP_NAME%\scripts\" /E /I /Y > nul
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to copy scripts.
+    pause
+    exit /b 1
+)
+echo Scripts copied successfully.
 echo.
-echo Copying script files outside "app" folder...
-xcopy "%SCRIPTS_DIR%\*" "%APP_IMAGE_DIR%\%APP_NAME%\scripts\" /E /I /Y
-
-echo.
-echo Scripts copied to:
-echo   %APP_IMAGE_DIR%\%APP_NAME%\scripts
-pause
 
 :: ----------------------------
-:: STEP 2: Create EXE installer
+:: STEP 3: Create EXE installer
 :: ----------------------------
-echo ==== STEP 2: Creating EXE installer ====
+echo ==== STEP 3: Creating EXE installer ====
 "%JPACKAGE_EXE%" ^
   --type exe ^
   --app-image "%APP_IMAGE_DIR%\%APP_NAME%" ^
@@ -78,32 +107,43 @@ echo ==== STEP 2: Creating EXE installer ====
   --win-shortcut ^
   --win-menu ^
   --icon "%ICON_FILE%" ^
-  --win-upgrade-uuid "12345678-1234-1234-1234-123456789abc"
-
-echo.
+  --win-upgrade-uuid "12345678-1234-1234-1234-123456789abc" || (
+    echo ERROR: Failed to create EXE installer.
+    pause
+    exit /b 1
+)
 echo The EXE installer was created in:
 echo   %INSTALLER_OUT%
-pause
-
-:: ----------------------------
-:: STEP 3: Zip the installer with 7-Zip (FIXED DESTINATION)
-:: ----------------------------
-echo ==== STEP 3: Zipping the installer with 7-Zip ====
-"%SEVEN_ZIP%" a "C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe"
-
 echo.
+
+:: ----------------------------
+:: STEP 4: Zip the installer with 7-Zip
+:: ----------------------------
+echo ==== STEP 4: Zipping the installer with 7-Zip ====
+"%SEVEN_ZIP%" a "C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" > nul
+
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to create ZIP archive.
+    pause
+    exit /b 1
+)
 echo The installer ZIP file was created at:
 echo   C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip
-pause
+echo.
 
 :: ----------------------------
-:: STEP 4: Remove the standalone EXE
+:: STEP 5: Remove the standalone EXE
 :: ----------------------------
-echo ==== STEP 4: Removing the standalone EXE to keep only the ZIP ====
+echo ==== STEP 5: Removing the standalone EXE to keep only the ZIP ====
 del /q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" 2>nul
 del /q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" 2>nul
 
+if exist "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" (
+    echo WARNING: Failed to delete the EXE file. You may need to delete it manually.
+) else (
+    echo EXE file(s) removed successfully.
+)
+
 echo.
-echo The EXE file(s) have been removed. The only file left should be the ZIP in:
-echo   C:\Users\user\Documents\PleaseTweakWindows\
+echo Process completed successfully!
 pause

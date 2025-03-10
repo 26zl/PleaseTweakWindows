@@ -57,7 +57,6 @@ public class Main extends Application {
 
         Button createRestorePointButton = new Button("Create Restore Point");
         createRestorePointButton.setOnAction(e -> {
-            logArea.appendText("Creating restore point...\n");
             backgroundExecutor.submit(() -> Executor.createRestorePoint(logArea));
         });
 

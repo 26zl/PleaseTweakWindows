@@ -1,93 +1,155 @@
 @echo off
 color b
+echo Reverting all disabled services to default settings...
+echo.
 
-:: Re-enable previously disabled services
-
-echo Re-enabling AllJoyn Router Service...
-sc config AJRouter start= demand
-sc start AJRouter
-
-echo Re-enabling Auto Time Zone Updater...
-sc config tzautoupdate start= demand
-sc start tzautoupdate
-
-echo Re-enabling Background Intelligent Transfer Service...
-sc config BITS start= demand
-sc start BITS
-
-echo Re-enabling Bluetooth Handsfree Service...
-sc config BthHFSrv start= demand
-sc start BthHFSrv
-
-echo Re-enabling BranchCache...
-sc config PeerDistSvc start= demand
-sc start PeerDistSvc
-
-echo Re-enabling Client License Service (ClipSVC)...
-sc config ClipSVC start= demand
-sc start ClipSVC
-
-echo Re-enabling Connected User Experiences and Telemetry...
+REM ==============================
+REM TELEMETRY & CLOUD SERVICES
+REM ==============================
+echo Enabling Connected User Experiences and Telemetry...
 sc config DiagTrack start= auto
 sc start DiagTrack
 
-echo Re-enabling Connected Devices Platform Service...
-sc config CDPSvc start= demand
-sc start CDPSvc
-
-echo Re-enabling Data Usage...
-sc config DusmSvc start= demand
+echo Enabling Data Usage Service...
+sc config DusmSvc start= auto
 sc start DusmSvc
 
-echo Re-enabling Downloaded Maps Manager...
-sc config MapsBroker start= demand
-sc start MapsBroker
+echo Enabling Windows Error Reporting Service...
+sc config WerSvc start= manual
+sc start WerSvc
 
-echo Re-enabling Geolocation Service...
-sc config lfsvc start= demand
-sc start lfsvc
+echo Enabling Windows Update Medic Service...
+sc config WaaSMedicSvc start= manual
+sc start WaaSMedicSvc
 
-echo Re-enabling HomeGroup Listener...
-sc config HomeGroupListener start= demand
+echo Enabling Background Intelligent Transfer Service (BITS)...
+sc config BITS start= manual
+sc start BITS
+
+echo Enabling Windows Insider Service...
+sc config wisvc start= manual
+sc start wisvc
+
+REM ==============================
+REM XBOX & GAMING SERVICES
+REM ==============================
+echo Enabling Xbox Services...
+sc config XblAuthManager start= demand
+sc start XblAuthManager
+sc config XblGameSave start= demand
+sc start XblGameSave
+sc config XboxNetApiSvc start= demand
+sc start XboxNetApiSvc
+sc config GamingServices start= demand
+sc start GamingServices
+sc config GamingServicesNet start= demand
+sc start GamingServicesNet
+
+REM ==============================
+REM NETWORK & SHARING SERVICES
+REM ==============================
+echo Enabling HomeGroup Services...
+sc config HomeGroupListener start= manual
 sc start HomeGroupListener
-
-echo Re-enabling HomeGroup Provider...
-sc config HomeGroupProvider start= demand
+sc config HomeGroupProvider start= manual
 sc start HomeGroupProvider
 
-echo Re-enabling MessagingService_XXXXX...
-REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MessagingService" /v Start /t REG_DWORD /d 00000003 /f
+echo Enabling Peer-to-Peer Networking (BranchCache)...
+sc config PeerDistSvc start= manual
+sc start PeerDistSvc
 
-echo Re-enabling Print Spooler...
+echo Enabling Remote Desktop Services...
+sc config TermService start= manual
+sc start TermService
+
+echo Enabling Windows Mobile Hotspot Service...
+sc config icssvc start= manual
+sc start icssvc
+
+REM ==============================
+REM LOCATION & MAP SERVICES
+REM ==============================
+echo Enabling Geolocation Service...
+sc config lfsvc start= manual
+sc start lfsvc
+
+echo Enabling Downloaded Maps Manager...
+sc config MapsBroker start= manual
+sc start MapsBroker
+
+REM ==============================
+REM PRINT & DEVICE SERVICES
+REM ==============================
+echo Enabling Print Spooler...
 sc config Spooler start= auto
 sc start Spooler
 
-echo Re-enabling Retail Demo Service...
-sc config RetailDemo start= demand
-sc start RetailDemo
+echo Enabling Windows Fax and Scan...
+sc config Fax start= demand
+sc start Fax
 
-echo Re-enabling Windows Push Notifications System Service...
+echo Enabling Bluetooth Support Services...
+sc config BthHFSrv start= manual
+sc start BthHFSrv
+sc config bthserv start= manual
+sc start bthserv
+
+REM ==============================
+REM WINDOWS STORE & CLOUD SYNC
+REM ==============================
+echo Enabling Microsoft Store Install Service...
+sc config InstallService start= demand
+sc start InstallService
+
+echo Enabling Microsoft Account Sign-in Assistant...
+sc config wlidsvc start= demand
+sc start wlidsvc
+
+echo Enabling OneSyncSvc (syncs email, calendar, contacts, etc.)...
+sc config OneSyncSvc start= demand
+sc start OneSyncSvc
+
+REM ==============================
+REM PUSH NOTIFICATIONS & MESSAGING
+REM ==============================
+echo Enabling Windows Push Notifications...
 sc config WpnService start= auto
 sc start WpnService
 
-echo Re-enabling Windows Mobile Hotspot Service...
-sc config icssvc start= demand
-sc start icssvc
+echo Enabling Windows Push Notifications User Service...
+REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\WpnUserService" /v Start /t REG_DWORD /d 00000002 /f
 
-echo Re-enabling Xbox Live Auth Manager...
-sc config XblAuthManager start= demand
-sc start XblAuthManager
+echo Enabling Messaging Service...
+REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MessagingService" /v Start /t REG_DWORD /d 00000002 /f
 
-echo Re-enabling Xbox Live Game Save...
-sc config XblGameSave start= demand
-sc start XblGameSave
+REM ==============================
+REM OTHER BACKGROUND SERVICES
+REM ==============================
+echo Enabling Windows Retail Demo Service...
+sc config RetailDemo start= manual
+sc start RetailDemo
 
-echo Re-enabling Xbox Live Networking Service...
-sc config XboxNetApiSvc start= demand
-sc start XboxNetApiSvc
+echo Enabling AllJoyn Router Service...
+sc config AJRouter start= manual
+sc start AJRouter
 
-echo Re-enabling Windows Push Notifications User Service_XXXXX...
-REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\WpnUserService" /v Start /t REG_DWORD /d 00000003 /f
+echo Enabling Auto Time Zone Updater...
+sc config tzautoupdate start= manual
+sc start tzautoupdate
+
+echo Enabling Connected Devices Platform Service...
+sc config CDPSvc start= manual
+sc start CDPSvc
+
+echo Enabling Parental Controls...
+sc config WpcMonSvc start= manual
+sc start WpcMonSvc
+
+echo Enabling Windows Biometric Service...
+sc config WbioSrvc start= manual
+sc start WbioSrvc
 
 echo.
+echo All services have been restored to their default settings.
+echo Please restart your computer for changes to take effect.
 pause
