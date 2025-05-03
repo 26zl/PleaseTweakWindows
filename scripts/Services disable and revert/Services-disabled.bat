@@ -1,155 +1,169 @@
 @echo off
 color b
-echo Disabling unnecessary services for low latency and minimal background processes...
+echo Setting a wide list of services to manual for optimization...
 echo.
 
 REM ==============================
 REM TELEMETRY & CLOUD SERVICES
 REM ==============================
-echo Disabling Connected User Experiences and Telemetry...
-sc stop DiagTrack
-sc config DiagTrack start= disabled
-
-echo Disabling Data Usage Service...
-sc stop DusmSvc
-sc config DusmSvc start= disabled
-
-echo Disabling Windows Error Reporting Service...
-sc stop WerSvc
-sc config WerSvc start= disabled
-
-echo Disabling Windows Update Medic Service...
-sc stop WaaSMedicSvc
-sc config WaaSMedicSvc start= disabled
-
-echo Disabling Background Intelligent Transfer Service (BITS)...
-sc stop BITS
-sc config BITS start= disabled
-
-echo Disabling Windows Insider Service...
-sc stop wisvc
-sc config wisvc start= disabled
+sc config DiagTrack start= demand
+sc config DusmSvc start= demand
+sc config WerSvc start= demand
+sc config WaaSMedicSvc start= demand
+sc config BITS start= demand
+sc config wisvc start= demand
+sc config CDPSvc start= demand
+sc config CDPUserSvc_* start= demand
 
 REM ==============================
 REM XBOX & GAMING SERVICES
 REM ==============================
-echo Disabling Xbox Services...
-sc stop XblAuthManager
-sc config XblAuthManager start= disabled
-sc stop XblGameSave
-sc config XblGameSave start= disabled
-sc stop XboxNetApiSvc
-sc config XboxNetApiSvc start= disabled
-sc stop GamingServices
-sc config GamingServices start= disabled
-sc stop GamingServicesNet
-sc config GamingServicesNet start= disabled
+sc config XblAuthManager start= demand
+sc config XblGameSave start= demand
+sc config XboxNetApiSvc start= demand
+sc config GamingServices start= demand
+sc config GamingServicesNet start= demand
 
 REM ==============================
 REM NETWORK & SHARING SERVICES
 REM ==============================
-echo Disabling HomeGroup Services...
-sc stop HomeGroupListener
-sc config HomeGroupListener start= disabled
-sc stop HomeGroupProvider
-sc config HomeGroupProvider start= disabled
-
-echo Disabling Peer-to-Peer Networking (BranchCache)...
-sc stop PeerDistSvc
-sc config PeerDistSvc start= disabled
-
-echo Disabling Remote Desktop Services...
-sc stop TermService
-sc config TermService start= disabled
-
-echo Disabling Windows Mobile Hotspot Service...
-sc stop icssvc
-sc config icssvc start= disabled
+sc config HomeGroupListener start= demand
+sc config HomeGroupProvider start= demand
+sc config PeerDistSvc start= demand
+sc config TermService start= demand
+sc config icssvc start= demand
+sc config RasAuto start= demand
+sc config RasMan start= demand
+sc config RemoteAccess start= demand
+sc config RemoteRegistry start= demand
+sc config LanmanServer start= demand
+sc config LanmanWorkstation start= demand
+sc config Netlogon start= demand
+sc config NetSetupSvc start= demand
+sc config Netman start= demand
+sc config Dhcp start= demand
+sc config Dnscache start= demand
 
 REM ==============================
 REM LOCATION & MAP SERVICES
 REM ==============================
-echo Disabling Geolocation Service...
-sc stop lfsvc
-sc config lfsvc start= disabled
-
-echo Disabling Downloaded Maps Manager...
-sc stop MapsBroker
-sc config MapsBroker start= disabled
+sc config lfsvc start= demand
+sc config MapsBroker start= demand
+sc config NaturalAuthentication start= demand
 
 REM ==============================
 REM PRINT & DEVICE SERVICES
 REM ==============================
-echo Disabling Print Spooler (if you don't use printers)...
-sc stop Spooler
-sc config Spooler start= disabled
-
-echo Disabling Windows Fax and Scan (if not needed)...
-sc stop Fax
-sc config Fax start= disabled
-
-echo Disabling Bluetooth Support Services (if you don't use Bluetooth)...
-sc stop BthHFSrv
-sc config BthHFSrv start= disabled
-sc stop bthserv
-sc config bthserv start= disabled
+sc config Spooler start= demand
+sc config Fax start= demand
+sc config BthHFSrv start= demand
+sc config bthserv start= demand
+sc config DeviceAssociationService start= demand
+sc config DevicesFlowUserSvc_* start= demand
+sc config WPDBusEnum start= demand
+sc config PlugPlay start= demand
+sc config StiSvc start= demand
 
 REM ==============================
 REM WINDOWS STORE & CLOUD SYNC
 REM ==============================
-echo Disabling Microsoft Store Install Service...
-sc stop InstallService
-sc config InstallService start= disabled
-
-echo Disabling Microsoft Account Sign-in Assistant...
-sc stop wlidsvc
-sc config wlidsvc start= disabled
-
-echo Disabling OneSyncSvc (syncs email, calendar, contacts, etc.)...
-sc stop OneSyncSvc
-sc config OneSyncSvc start= disabled
+sc config InstallService start= demand
+sc config wlidsvc start= demand
+sc config OneSyncSvc_* start= demand
+sc config WpcMonSvc start= demand
+sc config WbioSrvc start= demand
 
 REM ==============================
 REM PUSH NOTIFICATIONS & MESSAGING
 REM ==============================
-echo Disabling Windows Push Notifications...
-sc stop WpnService
-sc config WpnService start= disabled
+sc config WpnService start= demand
+sc config MessagingService_* start= demand
+sc config WpnUserService_* start= demand
 
-echo Disabling Windows Push Notifications User Service...
-REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\WpnUserService" /v Start /t REG_DWORD /d 00000004 /f
-
-echo Disabling Messaging Service...
-REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MessagingService" /v Start /t REG_DWORD /d 00000004 /f
+REM ==============================
+REM MEDIA & STREAMING SERVICES
+REM ==============================
+sc config AudioEndpointBuilder start= demand
+sc config Audiosrv start= demand
+sc config AudioSrv start= demand
+sc config BcastDVRUserService_* start= demand
+sc config CaptureService_* start= demand
+sc config FrameServer start= demand
+sc config FrameServerMonitor start= demand
+sc config PrintNotify start= demand
 
 REM ==============================
 REM OTHER BACKGROUND SERVICES
 REM ==============================
-echo Disabling Windows Retail Demo Service...
-sc stop RetailDemo
-sc config RetailDemo start= disabled
+sc config AJRouter start= demand
+sc config tzautoupdate start= demand
+sc config RetailDemo start= demand
+sc config fdPHost start= demand
+sc config SharedAccess start= demand
+sc config VaultSvc start= demand
+sc config W32Time start= demand
+sc config upnphost start= demand
+sc config svsvc start= demand
+sc config swprv start= demand
+sc config wbengine start= demand
+sc config SmsRouter start= demand
+sc config TabletInputService start= demand
+sc config TroubleshootingSvc start= demand
+sc config Workfolderssvc start= demand
 
-echo Disabling AllJoyn Router Service (IoT-related)...
-sc stop AJRouter
-sc config AJRouter start= disabled
+REM ==============================
+REM SECURITY & AUTHENTICATION SERVICES
+REM ==============================
+sc config SCardSvr start= demand
+sc config SamSs start= demand
+sc config RpcSs start= demand
+sc config RpcEptMapper start= demand
+sc config DcomLaunch start= demand
+sc config EventLog start= demand
+sc config SecurityHealthService start= demand
+sc config Sense start= demand
+sc config TrustedInstaller start= demand
+sc config UevAgentService start= demand
 
-echo Disabling Auto Time Zone Updater...
-sc stop tzautoupdate
-sc config tzautoupdate start= disabled
+REM ==============================
+REM PERFORMANCE & OPTIMIZATION
+REM ==============================
+sc config SysMain start= demand
+sc config PcaSvc start= demand
+sc config PerfHost start= demand
+sc config DiagTrack start= demand
+sc config diagnosticshub.standardcollector.service start= demand
 
-echo Disabling Connected Devices Platform Service...
-sc stop CDPSvc
-sc config CDPSvc start= disabled
+REM ==============================
+REM VIRTUALIZATION & HYPER-V
+REM ==============================
+sc config vmicguestinterface start= demand
+sc config vmicheartbeat start= demand
+sc config vmickvpexchange start= demand
+sc config vmicrdv start= demand
+sc config vmicshutdown start= demand
+sc config vmictimesync start= demand
+sc config vmicvmsession start= demand
+sc config vmicvss start= demand
+sc config vm3dservice start= demand
+sc config HvHost start= demand
 
-echo Disabling Parental Controls...
-sc stop WpcMonSvc
-sc config WpcMonSvc start= disabled
+REM ==============================
+REM WINDOWS UPDATE & MAINTENANCE
+REM ==============================
+sc config UsoSvc start= demand
+sc config wuauserv start= demand
+sc config WaaSMedicSvc start= demand
+sc config sspvc start= demand
 
-echo Disabling Windows Biometric Service (Fingerprint/Face Recognition)...
-sc stop WbioSrvc
-sc config WbioSrvc start= disabled
+REM ==============================
+REM EDGE & BROWSER SERVICES
+REM ==============================
+sc config edgeupdate start= demand
+sc config edgeupdatem start= demand
+sc config MicrosoftEdgeElevationService start= demand
 
 echo.
-echo All unnecessary services have been disabled.
-echo Restart your computer for changes to take effect.
+echo All listed services have been set to manual.
+echo Please restart your computer for changes to take effect.
 pause

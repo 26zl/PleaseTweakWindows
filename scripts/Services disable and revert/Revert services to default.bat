@@ -1,155 +1,169 @@
 @echo off
 color b
-echo Reverting all disabled services to default settings...
+echo Reverting the wide list of services back to automatic startup...
 echo.
 
 REM ==============================
 REM TELEMETRY & CLOUD SERVICES
 REM ==============================
-echo Enabling Connected User Experiences and Telemetry...
 sc config DiagTrack start= auto
-sc start DiagTrack
-
-echo Enabling Data Usage Service...
 sc config DusmSvc start= auto
-sc start DusmSvc
-
-echo Enabling Windows Error Reporting Service...
-sc config WerSvc start= manual
-sc start WerSvc
-
-echo Enabling Windows Update Medic Service...
-sc config WaaSMedicSvc start= manual
-sc start WaaSMedicSvc
-
-echo Enabling Background Intelligent Transfer Service (BITS)...
-sc config BITS start= manual
-sc start BITS
-
-echo Enabling Windows Insider Service...
-sc config wisvc start= manual
-sc start wisvc
+sc config WerSvc start= auto
+sc config WaaSMedicSvc start= auto
+sc config BITS start= delayed-auto
+sc config wisvc start= auto
+sc config CDPSvc start= auto
+sc config CDPUserSvc_* start= auto
 
 REM ==============================
 REM XBOX & GAMING SERVICES
 REM ==============================
-echo Enabling Xbox Services...
-sc config XblAuthManager start= demand
-sc start XblAuthManager
-sc config XblGameSave start= demand
-sc start XblGameSave
-sc config XboxNetApiSvc start= demand
-sc start XboxNetApiSvc
-sc config GamingServices start= demand
-sc start GamingServices
-sc config GamingServicesNet start= demand
-sc start GamingServicesNet
+sc config XblAuthManager start= auto
+sc config XblGameSave start= auto
+sc config XboxNetApiSvc start= auto
+sc config GamingServices start= auto
+sc config GamingServicesNet start= auto
 
 REM ==============================
 REM NETWORK & SHARING SERVICES
 REM ==============================
-echo Enabling HomeGroup Services...
-sc config HomeGroupListener start= manual
-sc start HomeGroupListener
-sc config HomeGroupProvider start= manual
-sc start HomeGroupProvider
-
-echo Enabling Peer-to-Peer Networking (BranchCache)...
-sc config PeerDistSvc start= manual
-sc start PeerDistSvc
-
-echo Enabling Remote Desktop Services...
-sc config TermService start= manual
-sc start TermService
-
-echo Enabling Windows Mobile Hotspot Service...
-sc config icssvc start= manual
-sc start icssvc
+sc config HomeGroupListener start= auto
+sc config HomeGroupProvider start= auto
+sc config PeerDistSvc start= auto
+sc config TermService start= auto
+sc config icssvc start= auto
+sc config RasAuto start= auto
+sc config RasMan start= auto
+sc config RemoteAccess start= auto
+sc config RemoteRegistry start= auto
+sc config LanmanServer start= auto
+sc config LanmanWorkstation start= auto
+sc config Netlogon start= auto
+sc config NetSetupSvc start= auto
+sc config Netman start= auto
+sc config Dhcp start= auto
+sc config Dnscache start= auto
 
 REM ==============================
 REM LOCATION & MAP SERVICES
 REM ==============================
-echo Enabling Geolocation Service...
-sc config lfsvc start= manual
-sc start lfsvc
-
-echo Enabling Downloaded Maps Manager...
-sc config MapsBroker start= manual
-sc start MapsBroker
+sc config lfsvc start= auto
+sc config MapsBroker start= auto
+sc config NaturalAuthentication start= auto
 
 REM ==============================
 REM PRINT & DEVICE SERVICES
 REM ==============================
-echo Enabling Print Spooler...
 sc config Spooler start= auto
-sc start Spooler
-
-echo Enabling Windows Fax and Scan...
-sc config Fax start= demand
-sc start Fax
-
-echo Enabling Bluetooth Support Services...
-sc config BthHFSrv start= manual
-sc start BthHFSrv
-sc config bthserv start= manual
-sc start bthserv
+sc config Fax start= auto
+sc config BthHFSrv start= auto
+sc config bthserv start= auto
+sc config DeviceAssociationService start= auto
+sc config DevicesFlowUserSvc_* start= auto
+sc config WPDBusEnum start= auto
+sc config PlugPlay start= auto
+sc config StiSvc start= auto
 
 REM ==============================
 REM WINDOWS STORE & CLOUD SYNC
 REM ==============================
-echo Enabling Microsoft Store Install Service...
-sc config InstallService start= demand
-sc start InstallService
-
-echo Enabling Microsoft Account Sign-in Assistant...
-sc config wlidsvc start= demand
-sc start wlidsvc
-
-echo Enabling OneSyncSvc (syncs email, calendar, contacts, etc.)...
-sc config OneSyncSvc start= demand
-sc start OneSyncSvc
+sc config InstallService start= auto
+sc config wlidsvc start= auto
+sc config OneSyncSvc_* start= auto
+sc config WpcMonSvc start= auto
+sc config WbioSrvc start= auto
 
 REM ==============================
 REM PUSH NOTIFICATIONS & MESSAGING
 REM ==============================
-echo Enabling Windows Push Notifications...
 sc config WpnService start= auto
-sc start WpnService
+sc config MessagingService_* start= auto
+sc config WpnUserService_* start= auto
 
-echo Enabling Windows Push Notifications User Service...
-REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\WpnUserService" /v Start /t REG_DWORD /d 00000002 /f
-
-echo Enabling Messaging Service...
-REG ADD "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MessagingService" /v Start /t REG_DWORD /d 00000002 /f
+REM ==============================
+REM MEDIA & STREAMING SERVICES
+REM ==============================
+sc config AudioEndpointBuilder start= auto
+sc config Audiosrv start= auto
+sc config AudioSrv start= auto
+sc config BcastDVRUserService_* start= auto
+sc config CaptureService_* start= auto
+sc config FrameServer start= auto
+sc config FrameServerMonitor start= auto
+sc config PrintNotify start= auto
 
 REM ==============================
 REM OTHER BACKGROUND SERVICES
 REM ==============================
-echo Enabling Windows Retail Demo Service...
-sc config RetailDemo start= manual
-sc start RetailDemo
+sc config AJRouter start= auto
+sc config tzautoupdate start= auto
+sc config RetailDemo start= auto
+sc config fdPHost start= auto
+sc config SharedAccess start= auto
+sc config VaultSvc start= auto
+sc config W32Time start= auto
+sc config upnphost start= auto
+sc config svsvc start= auto
+sc config swprv start= auto
+sc config wbengine start= auto
+sc config SmsRouter start= auto
+sc config TabletInputService start= auto
+sc config TroubleshootingSvc start= auto
+sc config Workfolderssvc start= auto
 
-echo Enabling AllJoyn Router Service...
-sc config AJRouter start= manual
-sc start AJRouter
+REM ==============================
+REM SECURITY & AUTHENTICATION SERVICES
+REM ==============================
+sc config SCardSvr start= auto
+sc config SamSs start= auto
+sc config RpcSs start= auto
+sc config RpcEptMapper start= auto
+sc config DcomLaunch start= auto
+sc config EventLog start= auto
+sc config SecurityHealthService start= auto
+sc config Sense start= auto
+sc config TrustedInstaller start= auto
+sc config UevAgentService start= auto
 
-echo Enabling Auto Time Zone Updater...
-sc config tzautoupdate start= manual
-sc start tzautoupdate
+REM ==============================
+REM PERFORMANCE & OPTIMIZATION
+REM ==============================
+sc config SysMain start= auto
+sc config PcaSvc start= auto
+sc config PerfHost start= auto
+sc config DiagTrack start= auto
+sc config diagnosticshub.standardcollector.service start= auto
 
-echo Enabling Connected Devices Platform Service...
-sc config CDPSvc start= manual
-sc start CDPSvc
+REM ==============================
+REM VIRTUALIZATION & HYPER-V
+REM ==============================
+sc config vmicguestinterface start= auto
+sc config vmicheartbeat start= auto
+sc config vmickvpexchange start= auto
+sc config vmicrdv start= auto
+sc config vmicshutdown start= auto
+sc config vmictimesync start= auto
+sc config vmicvmsession start= auto
+sc config vmicvss start= auto
+sc config vm3dservice start= auto
+sc config HvHost start= auto
 
-echo Enabling Parental Controls...
-sc config WpcMonSvc start= manual
-sc start WpcMonSvc
+REM ==============================
+REM WINDOWS UPDATE & MAINTENANCE
+REM ==============================
+sc config UsoSvc start= auto
+sc config wuauserv start= auto
+sc config WaaSMedicSvc start= auto
+sc config sspvc start= auto
 
-echo Enabling Windows Biometric Service...
-sc config WbioSrvc start= manual
-sc start WbioSrvc
+REM ==============================
+REM EDGE & BROWSER SERVICES
+REM ==============================
+sc config edgeupdate start= auto
+sc config edgeupdatem start= auto
+sc config MicrosoftEdgeElevationService start= auto
 
 echo.
-echo All services have been restored to their default settings.
+echo All listed services have been reverted to automatic.
 echo Please restart your computer for changes to take effect.
 pause

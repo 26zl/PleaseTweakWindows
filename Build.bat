@@ -19,7 +19,6 @@ set "ICON_FILE=C:\Users\user\Documents\PleaseTweakWindows\daemonWindows.ico"
 set "INPUT_DIR=C:\Users\user\Documents\PleaseTweakWindows\target"
 set "APP_IMAGE_DIR=C:\Users\user\Documents\PleaseTweakWindows\build\AppImage"
 set "INSTALLER_OUT=C:\Users\user\Documents\PleaseTweakWindows\installerOutput"
-set "SEVEN_ZIP=C:\Program Files\7-Zip\7z.exe"
 
 :: Replace spaces in APP_NAME with dashes (optional)
 set "APP_NAME_NO_SPACE=%APP_NAME: =-%"
@@ -31,13 +30,6 @@ echo Checking dependencies...
 if not exist "%JPACKAGE_EXE%" (
     echo ERROR: jpackage.exe not found in "%JPACKAGE_EXE%".
     echo Make sure you have JDK 21 installed and jpackage is available.
-    pause
-    exit /b 1
-)
-
-if not exist "%SEVEN_ZIP%" (
-    echo ERROR: 7z.exe not found in "%SEVEN_ZIP%".
-    echo Please install 7-Zip and make sure it's correctly set in the script.
     pause
     exit /b 1
 )
@@ -117,10 +109,10 @@ echo   %INSTALLER_OUT%
 echo.
 
 :: ----------------------------
-:: STEP 4: Zip the installer with 7-Zip
+:: STEP 4: Zip the installer using Windows PowerShell
 :: ----------------------------
-echo ==== STEP 4: Zipping the installer with 7-Zip ====
-"%SEVEN_ZIP%" a "C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip" "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" > nul
+echo ==== STEP 4: Zipping the installer with Windows PowerShell ====
+powershell -Command "Compress-Archive -Path '%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe' -DestinationPath 'C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip' -Force"
 
 if %errorlevel% neq 0 (
     echo ERROR: Failed to create ZIP archive.
