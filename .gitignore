@@ -45,8 +45,6 @@ nb-configuration.xml
 .vscode/
 .vscode-oss/
 .code-workspace
-.history/
-.history
 
 # Log files
 /log/
@@ -58,44 +56,32 @@ nb-configuration.xml
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# macOS Finder attributes
 Icon
 ._*
+
+# macOS folder settings
 .Spotlight-V100
 .Trashes
 .VolumeIcon.icns
 .metadata_never_index
 .fseventsd
-.DocumentRevisions-V100
-.TemporaryItems
-.com.apple.timemachine.donotpresent
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-*.icloud
 
 # Windows system files
 Thumbs.db
-Thumbs.db:encryptable
 ehthumbs.db
-ehthumbs_vista.db
 desktop.ini
-[Dd]esktop.ini
 $RECYCLE.BIN/
 
 # Windows Installer files
 *.cab
 *.msi
-*.msix
 *.msm
 *.msp
 
 # Windows shortcuts
 *.lnk
-
-# Dump files
-*.stackdump
 
 # Java compiled class files
 *.class
@@ -103,8 +89,6 @@ $RECYCLE.BIN/
 # Linux system files
 *~
 .nfs*
-.fuse_hidden*
-.directory
 
 # Core dumps
 core
@@ -142,91 +126,12 @@ gradle-app.setting
 !gradle-wrapper.jar
 
 # Package manager cache and temporary files
+*.lock
 *.bak
 *.tmp
-*.lock
 
 # GitHub Actions workflow backup (Disabled workflows)
 .github/workflows/release.yml.disabled
 
 # Miscellaneous
 *.log
-
-### Batch ###
-*.bat
-*.cmd
-*.btm
-
-### Git ###
-*.orig
-*.BACKUP.*
-*.BASE.*
-*.LOCAL.*
-*.REMOTE.*
-*_BACKUP_*.txt
-*_BASE_*.txt
-*_LOCAL_*.txt
-*_REMOTE_*.txt
-
-### Intellij ###
-.idea/**/workspace.xml
-.idea/**/tasks.xml
-.idea/**/usage.statistics.xml
-.idea/**/dictionaries
-.idea/**/shelf
-.idea/**/aws.xml
-.idea/**/contentModel.xml
-.idea/**/dataSources/
-.idea/**/dataSources.ids
-.idea/**/dataSources.local.xml
-.idea/**/sqlDataSources.xml
-.idea/**/dynamic.xml
-.idea/**/uiDesigner.xml
-.idea/**/dbnavigator.xml
-.idea/**/gradle.xml
-.idea/**/libraries
-.idea/**/mongoSettings.xml
-.idea/replstate.xml
-.idea/sonarlint/
-.idea/httpRequests
-.idea/caches/build_file_checksums.ser
-.idea/codestream.xml
-.idea/**/azureSettings.xml
-.idea/**/sonarlint/
-.idea/**/sonarIssues.xml
-.idea/**/markdown-navigator.xml
-.idea/**/markdown-navigator-enh.xml
-.idea/**/markdown-navigator/
-.idea/$CACHE_FILE$
-atlassian-ide-plugin.xml
-.idea_modules/
-
-# CMake
-cmake-build-*/
-
-# Java
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-*.ctxt
-.mtj.tmp/
-
-# Eclipse m2e generated files
-# Eclipse Core
-.project
-
-# PowerShell
-*.dll
-
-# VisualStudioCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
-.ionide
