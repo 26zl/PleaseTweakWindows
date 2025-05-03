@@ -4,45 +4,48 @@ A lightweight tool for optimizing Windows settings to enhance performance, secur
 Designed for power users who want a simple way to tweak Windows settings.
 
 ## Status: In Development
-This program is not yet fully stable. Check issues.
+
+This program is **under active development**. Check the issues tab for known problems.
 
 ---
 
 ## Installation
 
 ### Download and Install
-1. Go to the repo and look for `PleaseTweakWindows.exe.zip`.
-2. Download the `PleaseTweakWindows.exe.zip` as a RAW file.
+
+1. Go to the [GitHub repository](https://github.com/26zl/PleaseTweakWindows).
+2. Download the latest `PleaseTweakWindows-<version>-win-x64.zip`.
 3. Unzip the file to extract the `PleaseTweakWindows.exe` installer.
 4. Run the installer and follow the on-screen instructions.
 
-No need to install Java. The installer includes everything required.
+> **Note:** You do **not** need to install Java — the installer includes everything.
 
 ---
 
 ## Alternative: Use the PowerShell Script
-If you **prefer not to use the UI**, you can use the **PowerShell-based tweak menu** instead.
+
+If you **prefer not to install anything** or want a minimal approach, you can run the built-in **PowerShell tweak menu**.
 
 ### How to Use the PowerShell Script
-1. Download the repository and navigate to the project root folder.
-2. Locate the batch launcher: `RunTweaks.bat`
-3. **Double-click `RunTweaks.bat`**, and it will launch the tweak menu automatically.
+
+1. Download or clone the repository.
+2. Navigate to the project root folder.
+3. Double-click `RunTweaks.bat` — this will automatically launch the tweak menu.
 
 ### Manually Running the PowerShell Script
 
 ```powershell
-cd "C:\Path\To\PleaseTweakWindows"
+cd "path\to\PleaseTweakWindows"
 powershell.exe -ExecutionPolicy Bypass -File .\PleaseTweakWindowsPScript.ps1
 ```
 
-Follow the on-screen prompts to apply or revert tweaks by entering **Y (Yes) or N (No)**.
+You can apply or revert tweaks by entering **Y (Yes)** or **N (No)** in the terminal.
 
-This method ensures that **no installation is required**, making it ideal for **users who want a quick, UI-free experience**.
+This method is perfect for users who want a **quick, no-install experience**.
 
 ---
 
 ## Build from Source (For Developers)
-If you prefer to build the project yourself, follow these steps. All commands assume a Windows environment.
 
 ### Clone the Repository
 
@@ -52,54 +55,66 @@ cd PleaseTweakWindows
 ```
 
 ### Build the Project
-
+Make sure to have Maven installed. https://maven.apache.org/install.html
 ```batch
-mvnw clean package
+mvn clean package
+mvn package
 ```
 
-This command generates the necessary artifacts in the `target` folder. The `target` folder is automatically re-created during each build and is typically excluded from version control.
+This generates artifacts in the `target` folder. The folder is auto-cleaned on every build and usually excluded from version control.
 
 ### Run the Application (Using Installed Java)
 
 ```batch
-java -jar target/PleaseTweakWindows-1.0-SNAPSHOT.jar
+java -jar target\PleaseTweakWindows-1.0-SNAPSHOT.jar
 ```
 
 ### Run the Application (Using Custom Runtime)
 
 ```powershell
-& "C:\Users\user\Documents\PleaseTweakWindows\custom-runtime\bin\java.exe" -jar "C:\Users\user\Documents\PleaseTweakWindows\target\PleaseTweakWindows-1.0-SNAPSHOT.jar"
+path\to\custom-runtime\bin\java.exe -jar path\to\target\PleaseTweakWindows-1.0-SNAPSHOT.jar
 ```
 
-This method allows the application to run on a machine without requiring a full Java installation.
+This lets you run the app on machines **without a full Java installation**.
 
 ---
 
 ## Create Custom Runtime with jlink
 
 ```batch
-jlink --module-path "%JAVA_HOME%\jmods;C:\Users\Lenti\Documents\javafx-sdk-17.0.14\jmods" --add-modules java.base,javafx.controls,javafx.graphics,javafx.base,java.logging --output C:\Users\user\Documents\PleaseTweakWindows\custom-runtime --strip-debug --compress=2 --no-header-files --no-man-pages
+jlink --module-path "%JAVA_HOME%\jmods;path\to\javafx-jmods" --add-modules java.base,javafx.controls,javafx.graphics,javafx.base,java.logging --output custom-runtime --strip-debug --compress=2 --no-header-files --no-man-pages
 ```
 
-This will generate the `custom-runtime` folder expected by the build scripts.
+This generates the `custom-runtime` folder expected by the build scripts.
 
 ---
 
 ## Build the EXE Installer
-A batch script is provided to automate the creation of the EXE installer. This script performs the following steps:
 
-- Deletes any previous build of the app image and installer files from the project folder.
-- Creates an app image using `jpackage`.
-- Copies external scripts into a `scripts` folder directly under the generated app image.
-- Creates an EXE installer with an upgrade UUID so that a new installation automatically overwrites an existing one.
-- Uses Windows built-in `tar.exe` to zip the installer output directly into the project folder.
-- Removes the standalone EXE so that only the ZIP file remains.
+A batch script (`Build.bat`) automates creating the EXE installer. It performs:
+
+- Deleting any previous app image and installer files.
+- Creating an app image using `jpackage`.
+- Copying external scripts into the app image.
+- Creating an EXE installer with an upgrade UUID (so new installs overwrite old).
+- Zipping the installer EXE into the project root.
+- Removing the standalone EXE, leaving only the ZIP.
 
 ### Prerequisites
-- Java 21 (or a compatible version with jpackage) must be installed.
-- JavaFX SDK and Jmods from [GluonHQ](https://gluonhq.com/products/javafx/).
-- Install the WiX Toolset from [WiX Toolset Releases](https://wixtoolset.org/releases/) and ensure `candle.exe` and `light.exe` are in your PATH.
-- Ensure your project folder structure matches the paths in the script.
+
+- **Java 21 or later** (must include `jpackage`; add it to PATH).
+- **JavaFX SDK and Jmods** (from [GluonHQ](https://gluonhq.com/products/javafx/)).
+- **WiX Toolset 3.11** (not 3.14) from [WiX Releases](https://wixtoolset.org/releases/).
+    - Ensure `candle.exe` and `light.exe` are in your PATH.
+
+> ⚠ **Important:** If you get error 2738 (ICE errors) during build, register the VBScript and JScript engines manually:
+>
+> ```cmd
+> regsvr32 vbscript.dll
+> regsvr32 jscript.dll
+> ```
+
+---
 
 ### Running the Script
 
@@ -107,12 +122,20 @@ A batch script is provided to automate the creation of the EXE installer. This s
 Build.bat
 ```
 
-After the script finishes, you will find the installer ZIP file (e.g., `PleaseTweakWindows-1.0-win-x64.zip`) directly in the project folder. Unzip it and run the `PleaseTweakWindows.exe` installer.
+When finished, the installer ZIP (e.g., `PleaseTweakWindows-1.0-win-x64.zip`) will be in the project root.  
+Unzip it and run the contained `PleaseTweakWindows.exe`.
 
 ---
 
 ## Contributing
-Pull requests are welcome. If you want to contribute, please open an issue or submit a pull request. Contributions related to optimizing tweaks, improving the UI, or adding security features are appreciated.
+
+Pull requests are welcome!  
+If you want to contribute, please open an issue or submit a PR. Contributions related to:
+- Optimizing tweaks
+- Improving the UI
+- Adding new security or privacy features
+
+…are especially appreciated.
 
 ---
 

@@ -1,24 +1,21 @@
 @echo off
 color b
-echo ===============================
-echo   PleaseTweakWindows Installer
-echo ===============================
-echo.
+setlocal
 
 :: ----------------------------
 :: Configuration
 :: ----------------------------
-set "JPACKAGE_EXE=C:\Program Files\Java\jdk-21\bin\jpackage.exe"
+set "JPACKAGE_EXE=jpackage.exe"
 set "APP_NAME=PleaseTweakWindows"
 set "APP_VERSION=1.0"
 set "MAIN_JAR=PleaseTweakWindows-1.0-SNAPSHOT.jar"
 set "MAIN_CLASS=com.zl.pleasetweakwindows.Main"
-set "RUNTIME_IMAGE=C:\Users\user\Documents\PleaseTweakWindows\custom-runtime"
-set "SCRIPTS_DIR=C:\Users\user\Documents\PleaseTweakWindows\scripts"
-set "ICON_FILE=C:\Users\user\Documents\PleaseTweakWindows\daemonWindows.ico"
-set "INPUT_DIR=C:\Users\user\Documents\PleaseTweakWindows\target"
-set "APP_IMAGE_DIR=C:\Users\user\Documents\PleaseTweakWindows\build\AppImage"
-set "INSTALLER_OUT=C:\Users\user\Documents\PleaseTweakWindows\installerOutput"
+set "RUNTIME_IMAGE=custom-runtime"
+set "SCRIPTS_DIR=scripts"
+set "ICON_FILE=daemonWindows.ico"
+set "INPUT_DIR=target"
+set "APP_IMAGE_DIR=build\AppImage"
+set "INSTALLER_OUT=installerOutput"
 
 :: Replace spaces in APP_NAME with dashes (optional)
 set "APP_NAME_NO_SPACE=%APP_NAME: =-%"
@@ -27,8 +24,9 @@ set "APP_NAME_NO_SPACE=%APP_NAME: =-%"
 :: STEP 0: Check for dependencies
 :: ----------------------------
 echo Checking dependencies...
-if not exist "%JPACKAGE_EXE%" (
-    echo ERROR: jpackage.exe not found in "%JPACKAGE_EXE%".
+where %JPACKAGE_EXE% > nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: jpackage.exe not found in PATH.
     echo Make sure you have JDK 21 installed and jpackage is available.
     pause
     exit /b 1
@@ -64,7 +62,7 @@ if exist "%INSTALLER_OUT%" (
 :: STEP 2: Create app image
 :: ----------------------------
 echo ==== STEP 2: Creating app image ====
-"%JPACKAGE_EXE%" ^
+%JPACKAGE_EXE% ^
   --type app-image ^
   --name "%APP_NAME%" ^
   --input "%INPUT_DIR%" ^
@@ -92,7 +90,7 @@ echo.
 :: STEP 3: Create EXE installer
 :: ----------------------------
 echo ==== STEP 3: Creating EXE installer ====
-"%JPACKAGE_EXE%" ^
+%JPACKAGE_EXE% ^
   --type exe ^
   --app-image "%APP_IMAGE_DIR%\%APP_NAME%" ^
   --dest "%INSTALLER_OUT%" ^
@@ -112,30 +110,38 @@ echo.
 :: STEP 4: Zip the installer using Windows PowerShell
 :: ----------------------------
 echo ==== STEP 4: Zipping the installer with Windows PowerShell ====
-powershell -Command "Compress-Archive -Path '%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe' -DestinationPath 'C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip' -Force"
+powershell -Command "Compress-Archive -Path '%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe' -DestinationPath '%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip' -Force"
 
 if %errorlevel% neq 0 (
     echo ERROR: Failed to create ZIP archive.
     pause
     exit /b 1
 )
-echo The installer ZIP file was created at:
-echo   C:\Users\user\Documents\PleaseTweakWindows\%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip
+echo The installer ZIP file was created as:
+echo   %APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip
 echo.
 
 :: ----------------------------
 :: STEP 5: Remove the standalone EXE
 :: ----------------------------
 echo ==== STEP 5: Removing the standalone EXE to keep only the ZIP ====
-del /q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" 2>nul
-del /q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" 2>nul
 
 if exist "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" (
-    echo WARNING: Failed to delete the EXE file. You may need to delete it manually.
+    echo Deleting: %INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe
+    del /q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe"
 ) else (
-    echo EXE file(s) removed successfully.
+    echo File not found: %INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe
 )
 
+if exist "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" (
+    echo Deleting: %INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe
+    del /q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe"
+) else (
+    echo File not found: %INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe
+)
+
+echo Step 5 completed: EXE cleanup done.
 echo.
 echo Process completed successfully!
 pause
+endlocal
