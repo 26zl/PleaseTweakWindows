@@ -1,13 +1,14 @@
 package com.zl.pleasetweakwindows;
 
-import javafx.application.Platform;
-import javafx.scene.control.TextArea;
-
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import javafx.application.Platform;
+import javafx.scene.control.TextArea;
 
 public class Executor {
     private static final ExecutorService executorService = Executors.newCachedThreadPool();
@@ -44,9 +45,9 @@ public class Executor {
 
             process.waitFor();
             logMessage(logArea, "Script finished: " + scriptPath);
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException e) {
             logMessage(logArea, "Error: " + e.getMessage());
-            e.printStackTrace();
+            logMessage(logArea, "Stack trace: " + e.toString());
         }
     }
 
@@ -89,9 +90,12 @@ public class Executor {
                 } else {
                     logMessage(logArea, "Failed to create restore point. Exit code: " + exitCode);
                 }
-            } catch (Exception e) {
+            } catch (IOException | InterruptedException e) {
                 logMessage(logArea, "Failed to create restore point: " + e.getMessage());
-                e.printStackTrace();
+                logMessage(logArea, "Stack trace: " + e.toString());
+            } catch (RuntimeException e) {
+                logMessage(logArea, "A runtime error occurred: " + e.getMessage());
+                logMessage(logArea, "Stack trace: " + e.toString());
             }
         });
     }

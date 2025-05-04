@@ -1,6 +1,6 @@
 @echo off
 color b
-echo Reverting all gemeraø tweaks to Windows defaults...
+echo Reverting all general tweaks to Windows defaults...
 echo.
 
 :: Restore DPI scaling

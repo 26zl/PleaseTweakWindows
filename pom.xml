@@ -61,7 +61,7 @@
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>com.zl.pleasetweakwindows.Main</mainClass>
+                    <mainClass>com.zl.pleasetweakwindows/com.zl.pleasetweakwindows.Main</mainClass>
                 </configuration>
             </plugin>
 
