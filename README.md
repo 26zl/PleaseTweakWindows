@@ -113,7 +113,6 @@ A batch script (`Build.bat`) automates creating the EXE installer. It performs:
 > regsvr32 vbscript.dll
 > regsvr32 jscript.dll
 > ```
-I'm working on changing out WIX with Inno. 
 ---
 
 ### Running the Script
