@@ -67,7 +67,7 @@ public class Main extends Application {
         mainPane.setCenter(rightBox);
 
         Scene scene = new Scene(mainPane, 1200, 800);
-        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/com/zl/pleasetweakwindows/application.css")).toExternalForm());
+        scene.getStylesheets().add(Objects.requireNonNull(Main.class.getResource("/com/zl/pleasetweakwindows/application.css")).toExternalForm());
         stage.setScene(scene);
         stage.setTitle("PleaseTweakWindows");
         stage.show();
