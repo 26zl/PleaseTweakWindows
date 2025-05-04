@@ -7,7 +7,6 @@ import java.util.List;
 public class TweakController {
     private final List<Tweak> tweaks = new ArrayList<>();
 
-
     public void addTweak(Tweak tweak) {
         tweaks.add(tweak);
     }
@@ -39,8 +38,6 @@ public class TweakController {
 
         addTweak(new Tweak("General Tweaks",
                 "General Tweaks" + File.separator + "GeneralTweaks.bat",
-                "General Tweaks Revert" + File.separator + "GeneralTweaksRevert.bat"));
-
-      }
-
+                "General Tweaks" + File.separator + "GeneralTweaksRevert.bat"));
     }
+}
