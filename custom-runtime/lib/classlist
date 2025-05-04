@@ -65,10 +65,6 @@ java/lang/ClassCastException
 java/lang/ClassLoader
 java/lang/ClassLoader$ParallelLoaders
 java/lang/ClassNotFoundException
-java/lang/ClassValue
-java/lang/ClassValue$Entry
-java/lang/ClassValue$Identity
-java/lang/ClassValue$Version
 java/lang/Cloneable
 java/lang/Comparable
 java/lang/CompoundEnumeration
@@ -135,9 +131,7 @@ java/lang/StringBuilder
 java/lang/StringCoding
 java/lang/StringConcatHelper
 java/lang/StringLatin1
-java/lang/StringLatin1$CharsSpliterator
 java/lang/StringUTF16
-java/lang/StringUTF16$CharsSpliterator
 java/lang/System
 java/lang/System$2
 java/lang/System$Logger
@@ -242,8 +236,7 @@ java/lang/invoke/MethodHandles$Lookup$ClassDefiner
 java/lang/invoke/MethodHandles$Lookup$ClassFile
 java/lang/invoke/MethodHandles$Lookup$ClassOption
 java/lang/invoke/MethodType
-java/lang/invoke/MethodType$ConcurrentWeakInternSet
-java/lang/invoke/MethodType$ConcurrentWeakInternSet$WeakEntry
+java/lang/invoke/MethodType$1
 java/lang/invoke/MethodTypeForm
 java/lang/invoke/MutableCallSite
 java/lang/invoke/ResolvedMethodName
@@ -278,7 +271,6 @@ java/lang/invoke/VarHandleLongs$FieldInstanceReadWrite
 java/lang/invoke/VarHandleReferences$FieldInstanceReadOnly
 java/lang/invoke/VarHandleReferences$FieldInstanceReadWrite
 java/lang/invoke/VarHandles
-java/lang/invoke/VarHandles$1
 java/lang/invoke/VolatileCallSite
 java/lang/module/Configuration
 java/lang/module/ModuleDescriptor
@@ -649,7 +641,6 @@ java/util/NavigableMap
 java/util/NavigableSet
 java/util/Objects
 java/util/Optional
-java/util/OptionalInt
 java/util/Properties
 java/util/Properties$EntrySet
 java/util/Properties$LineReader
@@ -769,9 +760,7 @@ java/util/function/BiFunction
 java/util/function/BinaryOperator
 java/util/function/Consumer
 java/util/function/Function
-java/util/function/IntConsumer
 java/util/function/IntFunction
-java/util/function/IntPredicate
 java/util/function/Predicate
 java/util/function/Supplier
 java/util/jar/Attributes
@@ -854,17 +843,10 @@ java/util/stream/Collectors$Partition
 java/util/stream/FindOps
 java/util/stream/FindOps$FindOp
 java/util/stream/FindOps$FindSink
-java/util/stream/FindOps$FindSink$OfInt
 java/util/stream/FindOps$FindSink$OfRef
 java/util/stream/ForEachOps
 java/util/stream/ForEachOps$ForEachOp
 java/util/stream/ForEachOps$ForEachOp$OfRef
-java/util/stream/IntPipeline
-java/util/stream/IntPipeline$10
-java/util/stream/IntPipeline$10$1
-java/util/stream/IntPipeline$Head
-java/util/stream/IntPipeline$StatelessOp
-java/util/stream/IntStream
 java/util/stream/Node
 java/util/stream/Node$Builder
 java/util/stream/Node$OfDouble
@@ -897,9 +879,7 @@ java/util/stream/ReferencePipeline$7$1
 java/util/stream/ReferencePipeline$Head
 java/util/stream/ReferencePipeline$StatelessOp
 java/util/stream/Sink
-java/util/stream/Sink$ChainedInt
 java/util/stream/Sink$ChainedReference
-java/util/stream/Sink$OfInt
 java/util/stream/Stream
 java/util/stream/Stream$Builder
 java/util/stream/StreamOpFlag
@@ -1125,22 +1105,23 @@ jdk/internal/reflect/UnsafeStaticFieldAccessorImpl
 jdk/internal/util/ArraysSupport
 jdk/internal/util/ByteArray
 jdk/internal/util/ClassFileDumper
-jdk/internal/util/EnvUtils
 jdk/internal/util/Preconditions
 jdk/internal/util/Preconditions$1
 jdk/internal/util/Preconditions$2
 jdk/internal/util/Preconditions$3
 jdk/internal/util/Preconditions$4
+jdk/internal/util/ReferenceKey
+jdk/internal/util/ReferencedKeyMap
+jdk/internal/util/ReferencedKeySet
 jdk/internal/util/StaticProperty
+jdk/internal/util/StrongReferenceKey
 jdk/internal/util/SystemProps
 jdk/internal/util/SystemProps$Raw
+jdk/internal/util/WeakReferenceKey
 jdk/internal/util/random/RandomSupport
 jdk/internal/vm/Continuation
 jdk/internal/vm/ContinuationScope
 jdk/internal/vm/FillerObject
-jdk/internal/vm/PostVMInitHook
-jdk/internal/vm/PostVMInitHook$1
-jdk/internal/vm/PostVMInitHook$2
 jdk/internal/vm/SharedThreadContainer
 jdk/internal/vm/StackChunk
 jdk/internal/vm/StackableScope
@@ -1467,7 +1448,6 @@ sun/util/spi/CalendarProvider
 @lambda-proxy java/lang/module/ModuleFinder$2 apply ()Ljava/util/function/Function; (Ljava/lang/Object;)Ljava/lang/Object; REF_invokeVirtual java/util/Optional stream ()Ljava/util/stream/Stream; (Ljava/util/Optional;)Ljava/util/stream/Stream;
 @lambda-proxy java/lang/module/ModuleFinder$2 apply (Ljava/lang/String;)Ljava/util/function/Function; (Ljava/lang/Object;)Ljava/lang/Object; REF_invokeStatic java/lang/module/ModuleFinder$2 lambda$find$0 (Ljava/lang/String;Ljava/lang/module/ModuleFinder;)Ljava/util/Optional; (Ljava/lang/module/ModuleFinder;)Ljava/util/Optional;
 @lambda-proxy java/security/Security run ()Ljava/security/PrivilegedAction; ()Ljava/lang/Object; REF_invokeStatic java/security/Security lambda$static$0 ()Ljava/lang/Object; ()Ljava/lang/Object;
-@lambda-proxy java/text/DecimalFormatSymbols test ()Ljava/util/function/IntPredicate; (I)Z REF_invokeStatic java/text/DecimalFormatSymbols lambda$findNonFormatChar$0 (I)Z (I)Z
 @lambda-proxy java/time/ZoneOffset apply ()Ljava/util/function/Function; (Ljava/lang/Object;)Ljava/lang/Object; REF_invokeStatic java/time/ZoneOffset lambda$ofTotalSeconds$0 (Ljava/lang/Integer;)Ljava/time/ZoneOffset; (Ljava/lang/Integer;)Ljava/time/ZoneOffset;
 @lambda-proxy java/time/format/DateTimeFormatter queryFrom ()Ljava/time/temporal/TemporalQuery; (Ljava/time/temporal/TemporalAccessor;)Ljava/lang/Object; REF_invokeStatic java/time/format/DateTimeFormatter lambda$static$0 (Ljava/time/temporal/TemporalAccessor;)Ljava/time/Period; (Ljava/time/temporal/TemporalAccessor;)Ljava/time/Period;
 @lambda-proxy java/time/format/DateTimeFormatter queryFrom ()Ljava/time/temporal/TemporalQuery; (Ljava/time/temporal/TemporalAccessor;)Ljava/lang/Object; REF_invokeStatic java/time/format/DateTimeFormatter lambda$static$1 (Ljava/time/temporal/TemporalAccessor;)Ljava/lang/Boolean; (Ljava/time/temporal/TemporalAccessor;)Ljava/lang/Boolean;
@@ -1494,10 +1474,6 @@ sun/util/spi/CalendarProvider
 @lambda-proxy java/util/stream/Collectors get ()Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_newInvokeSpecial java/util/HashSet <init> ()V ()Ljava/util/HashSet;
 @lambda-proxy java/util/stream/Collectors get (Ljava/lang/CharSequence;Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_invokeStatic java/util/stream/Collectors lambda$joining$11 (Ljava/lang/CharSequence;Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Ljava/util/StringJoiner; ()Ljava/util/StringJoiner;
 @lambda-proxy java/util/stream/Collectors get (Ljava/util/stream/Collector;)Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_invokeStatic java/util/stream/Collectors lambda$partitioningBy$64 (Ljava/util/stream/Collector;)Ljava/util/stream/Collectors$Partition; ()Ljava/util/stream/Collectors$Partition;
-@lambda-proxy java/util/stream/FindOps$FindSink$OfInt get ()Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_newInvokeSpecial java/util/stream/FindOps$FindSink$OfInt <init> ()V ()Ljava/util/stream/TerminalSink;
-@lambda-proxy java/util/stream/FindOps$FindSink$OfInt get ()Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_newInvokeSpecial java/util/stream/FindOps$FindSink$OfInt <init> ()V ()Ljava/util/stream/TerminalSink;
-@lambda-proxy java/util/stream/FindOps$FindSink$OfInt test ()Ljava/util/function/Predicate; (Ljava/lang/Object;)Z REF_invokeVirtual java/util/OptionalInt isPresent ()Z (Ljava/util/OptionalInt;)Z
-@lambda-proxy java/util/stream/FindOps$FindSink$OfInt test ()Ljava/util/function/Predicate; (Ljava/lang/Object;)Z REF_invokeVirtual java/util/OptionalInt isPresent ()Z (Ljava/util/OptionalInt;)Z
 @lambda-proxy java/util/stream/FindOps$FindSink$OfRef get ()Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_newInvokeSpecial java/util/stream/FindOps$FindSink$OfRef <init> ()V ()Ljava/util/stream/TerminalSink;
 @lambda-proxy java/util/stream/FindOps$FindSink$OfRef get ()Ljava/util/function/Supplier; ()Ljava/lang/Object; REF_newInvokeSpecial java/util/stream/FindOps$FindSink$OfRef <init> ()V ()Ljava/util/stream/TerminalSink;
 @lambda-proxy java/util/stream/FindOps$FindSink$OfRef test ()Ljava/util/function/Predicate; (Ljava/lang/Object;)Z REF_invokeVirtual java/util/Optional isPresent ()Z (Ljava/util/Optional;)Z
