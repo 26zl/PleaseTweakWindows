@@ -1,147 +1,181 @@
 @echo off
-color b
+title PleaseTweakWindows - Build Script
+color 0C
 setlocal
+
+echo.
+echo ========================================================================
+echo  PleaseTweakWindows - Native Build Script
+echo ========================================================================
+echo.
 
 :: ----------------------------
 :: Configuration
 :: ----------------------------
-set "JPACKAGE_EXE=jpackage.exe"
 set "APP_NAME=PleaseTweakWindows"
 set "APP_VERSION=1.0"
-set "MAIN_JAR=PleaseTweakWindows-1.0-SNAPSHOT.jar"
-set "MAIN_CLASS=com.zl.pleasetweakwindows.Main"
-set "RUNTIME_IMAGE=custom-runtime"
 set "SCRIPTS_DIR=scripts"
 set "ICON_FILE=daemonWindows.ico"
-set "INPUT_DIR=target"
-set "APP_IMAGE_DIR=build\AppImage"
-set "INSTALLER_OUT=installerOutput"
-
-:: Replace spaces in APP_NAME with dashes (optional)
-set "APP_NAME_NO_SPACE=%APP_NAME: =-%"
+set "OUTPUT_DIR=dist"
+set "NATIVE_EXE=target\%APP_NAME%.exe"
 
 :: ----------------------------
 :: STEP 0: Check for dependencies
 :: ----------------------------
-echo Checking dependencies...
-where %JPACKAGE_EXE% > nul 2>&1
+echo [*] Checking dependencies...
+echo.
+
+:: Check for GraalVM native-image
+where native-image > nul 2>&1
 if %errorlevel% neq 0 (
-    echo ERROR: jpackage.exe not found in PATH.
-    echo Make sure you have JDK 21 installed and jpackage is available.
+    echo [-] ERROR: GraalVM native-image not found!
+    echo.
+    echo This project requires GraalVM 25+ with Native Image to build.
+    echo Download from: https://www.graalvm.org/downloads/
+    echo.
+    echo [*] Installation steps:
+    echo     1. Download GraalVM 25+ for Windows
+    echo     2. Extract to C:\graalvm\
+    echo     3. Add C:\graalvm\bin to your PATH
+    echo     4. Run: gu install native-image
+    echo.
     pause
     exit /b 1
-)
-echo Dependencies found!
-echo.
-
-:: ----------------------------
-:: STEP 1: Remove old folders
-:: ----------------------------
-echo Removing old app-image folder...
-if exist "%APP_IMAGE_DIR%\%APP_NAME%" (
-    rd /S /Q "%APP_IMAGE_DIR%\%APP_NAME%" || (
-        echo ERROR: Failed to delete "%APP_IMAGE_DIR%\%APP_NAME%".
-        echo Close any programs using these files, then press a key to try again...
-        pause
-        goto STEP_1
-    )
-)
-
-echo Removing old installer output folder...
-if exist "%INSTALLER_OUT%" (
-    rd /S /Q "%INSTALLER_OUT%" || (
-        echo ERROR: Failed to delete "%INSTALLER_OUT%".
-        echo Close any programs using these files, then press a key to try again...
-        pause
-        goto STEP_1
-    )
-)
-
-:STEP_1
-:: ----------------------------
-:: STEP 2: Create app image
-:: ----------------------------
-echo ==== STEP 2: Creating app image ====
-%JPACKAGE_EXE% ^
-  --type app-image ^
-  --name "%APP_NAME%" ^
-  --input "%INPUT_DIR%" ^
-  --main-jar "%MAIN_JAR%" ^
-  --main-class "%MAIN_CLASS%" ^
-  --runtime-image "%RUNTIME_IMAGE%" ^
-  --dest "%APP_IMAGE_DIR%" || (
-    echo ERROR: Failed to create app image.
-    pause
-    exit /b 1
-)
-echo App image created successfully.
-
-echo Copying script files...
-xcopy "%SCRIPTS_DIR%\*" "%APP_IMAGE_DIR%\%APP_NAME%\scripts\" /E /I /Y > nul
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to copy scripts.
-    pause
-    exit /b 1
-)
-echo Scripts copied successfully.
-echo.
-
-:: ----------------------------
-:: STEP 3: Create EXE installer
-:: ----------------------------
-echo ==== STEP 3: Creating EXE installer ====
-%JPACKAGE_EXE% ^
-  --type exe ^
-  --app-image "%APP_IMAGE_DIR%\%APP_NAME%" ^
-  --dest "%INSTALLER_OUT%" ^
-  --win-shortcut ^
-  --win-menu ^
-  --icon "%ICON_FILE%" ^
-  --win-upgrade-uuid "12345678-1234-1234-1234-123456789abc" || (
-    echo ERROR: Failed to create EXE installer.
-    pause
-    exit /b 1
-)
-echo The EXE installer was created in:
-echo   %INSTALLER_OUT%
-echo.
-
-:: ----------------------------
-:: STEP 4: Zip the installer using Windows PowerShell
-:: ----------------------------
-echo ==== STEP 4: Zipping the installer with Windows PowerShell ====
-powershell -Command "Compress-Archive -Path '%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe' -DestinationPath '%APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip' -Force"
-
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to create ZIP archive.
-    pause
-    exit /b 1
-)
-echo The installer ZIP file was created as:
-echo   %APP_NAME_NO_SPACE%-%APP_VERSION%-win-x64.zip
-echo.
-
-:: ----------------------------
-:: STEP 5: Remove the standalone EXE
-:: ----------------------------
-echo ==== STEP 5: Removing the standalone EXE to keep only the ZIP ====
-
-if exist "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe" (
-    echo Deleting: %INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe
-    del /q "%INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe"
 ) else (
-    echo File not found: %INSTALLER_OUT%\%APP_NAME_NO_SPACE%-%APP_VERSION%.exe
+    echo [+] GraalVM Native Image found
+    set BUILD_NATIVE=true
 )
 
-if exist "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe" (
-    echo Deleting: %INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe
-    del /q "%INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe"
+:: Check for Maven
+where mvn > nul 2>&1
+if %errorlevel% neq 0 (
+    echo [-] ERROR: Maven not found!
+    echo.
+    echo Please install Maven and add it to your PATH.
+    echo Download from: https://maven.apache.org/download.cgi
+    echo.
+    pause
+    exit /b 1
 ) else (
-    echo File not found: %INSTALLER_OUT%\%APP_NAME%-%APP_VERSION%.exe
+    echo [+] Maven found
 )
 
-echo Step 5 completed: EXE cleanup done.
 echo.
-echo Process completed successfully!
+echo [+] All dependencies found!
+echo.
+
+:: ----------------------------
+:: STEP 1: Clean and build native executable
+:: ----------------------------
+echo ========================================================================
+echo [*] STEP 1: Building native executable with GraalVM
+echo ========================================================================
+echo [*] This will create a true native executable (no Java required)...
+echo.
+
+mvn clean package -DskipNativeBuild=false
+if %errorlevel% neq 0 (
+    echo.
+    echo [-] ERROR: Maven build failed!
+    echo [!] Check the output above for errors.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo.
+echo [+] Native executable created successfully!
+echo.
+
+:: ----------------------------
+:: STEP 2: Create distribution directory
+:: ----------------------------
+echo ========================================================================
+echo [*] STEP 2: Creating distribution package
+echo ========================================================================
+echo.
+
+:: Remove old distribution
+if exist "%OUTPUT_DIR%" (
+    echo [*] Removing old distribution directory...
+    rd /S /Q "%OUTPUT_DIR%"
+)
+
+:: Create new distribution directory
+echo [*] Creating new distribution directory...
+mkdir "%OUTPUT_DIR%"
+
+:: Copy native executable
+if exist "%NATIVE_EXE%" (
+    copy "%NATIVE_EXE%" "%OUTPUT_DIR%\%APP_NAME%.exe" > nul
+    echo [+] Native executable copied to distribution
+) else (
+    echo [-] ERROR: Native executable not found at %NATIVE_EXE%
+    pause
+    exit /b 1
+)
+
+:: Copy scripts directory
+if exist "src\main\resources\scripts" (
+    xcopy "src\main\resources\scripts" "%OUTPUT_DIR%\scripts\" /E /I /Q > nul
+    echo [+] Scripts directory copied to distribution
+)
+
+:: Copy README.md
+if exist "README.md" (
+    copy "README.md" "%OUTPUT_DIR%\" > nul
+    echo [+] README.md copied to distribution
+)
+
+:: Create logs directory with README
+mkdir "%OUTPUT_DIR%\logs"
+if exist "logs\README.txt" (
+    copy "logs\README.txt" "%OUTPUT_DIR%\logs\" > nul
+    echo [+] Logs directory created with README
+)
+
+:: ----------------------------
+:: STEP 3: Create ZIP distribution
+:: ----------------------------
+echo ========================================================================
+echo [*] STEP 3: Creating ZIP distribution
+echo ========================================================================
+echo.
+
+set ZIP_NAME=%APP_NAME%.zip
+powershell -Command "Compress-Archive -Path '%OUTPUT_DIR%\*' -DestinationPath '%ZIP_NAME%' -Force"
+
+if %errorlevel% neq 0 (
+    echo [-] ERROR: Failed to create ZIP archive.
+    pause
+    exit /b 1
+)
+
+echo [+] ZIP distribution created: %ZIP_NAME%
+echo.
+
+:: ----------------------------
+:: STEP 4: Show results
+:: ----------------------------
+echo ========================================================================
+echo [+] BUILD COMPLETED SUCCESSFULLY!
+echo ========================================================================
+echo.
+echo [*] Distribution created in: %OUTPUT_DIR%\
+echo [*] ZIP file: %ZIP_NAME%
+echo.
+echo [*] Native executable size:
+for %%A in ("%OUTPUT_DIR%\%APP_NAME%.exe") do echo     %%~zA bytes
+echo.
+echo [+] This executable:
+echo     - Requires NO Java installation
+echo     - Starts in less than 1 second
+echo     - Is only ~31 MB in size
+echo     - Works on any Windows 10/11 system
+echo     - Includes PowerShell 7+ detection
+echo     - Has modern console styling
+echo.
+echo [+] Ready for distribution!
+echo.
 pause
 endlocal

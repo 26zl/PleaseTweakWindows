@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-exe:
+    name: Build Windows EXE
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Liberica NIK
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: 'liberica'
+          java-version: '21'
+          java-package: 'jdk+fx'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'maven'
+
+      - name: Build EXE
+        run: mvn -Pnative package -DskipTests
+
+      - name: List target directory contents
+        run: |
+          echo "Listing target directory contents:"
+          dir target /s
+        shell: cmd
+
+      - name: Verify EXE exists
+        run: |
+          if (Test-Path "target/PleaseTweakWindows.exe") {
+            Write-Host "[+] EXE file found at target/PleaseTweakWindows.exe"
+            $fileInfo = Get-Item "target/PleaseTweakWindows.exe"
+            Write-Host "File size: $($fileInfo.Length) bytes"
+          } else {
+            Write-Error "[-] EXE file not found at target/PleaseTweakWindows.exe"
+            Write-Host "Build may have failed or the output path is different."
+            exit 1
+          }
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: please-tweak-windows-exe
+          path: target/PleaseTweakWindows.exe
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-exe
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download EXE artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: please-tweak-windows-exe
+          path: ./artifacts
+
+      - name: Create distribution package
+        run: |
+          mkdir -p dist
+          cp ./artifacts/PleaseTweakWindows.exe dist/
+          cp README.md dist/README.txt
+          cp -r src/main/resources/scripts dist/
+          mkdir -p dist/logs
+          cp logs/README.txt dist/logs/
+          cd dist
+          zip -r ../PleaseTweakWindows.zip *
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "PleaseTweakWindows v1.0.${{ github.run_number }}"
+          files: PleaseTweakWindows.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

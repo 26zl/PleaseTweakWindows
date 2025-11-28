@@ -8,18 +8,6 @@
 .mvn/wrapper/maven-wrapper.properties
 .mvn/timing.properties
 
-# IntelliJ IDEA project files
-.idea/
-*.iws
-*.iml
-*.ipr
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
-out/
-.idea_modules/
-
 # Eclipse project files
 .apt_generated
 .classpath
@@ -31,11 +19,25 @@ out/
 .metadata
 .tmp/
 .bin/
+*.launch
+.pydevproject
+.cproject
+.autotools
+.buildpath
+.target
+.tern-project
+.texlipse
+.recommenders/
+.apt_generated/
+.apt_generated_test/
+.cache-main
+.scala_dependencies
+.worksheet
+.externalToolBuilders/
 
 # NetBeans project files
 /nbproject/private/
 /nbbuild/
-/dist/
 /nbdist/
 /.nb-gradle/
 nbactions.xml
@@ -45,6 +47,183 @@ nb-configuration.xml
 .vscode/
 .vscode-oss/
 .code-workspace
+*.code-workspace
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+*.psess
+*.vsp
+*.vspx
+*.sap
+*.pidb
+*.user
+*.aps
+*.pch
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# Android Studio
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Xcode
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+sftp-config.json
+sftp-config-alt*.json
+vintageousrc
+
+# Vim
+*.swp
+*.swo
+*~
+.vimrc.local
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Atom
+.ftpconfig
+.sftpconfig
+
+# Cursor
+.cursor/
+.cursorrules
+
+# JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, PhpStorm, RubyMine, CLion, DataGrip, GoLand, Rider, AppCode)
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+atlassian-ide-plugin.xml
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+.idea/replstate.xml
+.idea/httpRequests
+.idea/caches/build_file_checksums.ser
+
+# Additional IDEs and Editors
+# Kate
+.kateconfig
+.kateproject
+.kate-swp
+.kate-wp
+
+# KDevelop
+.kdev4/
+*.kdev4
+
+# Qt Creator
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+*.prl
+
+# Code::Blocks
+*.depend
+*.layout
+*.cbp
+
+# Dev-C++
+*.dev
+
+# Anjuta
+anjuta_symbian.db
+anjuta_symbian.db-journal
+anjuta_symbian.db-wal
+anjuta_symbian.db-shm
+
+# BlueJ
+*.ctxt
+
+# JCreator
+*.jcp
+*.jcu
+*.jpr
+*.jpx
+*.jws
+
+# MyEclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
 
 # Log files
 /log/
@@ -56,12 +235,8 @@ nb-configuration.xml
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# macOS Finder attributes
 Icon
 ._*
-
-# macOS folder settings
 .Spotlight-V100
 .Trashes
 .VolumeIcon.icns
@@ -135,3 +310,8 @@ gradle-app.setting
 
 # Miscellaneous
 *.log
+logs/*.log
+*.logs/*
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.cursor/rules/snyk_rules.mdc

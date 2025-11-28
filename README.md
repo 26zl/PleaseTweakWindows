@@ -1,140 +1,94 @@
+<div align="center">
+
 # PleaseTweakWindows
 
-A lightweight tool for optimizing Windows settings to enhance performance, security, and privacy.  
-Designed for power users who want a simple, fast way to apply Windows tweaks.
+A lightweight Windows optimization tool for performance and gaming.
 
-## Status: In Development
+<img src=".github/logo.png" alt="PleaseTweakWindows Logo" width="330" />
 
-This project is **actively developed** — check the Issues tab for known problems or feature requests.
+</div>
 
----
 
-## Installation
+## Disclaimer
 
-### Download and Install (Recommended)
+**USE AT YOUR OWN RISK**
 
-If you want to **install**:
-1. Download the latest `PleaseTweakWindows-1.0-installer.zip`.
-2. Unzip it to extract the `PleaseTweakWindows.exe` installer.
-3. Run the installer and follow the on-screen instructions.
+This tool modifies Windows registry settings and system configurations. While all tweaks can be reverted, incorrect usage may cause system instability.
 
-✅ **No need to install Java** — the installer includes everything.
+- Always create a restore point before applying tweaks
+- Review what each tweak does before applying
+- The author is not responsible for any damage or data loss
+- Use on production systems at your own discretion
 
----
+## Quick Start
 
-## Portable Version (No Installer)
+### PowerShell One-Liner (Lightweight)
 
-If you want a **no-install version**:
-1. Download the latest `PleaseTweakWindows-1.0-portable.zip`.
-2. Unzip it anywhere.
-3. Run `PleaseTweakWindows.exe`.
-
-✅ **No need to install Java** — the portable package includes everything.
-
----
-
-## Use the PowerShell Script (Minimal Setup)
-
-If you want the absolute minimal approach, you can use the included PowerShell script.
-
-### Run the Script
-
-1. Clone or download the repository.
-2. Navigate to the root folder.
-3. Double-click `RunTweaks.bat` to launch the PowerShell tweak menu.
-
-### Manually Run
+Run this command in PowerShell (Administrator) to start the PowerShell interface directly:
 
 ```powershell
-cd "path\to\PleaseTweakWindows"
-powershell.exe -ExecutionPolicy Bypass -File .\PleaseTweakWindowsPScript.ps1
+irm https://raw.githubusercontent.com/26zl/PleaseTweakWindows/main/PleaseTweakWindowsPScript.ps1 | iex
 ```
 
-Use **Y (Yes)** or **N (No)** to apply or revert tweaks.
+**Benefits:**
+- No installation required
+- Runs directly in your terminal
+- Always up-to-date (fetches from main branch)
+- No download of large EXE file
 
----
+### GUI Application (Full Version)
 
-## Build from Source (For Developers)
+For the JavaFX GUI application with logging and modern interface:
 
-### Prerequisites
+1. Download `PleaseTweakWindows.zip` from [releases](https://github.com/26zl/PleaseTweakWindows/releases)
+2. Extract the ZIP file
+3. Right-click `PleaseTweakWindows.exe` and select "Run as Administrator"
+4. The JavaFX GUI will start with:
+   - Visual tweak selector
+   - Built-in logging to `logs/` directory
+   - Create restore point functionality
+   - All tweaks are reversible
 
-- Java 21+ (with `jpackage` available)
-- JavaFX SDK and JMods (from [GluonHQ](https://gluonhq.com/products/javafx/))
-- WiX Toolset **3.11** (⚠ not 3.14) from [WiX Toolset Releases](https://wixtoolset.org/releases/)
-    - Ensure `candle.exe` and `light.exe` are in your PATH.
-- Maven (https://maven.apache.org/install.html)
+**What's included:**
+- `PleaseTweakWindows.exe` - Native executable (no Java required)
+- `scripts/` - All Windows optimization scripts
+- `logs/README.txt` - Logging information
 
-### Clone and Build
+## Features
 
-```bash
+- Gaming optimizations
+- Network tweaks
+- Windows settings optimization
+- Boot configuration tweaks
+- Services management
+- System restore point creation
+- All tweaks are reversible
+
+## Build from Source
+
+### Requirements
+
+- **GraalVM 25+** with Native Image
+- Maven 3.6+
+
+### Build Steps
+
+```cmd
 git clone https://github.com/26zl/PleaseTweakWindows.git
 cd PleaseTweakWindows
-mvn clean package
-```
-
-### Create Custom Runtime
-
-```bash
-jlink --module-path "%JAVA_HOME%\jmods;path\to\javafx-jmods" --add-modules java.base,javafx.controls,javafx.graphics,javafx.base,javafx.fxml,java.logging --output custom-runtime --strip-debug --compress=2 --no-header-files --no-man-pages
-```
-
-### Run the Application
-
-Using installed Java:
-```bash
-java -jar target\PleaseTweakWindows-1.0-SNAPSHOT.jar
-```
-
-Using custom runtime:
-```bash
-custom-runtime\bin\java.exe -jar target\PleaseTweakWindows-1.0-SNAPSHOT.jar
-```
-
----
-
-## Build the Installer and Portable Packages
-
-Run the provided build script:
-
-```batch
 Build.bat
 ```
 
-This will:
-- Build the app image.
-- Build the EXE installer.
-- Zip both the installer and portable versions into the project root.
-- Clean up intermediate folders.
+The native executable will be in the `target/` folder and a complete distribution package in the `dist/` folder.
 
-Final outputs:
-- `PleaseTweakWindows-1.0-installer.zip`
-- `PleaseTweakWindows-1.0-portable.zip`
-
----
-
-## Troubleshooting (Only if VBScript engine is disabled system-wide)
-
-If you encounter **ICE errors (2738, etc.)** when using WiX:
+### Manual Build (Advanced)
 
 ```cmd
-regsvr32 vbscript.dll
-regsvr32 jscript.dll
+mvn clean package -DskipNativeBuild=false
 ```
 
----
-
-## Contributing
-
-Pull requests are welcome!  
-We especially appreciate help with:
-- Optimizing tweak scripts.
-- Improving or refining the JavaFX UI.
-- Adding useful Windows optimizations.
-
-Please open an issue or submit a PR.
-
----
+This creates the native executable in `target/PleaseTweakWindows.exe`.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT License

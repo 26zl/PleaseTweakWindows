@@ -1,0 +1,44 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": ".*\\.css$"
+      },
+      {
+        "pattern": ".*\\.xml$"
+      },
+      {
+        "pattern": ".*\\.png$"
+      },
+      {
+        "pattern": ".*\\.ico$"
+      },
+      {
+        "pattern": ".*\\.ps1$"
+      },
+      {
+        "pattern": ".*\\.bat$"
+      },
+      {
+        "pattern": ".*\\.txt$"
+      },
+      {
+        "pattern": "daemon\\.png"
+      },
+      {
+        "pattern": "daemonIcon\\.png"
+      },
+      {
+        "pattern": "daemonWindows\\.ico"
+      },
+      {
+        "pattern": "scripts/.*"
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "name": "javafx.scene.control.skin.resources.controls"
+    }
+  ]
+}
