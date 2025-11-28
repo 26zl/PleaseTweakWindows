@@ -11,7 +11,8 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
-        <java.version>17</java.version>
+        <java.version>21</java.version>
+        <skipNativeBuild>true</skipNativeBuild>
     </properties>
 
     <dependencies>
@@ -21,11 +22,17 @@
             <artifactId>javafx-controls</artifactId>
             <version>21</version>
         </dependency>
-        <!-- Optional: ControlsFX if needed -->
+        <!-- SLF4J API for logging -->
         <dependency>
-            <groupId>org.controlsfx</groupId>
-            <artifactId>controlsfx</artifactId>
-            <version>11.2.1</version>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.17</version>
+        </dependency>
+        <!-- Logback implementation -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.20</version>
         </dependency>
         <!-- JUnit for testing -->
         <dependency>
@@ -48,7 +55,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.14.1</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -69,7 +76,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.3.0</version>
+                <version>3.6.1</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -99,7 +106,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-clean-plugin</artifactId>
-                <version>3.2.0</version>
+                <version>3.5.0</version>
                 <configuration>
                     <filesets>
                         <fileset>
@@ -108,6 +115,68 @@
                     </filesets>
                 </configuration>
             </plugin>
+
+            <!-- GraalVM Native Image Plugin -->
+            <plugin>
+                <groupId>org.graalvm.buildtools</groupId>
+                <artifactId>native-maven-plugin</artifactId>
+                <version>0.11.2</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <id>build-native</id>
+                        <goals>
+                            <goal>compile-no-fork</goal>
+                        </goals>
+                        <phase>package</phase>
+                        <configuration>
+                            <skip>${skipNativeBuild}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <imageName>PleaseTweakWindows</imageName>
+                    <mainClass>com.zl.pleasetweakwindows.Main</mainClass>
+                    <buildArgs>
+                        <buildArg>--no-fallback</buildArg>
+                        <buildArg>--enable-url-protocols=http,https</buildArg>
+                        <buildArg>--enable-native-access=ALL-UNNAMED</buildArg>
+                        <buildArg>--initialize-at-run-time=javafx</buildArg>
+                        <buildArg>--initialize-at-run-time=com.sun.glass</buildArg>
+                        <buildArg>--initialize-at-run-time=com.sun.javafx</buildArg>
+                        <buildArg>--initialize-at-run-time=com.sun.prism</buildArg>
+                        <buildArg>--initialize-at-run-time=javafx.scene.control.skin</buildArg>
+                        <buildArg>--initialize-at-run-time=com.sun.javafx.tk.quantum.PerformanceTrackerHelper</buildArg>
+                        <buildArg>--initialize-at-run-time=com.sun.javafx.tk.quantum.PerformanceTrackerHelper$PerformanceTrackerDummyImpl</buildArg>
+                        <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                        <buildArg>-H:+AddAllCharsets</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.css$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.xml$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.png$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.ico$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.ps1$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.bat$</buildArg>
+                        <buildArg>-H:IncludeResources=.*daemon\.png$</buildArg>
+                        <buildArg>-H:IncludeResources=.*daemonIcon\.png$</buildArg>
+                        <buildArg>-H:IncludeResources=.*daemonWindows\.ico$</buildArg>
+                        <buildArg>-H:IncludeResourceBundles=javafx.scene.control.skin.resources.controls</buildArg>
+                        <buildArg>-H:NativeLinkerOption=/SUBSYSTEM:WINDOWS</buildArg>
+                        <buildArg>-H:NativeLinkerOption=/ENTRY:mainCRTStartup</buildArg>
+                        <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                        <buildArg>-H:+RemoveSaturatedTypeFlows</buildArg>
+                    </buildArgs>
+                </configuration>
+            </plugin>
+
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>native</id>
+            <properties>
+                <skipNativeBuild>false</skipNativeBuild>
+            </properties>
+        </profile>
+    </profiles>
 </project>
