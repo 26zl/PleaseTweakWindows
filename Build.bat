@@ -127,6 +127,14 @@ if exist "README.md" (
     echo [+] README.md copied to distribution
 )
 
+:: Copy daemon icons
+for %%I in ("src\main\resources\daemonWindows.ico" "src\main\resources\daemonIcon.png" "src\main\resources\daemon.png") do (
+    if exist "%%~I" (
+        copy "%%~I" "%OUTPUT_DIR%\" > nul
+    )
+)
+echo [+] Daemon icon assets copied to distribution
+
 :: Create logs directory with README
 mkdir "%OUTPUT_DIR%\logs"
 if exist "logs\README.txt" (

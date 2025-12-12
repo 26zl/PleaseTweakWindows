@@ -1,63 +1,141 @@
 .root {
     -fx-font-family: "Segoe UI", sans-serif;
-    -fx-background-color: #2e2e2e;
+    /* Deep dark-red and black palette */
+    -ptw-base: #050203;
+    -ptw-panel: #0f0607;
+    -ptw-border: #2a0a0c;
+    -ptw-accent: #b30000;
+    -ptw-accent-strong: #7a0000;
+    -ptw-accent-glow: #e31b23;
+    -ptw-text-strong: #f7eaea;
+    -ptw-text-muted: #c09a9a;
+    -fx-background-color: -ptw-base;
 }
 
 .tweaks-box {
     -fx-padding: 20;
     -fx-spacing: 20;
-    -fx-background-color: #f9f9f9;
+    -fx-background-color: -ptw-base;
 }
 
 .right-box {
-    -fx-padding: 10;
-    -fx-background-color: #2e2e2e;
+    -fx-padding: 20;
+    -fx-spacing: 12;
+    -fx-background-color: -ptw-base;
 }
 
 .tweak-box {
-    -fx-padding: 10;
-    -fx-border-color: #ddd;
+    -fx-padding: 14;
+    -fx-border-color: -ptw-border;
     -fx-border-width: 1;
-    -fx-border-radius: 5;
-    -fx-background-color: #ffffff;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-background-color: -ptw-panel;
+    -fx-effect: dropshadow(three-pass-box, rgba(179, 0, 0, 0.35), 14, 0, 0, 6);
 }
 
 .tweak-title {
-    -fx-font-weight: bold;
-    -fx-font-size: 14px;
-    -fx-text-fill: #333333;
+    -fx-font-weight: 700;
+    -fx-font-size: 15px;
+    -fx-text-fill: -ptw-text-strong;
 }
 
 .button {
-    -fx-background-color: #3c3f41;
+    -fx-background-color: linear-gradient(to right, -ptw-accent-strong, -ptw-accent);
     -fx-text-fill: #ffffff;
     -fx-font-size: 14px;
+    -fx-font-weight: 600;
     -fx-padding: 10px 20px;
-    -fx-background-radius: 5;
-    -fx-border-radius: 5;
-    -fx-border-color: #555555;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: rgba(179, 0, 0, 0.35);
     -fx-border-width: 1;
+    -fx-effect: dropshadow(three-pass-box, rgba(179, 0, 0, 0.4), 10, 0, 0, 2);
 }
 
 .button:hover {
-    -fx-background-color: #4b4f51;
+    -fx-background-color: linear-gradient(to right, -ptw-accent, -ptw-accent-glow);
+    -fx-effect: dropshadow(three-pass-box, rgba(227, 27, 35, 0.55), 12, 0, 0, 3);
 }
 
 .button:pressed {
-    -fx-background-color: #282a2d;
+    -fx-background-color: linear-gradient(to right, -ptw-accent-strong, #360000);
+    -fx-effect: dropshadow(three-pass-box, rgba(122, 0, 0, 0.5), 8, 0, 0, 2);
 }
 
 .scroll-pane {
-    -fx-background: #f9f9f9;
+    -fx-background-color: -ptw-base;
+    -fx-background-insets: 0;
+    -fx-border-color: transparent;
+    -fx-border-insets: 0;
     -fx-padding: 10;
 }
 
+.scroll-pane > .viewport {
+    -fx-background-color: -ptw-base;
+}
+
 #log-area {
-    -fx-background-color: #2e2e2e;
-    -fx-text-fill: #ffffff;
+    -fx-background-color: #000000;
+    -fx-text-fill: -ptw-text-strong;
     -fx-font-family: "Consolas", monospace;
-    -fx-padding: 10;
-    -fx-border-color: #555555;
+    -fx-padding: 12;
+    -fx-border-color: -ptw-accent-strong;
     -fx-border-width: 1;
-    -fx-border-radius: 5;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+}
+
+.text-area {
+    -fx-background-color: #000000;
+    -fx-control-inner-background: #000000;
+    -fx-text-fill: -ptw-text-strong;
+}
+
+.text-area .content {
+    -fx-background-color: #000000;
+}
+
+.text-area .scroll-pane {
+    -fx-background-color: #000000;
+}
+
+.text-area .scroll-pane .viewport {
+    -fx-background-color: #000000;
+}
+
+.text-area .scroll-pane .content {
+    -fx-background-color: #000000;
+}
+
+.daemon-image {
+    -fx-effect: dropshadow(three-pass-box, rgba(179, 0, 0, 0.6), 16, 0, 0, 6);
+}
+
+.header-box {
+    -fx-background-color: linear-gradient(to bottom, #1a0707, #050203);
+    -fx-padding: 20;
+    -fx-alignment: center;
+    -fx-border-color: -ptw-border;
+    -fx-border-width: 0 0 1 0;
+}
+
+.label {
+    -fx-text-fill: -ptw-text-muted;
+    -fx-font-size: 13px;
+}
+
+/* Limit focus tweaks to the scroll area to keep keyboard focus visible elsewhere */
+.scroll-pane:focused {
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+    -fx-background-color: -ptw-base;
+    -fx-background-insets: 0;
+    -fx-border-color: transparent;
+}
+
+#log-area:focused {
+    -fx-background-color: #000000;
+    -fx-focus-color: -ptw-accent;
+    -fx-faint-focus-color: rgba(204, 0, 0, 0.3);
 }
