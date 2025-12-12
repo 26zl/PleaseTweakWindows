@@ -10,9 +10,12 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.version>5.10.2</junit.version>
+        <junit.version>5.12.2</junit.version>
         <java.version>21</java.version>
         <skipNativeBuild>true</skipNativeBuild>
+        <javafx.version>21.0.7</javafx.version>
+        <logback.version>1.5.21</logback.version>
+        <maven.version>3.9.0</maven.version>
     </properties>
 
     <dependencies>
@@ -20,7 +23,7 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>21</version>
+            <version>${javafx.version}</version>
         </dependency>
         <!-- SLF4J API for logging -->
         <dependency>
@@ -32,7 +35,7 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.20</version>
+            <version>${logback.version}</version>
         </dependency>
         <!-- JUnit for testing -->
         <dependency>
@@ -51,14 +54,38 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.6.2</version>
+                <executions>
+                    <execution>
+                        <id>enforce-versions</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[${maven.version},)</version>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[${java.version},)</version>
+                                </requireJavaVersion>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Maven Compiler Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.14.1</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
+                    <release>${java.version}</release>
                 </configuration>
             </plugin>
 
@@ -84,14 +111,8 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>module-info.class</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>shaded</shadedClassifierName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.zl.pleasetweakwindows.Main</mainClass>
@@ -120,7 +141,7 @@
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
                 <artifactId>native-maven-plugin</artifactId>
-                <version>0.11.2</version>
+                <version>0.11.3</version>
                 <extensions>true</extensions>
                 <executions>
                     <execution>
@@ -154,6 +175,7 @@
                         <buildArg>-H:IncludeResources=.*/.*\.xml$</buildArg>
                         <buildArg>-H:IncludeResources=.*/.*\.png$</buildArg>
                         <buildArg>-H:IncludeResources=.*/.*\.ico$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.txt$</buildArg>
                         <buildArg>-H:IncludeResources=.*/.*\.ps1$</buildArg>
                         <buildArg>-H:IncludeResources=.*/.*\.bat$</buildArg>
                         <buildArg>-H:IncludeResources=.*daemon\.png$</buildArg>

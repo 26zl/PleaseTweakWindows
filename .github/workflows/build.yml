@@ -80,6 +80,9 @@ jobs:
           mkdir -p dist
           cp ./artifacts/PleaseTweakWindows.exe dist/
           cp README.md dist/README.txt
+          cp src/main/resources/daemonWindows.ico dist/
+          cp src/main/resources/daemonIcon.png dist/
+          cp src/main/resources/daemon.png dist/
           cp -r src/main/resources/scripts dist/
           mkdir -p dist/logs
           cp logs/README.txt dist/logs/

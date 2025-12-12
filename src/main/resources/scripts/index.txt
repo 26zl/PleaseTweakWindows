@@ -1,0 +1,14 @@
+General Tweaks/GeneralTweaksRevert.bat
+General Tweaks/GeneralTweaks.bat
+Bcdedit tweaks/bcdedit-tweaks.bat
+Bcdedit tweaks/Revert bcdedits to default.bat
+Network optimizations/network tweaks.bat
+Network optimizations/revert for network tweaks.bat
+Services disable and revert/Services-disabled.bat
+Services disable and revert/Revert services to default.bat
+All windows settings optimized/Windows-settings-tweaked.bat
+All windows settings optimized/Revert.bat
+create_restore_point.ps1
+README.txt
+Gaming optimizations/gaming-tweaks.bat
+Gaming optimizations/revert gaming tweaks.bat
