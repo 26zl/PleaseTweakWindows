@@ -3,6 +3,8 @@ package com.zl.pleasetweakwindows;
 import java.io.File;
 import java.util.Objects;
 
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.application.Application;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -27,6 +29,8 @@ public class Main extends Application {
         String scriptDirectory = ResourceExtractor.prepareScriptsPath().toString() + File.separator;
         tweakManager.loadTweaks();
 
+        BooleanProperty scriptsRunning = new SimpleBooleanProperty(false);
+
         logArea = new TextArea();
         logArea.setEditable(false);
         logArea.setFocusTraversable(false);
@@ -37,7 +41,7 @@ public class Main extends Application {
         VBox tweaksBox = new VBox(15);
         tweaksBox.getStyleClass().add("tweaks-box");
         tweakManager.getTweaks().forEach(tweak ->
-                tweaksBox.getChildren().add(UiLogic.createTweakItem(tweak, logArea, scriptDirectory))
+                tweaksBox.getChildren().add(UiLogic.createTweakItem(tweak, logArea, scriptDirectory, scriptsRunning))
         );
 
         ScrollPane tweaksScrollPane = new ScrollPane(tweaksBox);
@@ -71,13 +75,18 @@ public class Main extends Application {
 
         Button createRestorePointButton = new Button("Create Restore Point");
         createRestorePointButton.setOnAction(e -> {
-            Executor.createRestorePoint(logArea, scriptDirectory);
+            scriptsRunning.set(true);
+            Executor.createRestorePoint(logArea, scriptDirectory, () ->
+                    javafx.application.Platform.runLater(() -> scriptsRunning.set(false))
+            );
         });
+        createRestorePointButton.disableProperty().bind(scriptsRunning);
 
         Button clearLogButton = new Button("Clear Log");
         clearLogButton.setOnAction(e -> {
             logArea.clear();
         });
+        clearLogButton.disableProperty().bind(scriptsRunning);
 
         HBox buttonBox = new HBox(10);
         buttonBox.setAlignment(Pos.CENTER);

@@ -33,9 +33,12 @@ public class Executor {
         }
         logMessage(logArea, "Running script: " + scriptPath);
         executorService.submit(() -> {
-            executeScript(scriptPath, logArea);
-            if (onComplete != null) {
-                onComplete.run();
+            try {
+                executeScript(scriptPath, logArea);
+            } finally {
+                if (onComplete != null) {
+                    onComplete.run();
+                }
             }
         });
     }
@@ -76,6 +79,10 @@ public class Executor {
     }
 
     public static void createRestorePoint(TextArea logArea, String scriptDirectory) {
+        createRestorePoint(logArea, scriptDirectory, null);
+    }
+
+    public static void createRestorePoint(TextArea logArea, String scriptDirectory, Runnable onComplete) {
         executorService.submit(() -> {
             try {
                 logMessage(logArea, "Creating restore point...");
@@ -124,6 +131,10 @@ public class Executor {
             } catch (RuntimeException e) {
                 logMessage(logArea, "A runtime error occurred: " + e.getMessage());
                 logMessage(logArea, "Stack trace: " + e.toString());
+            } finally {
+                if (onComplete != null) {
+                    onComplete.run();
+                }
             }
         });
     }
