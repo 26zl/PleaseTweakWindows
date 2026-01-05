@@ -61,7 +61,7 @@ jobs:
 
   create-release:
     name: Create Release
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
     needs: build-exe
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
@@ -77,17 +77,20 @@ jobs:
 
       - name: Create distribution package
         run: |
-          mkdir -p dist
-          cp ./artifacts/PleaseTweakWindows.exe dist/
-          cp README.md dist/README.txt
-          cp src/main/resources/daemonWindows.ico dist/
-          cp src/main/resources/daemonIcon.png dist/
-          cp src/main/resources/daemon.png dist/
-          cp -r src/main/resources/scripts dist/
-          mkdir -p dist/logs
-          cp logs/README.txt dist/logs/
-          cd dist
-          zip -r ../PleaseTweakWindows.zip *
+          if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
+          New-Item -ItemType Directory -Path "dist" | Out-Null
+          Copy-Item "./artifacts/PleaseTweakWindows.exe" "dist/"
+          Copy-Item "README.md" "dist/"
+          Copy-Item "src/main/resources/daemonWindows.ico" "dist/"
+          Copy-Item "src/main/resources/daemonIcon.png" "dist/"
+          Copy-Item "src/main/resources/daemon.png" "dist/"
+          Copy-Item -Recurse "src/main/resources/scripts" "dist/"
+          New-Item -ItemType Directory -Path "dist/logs" | Out-Null
+          Copy-Item "logs/README.txt" "dist/logs/"
+          
+          # Create ZIP file using PowerShell
+          Compress-Archive -Path "dist/*" -DestinationPath "PleaseTweakWindows.zip" -Force
+        shell: pwsh
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
