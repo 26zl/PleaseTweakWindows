@@ -198,6 +198,7 @@
                         <buildArg>-H:IncludeResources=.*daemonIcon\.png$</buildArg>
                         <buildArg>-H:IncludeResources=.*daemonWindows\.ico$</buildArg>
                         <buildArg>-H:IncludeResourceBundles=javafx.scene.control.skin.resources.controls</buildArg>
+                        <buildArg>-H:NativeLinkerOption=Shlwapi.lib</buildArg>
                         <buildArg>-H:NativeLinkerOption=/SUBSYSTEM:WINDOWS</buildArg>
                         <buildArg>-H:NativeLinkerOption=/ENTRY:mainCRTStartup</buildArg>
                         <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
