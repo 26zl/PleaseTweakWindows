@@ -83,10 +83,43 @@ echo [+] All tests passed!
 echo.
 
 :: ----------------------------
-:: STEP 2: Clean and build native executable
+:: STEP 2: Compile Windows resources (icon + manifest)
 :: ----------------------------
 echo ========================================================================
-echo [*] STEP 2: Building native executable with GraalVM
+echo [*] STEP 2: Compiling Windows resources (icon + manifest)
+echo ========================================================================
+echo.
+
+set "RC_EXE="
+for /f "delims=" %%R in ('where /r "C:\Program Files (x86)\Windows Kits\10\bin" rc.exe 2^>nul ^| findstr /i "x64"') do (
+    set "RC_EXE=%%R"
+)
+
+if defined RC_EXE (
+    echo [+] Found rc.exe: %RC_EXE%
+    pushd src\main\resources\native
+    "%RC_EXE%" /nologo app.rc
+    if %errorlevel% neq 0 (
+        echo [-] ERROR: Resource compilation failed!
+        popd
+        pause
+        exit /b 1
+    )
+    popd
+    echo [+] app.res compiled successfully
+) else (
+    echo [!] WARNING: rc.exe not found — Windows SDK not installed.
+    echo [!] The EXE will build without an embedded icon and manifest.
+    echo [!] Install "Windows SDK" or "Build Tools for Visual Studio" to fix this.
+)
+
+echo.
+
+:: ----------------------------
+:: STEP 3: Clean and build native executable
+:: ----------------------------
+echo ========================================================================
+echo [*] STEP 3: Building native executable with GraalVM
 echo ========================================================================
 echo [*] This will create a true native executable (no Java required)...
 echo.
@@ -106,10 +139,10 @@ echo [+] Native executable created successfully!
 echo.
 
 :: ----------------------------
-:: STEP 3: Create distribution directory
+:: STEP 4: Create distribution directory
 :: ----------------------------
 echo ========================================================================
-echo [*] STEP 3: Creating distribution package
+echo [*] STEP 4: Creating distribution package
 echo ========================================================================
 echo.
 
@@ -145,14 +178,6 @@ if exist "README.md" (
     echo [+] README.md copied to distribution
 )
 
-:: Copy daemon icons
-for %%I in ("src\main\resources\images\daemonWindows.ico" "src\main\resources\images\daemonIcon.png" "src\main\resources\images\daemon.png") do (
-    if exist "%%~I" (
-        copy "%%~I" "%OUTPUT_DIR%\" > nul
-    )
-)
-echo [+] Daemon icon assets copied to distribution
-
 :: Create logs directory with README
 mkdir "%OUTPUT_DIR%\logs"
 if exist "logs\README.txt" (
@@ -161,10 +186,10 @@ if exist "logs\README.txt" (
 )
 
 :: ----------------------------
-:: STEP 4: Create ZIP distribution
+:: STEP 5: Create ZIP distribution
 :: ----------------------------
 echo ========================================================================
-echo [*] STEP 4: Creating ZIP distribution
+echo [*] STEP 5: Creating ZIP distribution
 echo ========================================================================
 echo.
 
@@ -181,7 +206,7 @@ echo [+] ZIP distribution created: %ZIP_NAME%
 echo.
 
 :: ----------------------------
-:: STEP 5: Show results
+:: STEP 6: Show results
 :: ----------------------------
 echo ========================================================================
 echo [+] BUILD COMPLETED SUCCESSFULLY!

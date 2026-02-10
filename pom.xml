@@ -201,6 +201,7 @@
                         <buildArg>-H:NativeLinkerOption=Shlwapi.lib</buildArg>
                         <buildArg>-H:NativeLinkerOption=/SUBSYSTEM:WINDOWS</buildArg>
                         <buildArg>-H:NativeLinkerOption=/ENTRY:mainCRTStartup</buildArg>
+                        <buildArg>-H:NativeLinkerOption=${project.basedir}/src/main/resources/native/app.res</buildArg>
                         <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
                         <buildArg>-H:+RemoveSaturatedTypeFlows</buildArg>
                     </buildArgs>

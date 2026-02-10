@@ -33,6 +33,25 @@ import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
 public class Main extends Application {
+
+    static {
+        try {
+            String command = ProcessHandle.current().info().command().orElse(null);
+            if (command != null) {
+                String name = Path.of(command).getFileName().toString().toLowerCase();
+                // Only override CWD when running as the native EXE, not via java/javaw
+                if (!name.startsWith("java")) {
+                    Path exeDir = Path.of(command).toAbsolutePath().getParent();
+                    if (exeDir != null && Files.isDirectory(exeDir)) {
+                        System.setProperty("user.dir", exeDir.toString());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Best-effort: fall back to default user.dir
+        }
+    }
+
     private TextArea logArea;
     private final BooleanProperty scriptsRunning = new SimpleBooleanProperty(false);
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
