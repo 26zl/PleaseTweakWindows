@@ -433,6 +433,110 @@ jobs:
           }
         shell: pwsh
 
+      - name: Scan for hardcoded secrets
+        run: |
+          Write-Host "Scanning for hardcoded secrets across repository..."
+
+          $allFiles = Get-ChildItem -Path "." -Recurse -File |
+            Where-Object {
+              $_.Extension -in @('.ps1', '.java', '.xml', '.yml', '.yaml', '.json', '.properties', '.conf', '.cfg', '.bat', '.cmd', '.txt', '.md', '.env') -and
+              $_.FullName -notmatch '[\\/](target|\.git|node_modules|\.idea)[\\/]'
+            }
+
+          Write-Host "Scanning $($allFiles.Count) files..."
+
+          $secretPatterns = @(
+            @{ Name = "GitHub Token";           Pattern = 'gh[pousr]_[A-Za-z0-9_]{36,}' },
+            @{ Name = "Generic API Key";        Pattern = '(?i)(api[_-]?key|apikey)\s*[:=]\s*[''"][A-Za-z0-9\-_.]{20,}[''"]' },
+            @{ Name = "Generic Secret";         Pattern = '(?i)(client[_-]?secret|secret[_-]?key)\s*[:=]\s*[''"][A-Za-z0-9\-_.]{20,}[''"]' },
+            @{ Name = "Private Key";            Pattern = '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----' }
+          )
+
+          $issues = 0
+          foreach ($file in $allFiles) {
+            $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
+            if (-not $content) { continue }
+
+            foreach ($sp in $secretPatterns) {
+              if ($content -match $sp.Pattern) {
+                $relativePath = $file.FullName -replace [regex]::Escape((Get-Location).Path + '\'), ''
+                Write-Error "Potential $($sp.Name) found in: $relativePath"
+                $issues++
+              }
+            }
+          }
+
+          if ($issues -gt 0) {
+            Write-Error "Found $issues potential hardcoded secrets. These must be removed or moved to GitHub Secrets."
+            exit 1
+          } else {
+            Write-Host "[+] No hardcoded secrets detected"
+          }
+        shell: pwsh
+
+      - name: Check for hardcoded Windows paths
+        run: |
+          Write-Host "Scanning for hardcoded user-specific Windows paths..."
+
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $javaFiles = Get-ChildItem -Path "src/main/java" -Filter "*.java" -Recurse
+
+          $pathPatterns = @(
+            @{ Name = "Hardcoded user profile path"; Pattern = '[A-Za-z]:\\Users\\[^$\\{][A-Za-z0-9._-]+\\' },
+            @{ Name = "Hardcoded Program Files path"; Pattern = '[A-Za-z]:\\Program Files( \(x86\))?\\[A-Za-z]' },
+            @{ Name = "Hardcoded temp path";          Pattern = '[A-Za-z]:\\[Tt]emp\\' }
+          )
+
+          # Patterns that are OK (environment variable usage)
+          $allowedPatterns = @(
+            '\$env:',
+            '\$Env:',
+            '\[Environment\]',
+            '%USERPROFILE%',
+            '%PROGRAMFILES%',
+            '%TEMP%',
+            '%APPDATA%'
+          )
+
+          $issues = 0
+          foreach ($file in ($scripts + $javaFiles)) {
+            $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
+            if (-not $content) { continue }
+
+            foreach ($pp in $pathPatterns) {
+              $matches = [regex]::Matches($content, $pp.Pattern)
+              foreach ($m in $matches) {
+                # Check the line containing the match for allowed env var usage
+                $lineStart = $content.LastIndexOf("`n", [Math]::Max(0, $m.Index - 1)) + 1
+                $lineEnd = $content.IndexOf("`n", $m.Index)
+                if ($lineEnd -eq -1) { $lineEnd = $content.Length }
+                $line = $content.Substring($lineStart, $lineEnd - $lineStart).Trim()
+
+                $isAllowed = $false
+                foreach ($ap in $allowedPatterns) {
+                  if ($line -match $ap) { $isAllowed = $true; break }
+                }
+
+                # Skip comments
+                if ($line -match '^\s*#' -or $line -match '^\s*//') { $isAllowed = $true }
+
+                if (-not $isAllowed) {
+                  $relativePath = $file.FullName -replace [regex]::Escape((Get-Location).Path + '\'), ''
+                  Write-Error "$($pp.Name) in $relativePath`: $($m.Value)"
+                  $issues++
+                }
+              }
+            }
+          }
+
+          if ($issues -gt 0) {
+            Write-Error "Found $issues hardcoded paths. Use environment variables (`$env:USERPROFILE, `$env:PROGRAMFILES, `$env:TEMP) instead."
+            exit 1
+          } else {
+            Write-Host "[+] No hardcoded Windows paths detected"
+          }
+        shell: pwsh
+
       - name: Security scan summary
         run: |
           Write-Host "========================================"
@@ -704,6 +808,24 @@ jobs:
       - name: Run tests
         run: mvn test
 
+      - name: Compile Windows resources (icon + manifest)
+        run: |
+          $rcExe = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "rc.exe" |
+            Where-Object { $_.FullName -match 'x64' } |
+            Sort-Object { [version]($_.FullName -replace '.*\\(\d+\.\d+\.\d+\.\d+)\\.*','$1') } -Descending |
+            Select-Object -First 1
+          if (-not $rcExe) {
+            Write-Error "rc.exe not found in Windows SDK"
+            exit 1
+          }
+          Write-Host "Using: $($rcExe.FullName)"
+          Push-Location src/main/resources/native
+          & $rcExe.FullName /nologo app.rc
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Pop-Location
+          Write-Host "[+] app.res compiled successfully"
+        shell: pwsh
+
       - name: Build EXE
         run: mvn -Pnative package
 
@@ -815,9 +937,6 @@ jobs:
           Copy-Item "./artifacts/PleaseTweakWindows.exe" "dist/"
           Copy-Item "README.md" "dist/"
           Copy-Item "LICENSE" "dist/" -ErrorAction SilentlyContinue
-          Copy-Item "src/main/resources/images/daemonWindows.ico" "dist/" -ErrorAction SilentlyContinue
-          Copy-Item "src/main/resources/images/daemonIcon.png" "dist/" -ErrorAction SilentlyContinue
-          Copy-Item "src/main/resources/images/daemon.png" "dist/" -ErrorAction SilentlyContinue
           Copy-Item -Recurse "src/main/resources/scripts" "dist/"
           New-Item -ItemType Directory -Path "dist/logs" | Out-Null
           Copy-Item "logs/README.txt" "dist/logs/" -ErrorAction SilentlyContinue

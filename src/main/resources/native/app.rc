@@ -1,0 +1,7 @@
+// Windows resource script — embeds icon and manifest into the native EXE
+
+// Application icon (shows in Explorer, taskbar, Alt-Tab)
+1 ICON "../images/daemonWindows.ico"
+
+// Application manifest (UAC elevation, DPI awareness, OS compatibility)
+1 24 "app.manifest"
