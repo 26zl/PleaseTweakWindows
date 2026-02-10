@@ -1,0 +1,254 @@
+name: Functionality Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  functional-testing:
+    name: Functional Testing
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run PSScriptAnalyzer
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          Write-Host "Analyzing $($scripts.Count) PowerShell scripts..."
+
+          $excludeRules = @(
+            'PSAvoidUsingWriteHost',
+            'PSUseShouldProcessForStateChangingFunctions',
+            'PSAvoidGlobalVars'
+          )
+
+          $errors = 0
+          $warnings = 0
+
+          foreach ($script in $scripts) {
+            $results = Invoke-ScriptAnalyzer -Path $script.FullName -ExcludeRule $excludeRules -Severity @('Error', 'Warning')
+
+            foreach ($result in $results) {
+              $shortPath = $script.FullName -replace '.*src\\main\\resources\\', ''
+              if ($result.Severity -eq 'Error') {
+                Write-Error "[$($result.Severity)] $shortPath`:$($result.Line) - $($result.RuleName): $($result.Message)"
+                $errors++
+              } else {
+                Write-Warning "[$($result.Severity)] $shortPath`:$($result.Line) - $($result.RuleName): $($result.Message)"
+                $warnings++
+              }
+            }
+          }
+
+          Write-Host ""
+          Write-Host "[*] PSScriptAnalyzer: $errors errors, $warnings warnings"
+
+          if ($errors -gt 0) {
+            Write-Error "PSScriptAnalyzer found $errors errors. Fix before merging."
+            exit 1
+          }
+
+          Write-Host "[+] PSScriptAnalyzer passed"
+        shell: pwsh
+
+      - name: Verify non-interactive script architecture
+        run: |
+          Write-Host "Testing non-interactive action dispatcher architecture..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          foreach ($scriptPath in $scripts) {
+            Write-Host "Testing: $scriptPath"
+            $content = Get-Content $scriptPath -Raw
+            
+            # Verify Action parameter
+            if ($content -notmatch 'param\s*\([^)]*\[string\]\$Action') {
+              Write-Error "Missing -Action parameter in $scriptPath"
+              exit 1
+            }
+            
+            # Verify switch dispatcher
+            if ($content -notmatch 'switch\s*\(\$Action') {
+              Write-Error "Missing switch dispatcher in $scriptPath"
+              exit 1
+            }
+            
+            # Verify NO Show-MainMenu (non-interactive)
+            if ($content -match 'function\s+Show-MainMenu') {
+              Write-Error "Script should not have Show-MainMenu (non-interactive): $scriptPath"
+              exit 1
+            }
+            
+            # Verify version metadata
+            if ($content -notmatch '\$script:ScriptVersion') {
+              Write-Error "Missing version metadata in $scriptPath"
+              exit 1
+            }
+            
+            # Syntax check
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) {
+              Write-Error "Syntax errors in $scriptPath"
+              exit 1
+            }
+            
+            Write-Host "[+] $scriptPath validated"
+          }
+          
+          Write-Host "[+] All scripts have correct non-interactive architecture"
+        shell: pwsh
+
+      - name: Verify Java action IDs match PowerShell cases
+        run: |
+          Write-Host "Verifying Java action IDs match PowerShell switch cases..."
+          
+          $javaFile = "src/main/java/com/zl/pleasetweakwindows/TweakController.java"
+          $javaContent = Get-Content $javaFile -Raw
+          
+          # Extract action IDs from Java
+          $javaActions = [regex]::Matches($javaContent, '"([a-z]+-[a-z-]+)"') | 
+            ForEach-Object { $_.Groups[1].Value } | 
+            Sort-Object -Unique
+          
+          Write-Host "Found $($javaActions.Count) action IDs in Java"
+          
+          # Get all PS scripts content
+          $psScripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse | 
+            Where-Object { $_.Name -notlike "revert-*" -and $_.Name -ne "CommonFunctions.ps1" -and $_.Name -ne "create_restore_point.ps1" }
+          
+          $psContent = $psScripts | ForEach-Object { Get-Content $_.FullName -Raw } | Out-String
+          
+          $missing = @()
+          foreach ($action in $javaActions) {
+            if ($psContent -notmatch "`"$action`"") {
+              $missing += $action
+            }
+          }
+          
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing PowerShell handlers for actions: $($missing -join ', ')"
+            exit 1
+          }
+          
+          Write-Host "[+] All $($javaActions.Count) Java action IDs have PowerShell handlers"
+        shell: pwsh
+
+      - name: Test create_restore_point script
+        run: |
+          $scriptPath = "src/main/resources/scripts/create_restore_point.ps1"
+          Write-Host "Testing create_restore_point script..."
+          
+          $testScript = @"
+          `$ErrorActionPreference = 'Stop'
+          try {
+              if (-not (Test-Path '$scriptPath')) {
+                  throw "Script not found: $scriptPath"
+              }
+              
+              `$scriptContent = Get-Content '$scriptPath' -Raw
+              
+              # Verify it has param block
+              if (`$scriptContent -notmatch 'param\s*\(') {
+                  throw "Missing param block"
+              }
+              
+              # Verify it uses Checkpoint-Computer or similar
+              if (`$scriptContent -notmatch 'Checkpoint-Computer|RestorePoint') {
+                  throw "Missing restore point creation logic"
+              }
+              
+              # Syntax validation
+              `$null = [System.Management.Automation.PSParser]::Tokenize(`$scriptContent, [ref]`$null)
+              
+              Write-Host "[+] create_restore_point script validated"
+              
+          } catch {
+              Write-Error "create_restore_point script test failed: `$(`$_.Exception.Message)"
+              exit 1
+          }
+          "@
+          
+          powershell -NoProfile -Command $testScript
+        shell: pwsh
+
+      - name: Test revert scripts structure
+        run: |
+          Write-Host "Testing revert scripts structure..."
+          
+          $revertScripts = @(
+            "src/main/resources/scripts/Gaming optimizations/revert-gaming.ps1",
+            "src/main/resources/scripts/Network optimizations/revert-network.ps1",
+            "src/main/resources/scripts/General Tweaks/revert-general.ps1",
+            "src/main/resources/scripts/Privacy Security/revert-privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/revert-security.ps1",
+            "src/main/resources/scripts/Services management/revert-services.ps1"
+          )
+          
+          foreach ($scriptPath in $revertScripts) {
+            Write-Host "Testing: $scriptPath"
+            $content = Get-Content $scriptPath -Raw
+            
+            # Verify Mode parameter
+            if ($content -notmatch '\[string\]\$Mode') {
+              Write-Error "Missing Mode parameter in $scriptPath"
+              exit 1
+            }
+            
+            # Verify PTW_EMBEDDED handling (directly or via CommonFunctions.ps1)
+            if ($content -notmatch 'PTW_EMBEDDED' -and $content -notmatch 'CommonFunctions\.ps1') {
+              Write-Error "Missing PTW_EMBEDDED handling in $scriptPath"
+              exit 1
+            }
+            
+            # Verify admin check
+            if ($content -notmatch '#Requires -RunAsAdministrator') {
+              Write-Error "Missing admin requirement in $scriptPath"
+              exit 1
+            }
+            
+            # Syntax check
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) {
+              Write-Error "Syntax errors in $scriptPath"
+              exit 1
+            }
+            
+            Write-Host "[+] $scriptPath validated"
+          }
+          
+          Write-Host "[+] All revert scripts have correct structure"
+        shell: pwsh
+
+      - name: Functionality test summary
+        run: |
+          Write-Host "========================================"
+          Write-Host "Functionality Test Summary"
+          Write-Host "========================================"
+          Write-Host "[+] PSScriptAnalyzer passed"
+          Write-Host "[+] Non-interactive architecture validated"
+          Write-Host "[+] Java action IDs match PowerShell handlers"
+          Write-Host "[+] Revert scripts structure validated"
+          Write-Host "[+] All functionality tests passed"
+        shell: pwsh

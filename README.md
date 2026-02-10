@@ -1,93 +1,74 @@
-<div align="center">
-
 # PleaseTweakWindows
 
-A lightweight Windows optimization tool for performance and gaming.
+> **This project is currently under active development and testing. Use at your own risk.**
 
-<img src=".github/logo.png" alt="PleaseTweakWindows Logo" width="330" />
+Windows optimization tool for performance tuning, gaming, network, privacy, security, and system customization.
 
-</div>
+![PleaseTweakWindows Logo](.github/logo.png)
 
+## Important
 
-## Disclaimer
-
-**USE AT YOUR OWN RISK**
-
-This tool modifies Windows registry settings and system configurations. While all tweaks can be reverted, incorrect usage may cause system instability.
-
-- Always create a restore point before applying tweaks
-- Review what each tweak does before applying
-- The author is not responsible for any damage or data loss
-- Use on production systems at your own discretion
+> **CREATE A RESTORE POINT BEFORE USING THIS TOOL!**
+>
+> This tool modifies Windows registry settings, services, and system configuration.
+> Some changes may affect system stability. Always backup your system first.
 
 ## Quick Start
 
-### PowerShell One-Liner (Lightweight)
+**Requires Administrator privileges.**
 
-Run this command in PowerShell (Administrator) to start the PowerShell interface directly:
+1. Download from [Releases](https://github.com/26zl/PleaseTweakWindows/releases)
+2. **Create a System Restore Point** (Settings > System > About > System Protection)
+3. Run `PleaseTweakWindows.exe` as Administrator
 
-```powershell
-irm https://raw.githubusercontent.com/26zl/PleaseTweakWindows/main/PleaseTweakWindowsPScript.ps1 | iex
+## Categories
+
+| Category | Sub-tweaks | Description |
+| --- | --- | --- |
+| **Gaming** | 12 | GPU drivers, Game Bar, FSO/FSE, MSI mode, DirectX, polling rate |
+| **Network** | 3 | IPv4 adapter bindings, TCP/IP optimization, DNS |
+| **General** | 15 | Power plans, bloatware removal, registry tweaks, scaling fixes |
+| **Services** | 2 | Disable unnecessary Windows services, restore defaults |
+| **Privacy** | 18 | Telemetry, Copilot, DNS-over-HTTPS, tracking, Live Tiles |
+| **Security** | 11 | Firewall hardening, TLS, DEP, SEHOP, Spectre/Meltdown protection |
+
+Each category supports **Apply** (execute tweak) and **Revert** (restore defaults).
+
+## How It Works
+
+```text
+JavaFX GUI
+    |
+powershell -File <script>.ps1 -Action "<action-id>"
+    |
+Category Scripts  (Non-interactive dispatchers)
+Revert Scripts    (Restore defaults + repair components)
 ```
 
-**Benefits:**
-- No installation required
-- Runs directly in your terminal
-- Always up-to-date (fetches from main branch)
-- No download of large EXE file
+- Individual sub-tweaks are executed via `-Action` parameter
+- Revert scripts restore defaults and optionally repair affected components
+- A system restore point prompt appears before any changes
 
-### GUI Application (Full Version)
+## Requirements
 
-For the JavaFX GUI application with logging and modern interface:
-
-1. Download `PleaseTweakWindows.zip` from [releases](https://github.com/26zl/PleaseTweakWindows/releases)
-2. Extract the ZIP file
-3. Right-click `PleaseTweakWindows.exe` and select "Run as Administrator"
-4. The JavaFX GUI will start with:
-   - Visual tweak selector
-   - Built-in logging to `logs/` directory
-   - Create restore point functionality
-   - All tweaks are reversible
-
-**What's included:**
-- `PleaseTweakWindows.exe` - Native executable (no Java required)
-- `scripts/` - All Windows optimization scripts
-- `logs/README.txt` - Logging information
-
-## Features
-
-- Gaming optimizations
-- Network tweaks
-- Windows settings optimization
-- Boot configuration tweaks
-- Services management
-- System restore point creation
-- All tweaks are reversible
+- Windows 10/11
+- Administrator privileges
+- PowerShell 5.1+ (7+ recommended)
 
 ## Build from Source
 
-### Requirements
-
-- **GraalVM 25+** with Native Image
-- Maven 3.6+
-
-### Build Steps
-
 ```cmd
+REM Requires: GraalVM 25+, Maven 3.9+, Java 21
 git clone https://github.com/26zl/PleaseTweakWindows.git
 cd PleaseTweakWindows
 Build.bat
 ```
 
-The native executable will be in the `target/` folder and a complete distribution package in the `dist/` folder.
+The build produces a native Windows executable (~31 MB) with no Java runtime dependency.
 
-### Manual Build (Advanced)
+## Disclaimer
 
-```cmd
-mvn clean package -DskipNativeBuild=false
-```
-
-This creates the native executable in `target/PleaseTweakWindows.exe`.
+**USE AT YOUR OWN RISK.** Always create a restore point before applying tweaks. Some changes may require manual restoration. This project is provided as-is with no warranty.
 
 ## License
 

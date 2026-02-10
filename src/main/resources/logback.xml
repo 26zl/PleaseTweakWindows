@@ -47,8 +47,24 @@
         </rollingPolicy>
     </appender>
 
+    <!-- Telemetry appender -->
+    <appender name="TELEMETRY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP_NAME}-telemetry.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${APP_NAME}-telemetry-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
     <!-- Logger for your application -->
     <logger name="com.zl.pleasetweakwindows" level="DEBUG" />
+    <logger name="telemetry" level="INFO" additivity="false">
+        <appender-ref ref="TELEMETRY_FILE" />
+    </logger>
 
     <!-- Root logger -->
     <root level="INFO">

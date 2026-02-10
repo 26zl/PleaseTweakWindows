@@ -5,17 +5,18 @@
 
     <groupId>com.zl</groupId>
     <artifactId>PleaseTweakWindows</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>PleaseTweakWindows</name>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.version>5.12.2</junit.version>
+        <junit.version>5.14.2</junit.version>
         <java.version>21</java.version>
         <skipNativeBuild>true</skipNativeBuild>
         <javafx.version>21.0.7</javafx.version>
-        <logback.version>1.5.21</logback.version>
-        <maven.version>3.9.0</maven.version>
+        <logback.version>1.5.25</logback.version>
+        <maven.version>3.9.9</maven.version>
+        <slf4j.version>2.0.17</slf4j.version>
     </properties>
 
     <dependencies>
@@ -29,7 +30,7 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>2.0.17</version>
+            <version>${slf4j.version}</version>
         </dependency>
         <!-- Logback implementation -->
         <dependency>
@@ -54,6 +55,20 @@
 
     <build>
         <plugins>
+            <!-- Maven Resources Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <nonFilteredFileExtensions>
+                        <nonFilteredFileExtension>ps1</nonFilteredFileExtension>
+                        <nonFilteredFileExtension>bat</nonFilteredFileExtension>
+                        <nonFilteredFileExtension>exe</nonFilteredFileExtension>
+                    </nonFilteredFileExtensions>
+                </configuration>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -178,6 +193,7 @@
                         <buildArg>-H:IncludeResources=.*/.*\.txt$</buildArg>
                         <buildArg>-H:IncludeResources=.*/.*\.ps1$</buildArg>
                         <buildArg>-H:IncludeResources=.*/.*\.bat$</buildArg>
+                        <buildArg>-H:IncludeResources=.*/.*\.reg$</buildArg>
                         <buildArg>-H:IncludeResources=.*daemon\.png$</buildArg>
                         <buildArg>-H:IncludeResources=.*daemonIcon\.png$</buildArg>
                         <buildArg>-H:IncludeResources=.*daemonWindows\.ico$</buildArg>

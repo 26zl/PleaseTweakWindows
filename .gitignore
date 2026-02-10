@@ -149,6 +149,10 @@ tramp
 .cursor/
 .cursorrules
 
+# Claude
+.claude/
+CLAUDE.MD
+
 # JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, PhpStorm, RubyMine, CLion, DataGrip, GoLand, Rider, AppCode)
 .idea/
 *.iml
@@ -315,9 +319,8 @@ logs/*.log
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .cursor/rules/snyk_rules.mdc
-
-.zip
-
+*.zip
 custom-runtime/
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+*instructions
