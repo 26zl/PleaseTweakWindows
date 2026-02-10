@@ -126,12 +126,13 @@ jobs:
           $javaFile = "src/main/java/com/zl/pleasetweakwindows/TweakController.java"
           $javaContent = Get-Content $javaFile -Raw
           
-          # Extract action IDs from Java
-          $javaActions = [regex]::Matches($javaContent, '"([a-z]+-[a-z-]+)"') | 
-            ForEach-Object { $_.Groups[1].Value } | 
+          # Extract action IDs from Java (exclude revert IDs - handled dynamically by revert scripts)
+          $javaActions = [regex]::Matches($javaContent, '"([a-z]+-[a-z-]+)"') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Where-Object { $_ -notmatch '-revert$' } |
             Sort-Object -Unique
-          
-          Write-Host "Found $($javaActions.Count) action IDs in Java"
+
+          Write-Host "Found $($javaActions.Count) non-revert action IDs in Java"
           
           # Get all PS scripts content
           $psScripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse | 
@@ -151,7 +152,7 @@ jobs:
             exit 1
           }
           
-          Write-Host "[+] All $($javaActions.Count) Java action IDs have PowerShell handlers"
+          Write-Host "[+] All $($javaActions.Count) non-revert Java action IDs have PowerShell handlers"
         shell: pwsh
 
       - name: Test create_restore_point script
