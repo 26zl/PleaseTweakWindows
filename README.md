@@ -4,7 +4,7 @@
 
 Windows optimization tool for performance tuning, gaming, network, privacy, security, and system customization.
 
-![PleaseTweakWindows Logo](.github/logo.png)
+<img src=".github/logo.png" alt="PleaseTweakWindows Logo" width="200" />
 
 ## Important
 

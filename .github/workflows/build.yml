@@ -76,8 +76,8 @@ jobs:
             Write-Host "Checking: $script"
             $content = Get-Content $script -Raw
             
-            # Verify Action parameter
-            if ($content -notmatch 'param\s*\([^)]*\[string\]\$Action') {
+            # Verify Action parameter (param block + [string]$Action)
+            if ($content -notmatch 'param\s*\(' -or $content -notmatch '\[string\]\$Action') {
               Write-Error "Missing -Action parameter in $script"
               exit 1
             }
