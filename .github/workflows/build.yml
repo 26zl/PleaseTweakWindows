@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build
 
 on:
   push:
@@ -15,9 +15,129 @@ permissions:
   contents: write
 
 jobs:
+  validate-scripts:
+    name: Validate PowerShell Scripts
+    runs-on: windows-2022
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate PowerShell script syntax
+        run: |
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1",
+            "src/main/resources/scripts/create_restore_point.ps1",
+            "src/main/resources/scripts/CommonFunctions.ps1"
+          )
+          
+          $errors = 0
+          foreach ($script in $scripts) {
+            if (Test-Path $script) {
+              Write-Host "Validating: $script"
+              $parseErrors = $null
+              $tokens = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$parseErrors)
+              if ($parseErrors.Count -gt 0) {
+                Write-Error "Syntax error in $script"
+                $parseErrors | ForEach-Object { Write-Error $_.Message }
+                $errors++
+              } else {
+                Write-Host "Syntax OK: $script"
+              }
+            } else {
+              Write-Error "Script not found: $script"
+              $errors++
+            }
+          }
+          
+          if ($errors -gt 0) {
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Verify script parameters and structure
+        run: |
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          foreach ($script in $scripts) {
+            Write-Host "Checking: $script"
+            $content = Get-Content $script -Raw
+            
+            # Verify Action parameter
+            if ($content -notmatch 'param\s*\([^)]*\[string\]\$Action') {
+              Write-Error "Missing -Action parameter in $script"
+              exit 1
+            }
+            
+            # Verify version metadata
+            if ($content -notmatch '\$script:ScriptVersion') {
+              Write-Error "Missing version metadata in $script"
+              exit 1
+            }
+            
+            # Verify logging function available (defined locally or via CommonFunctions.ps1)
+            if ($content -notmatch 'function Write-PTWLog' -and $content -notmatch 'CommonFunctions\.ps1') {
+              Write-Error "Missing Write-PTWLog function or CommonFunctions.ps1 import in $script"
+              exit 1
+            }
+            
+            # Verify NO Read-Host (non-interactive)
+            if ($content -match '^\s*Read-Host' -and $content -notmatch '#.*Read-Host') {
+              Write-Error "Script should be non-interactive (no Read-Host): $script"
+              exit 1
+            }
+            
+            Write-Host "Structure OK: $script"
+          }
+        shell: pwsh
+
+      - name: Verify index.txt
+        run: |
+          $indexFile = "src/main/resources/scripts/index.txt"
+          if (-not (Test-Path $indexFile)) {
+            Write-Error "index.txt not found"
+            exit 1
+          }
+          
+          $indexContent = Get-Content $indexFile
+          $requiredFiles = @(
+            "Gaming optimizations/Gaming-Optimizations.ps1",
+            "Network optimizations/Network-Optimizations.ps1",
+            "General Tweaks/General-Tweaks.ps1",
+            "Privacy Security/privacy.ps1",
+            "Privacy Security/security.ps1",
+            "Services management/Services-Management.ps1",
+            "create_restore_point.ps1",
+            "CommonFunctions.ps1"
+          )
+          
+          foreach ($required in $requiredFiles) {
+            if ($indexContent -notcontains $required) {
+              Write-Error "Missing entry in index.txt: $required"
+              exit 1
+            }
+          }
+          
+          Write-Host "index.txt validation passed"
+        shell: pwsh
+
   build-exe:
     name: Build Windows EXE
     runs-on: windows-2022
+    needs: validate-scripts
 
     steps:
       - name: Checkout repository
@@ -32,8 +152,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: 'maven'
 
+      - name: Run tests
+        run: mvn test
+
       - name: Build EXE
-        run: mvn -Pnative package -DskipTests
+        run: mvn -Pnative package
 
       - name: List target directory contents
         run: |
@@ -52,6 +175,43 @@ jobs:
             Write-Host "Build may have failed or the output path is different."
             exit 1
           }
+        shell: pwsh
+
+      - name: Verify scripts are included in resources
+        run: |
+          $requiredScripts = @(
+            "Gaming optimizations/Gaming-Optimizations.ps1",
+            "Network optimizations/Network-Optimizations.ps1",
+            "General Tweaks/General-Tweaks.ps1",
+            "Privacy Security/privacy.ps1",
+            "Privacy Security/security.ps1",
+            "Services management/Services-Management.ps1",
+            "create_restore_point.ps1"
+          )
+          $requiredRegFiles = @(
+            "General Tweaks/regs/Registry-Optimize.reg",
+            "General Tweaks/regs/Registry-Defaults.reg"
+          )
+          
+          $scriptsDir = "src/main/resources/scripts"
+          foreach ($script in $requiredScripts) {
+            $fullPath = Join-Path $scriptsDir $script
+            if (-not (Test-Path $fullPath)) {
+              Write-Error "Required script not found: $fullPath"
+              exit 1
+            }
+            Write-Host "Verified: $script"
+          }
+          foreach ($regFile in $requiredRegFiles) {
+            $fullPath = Join-Path $scriptsDir $regFile
+            if (-not (Test-Path $fullPath)) {
+              Write-Error "Required reg file not found: $fullPath"
+              exit 1
+            }
+            Write-Host "Verified: $regFile"
+          }
+          Write-Host "All required scripts and reg files are present"
+        shell: pwsh
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
@@ -63,7 +223,7 @@ jobs:
     name: Create Release
     runs-on: windows-2022
     needs: build-exe
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'release'
 
     steps:
       - name: Checkout repository
@@ -81,22 +241,55 @@ jobs:
           New-Item -ItemType Directory -Path "dist" | Out-Null
           Copy-Item "./artifacts/PleaseTweakWindows.exe" "dist/"
           Copy-Item "README.md" "dist/"
-          Copy-Item "src/main/resources/daemonWindows.ico" "dist/"
-          Copy-Item "src/main/resources/daemonIcon.png" "dist/"
-          Copy-Item "src/main/resources/daemon.png" "dist/"
+          Copy-Item "LICENSE" "dist/" -ErrorAction SilentlyContinue
+          Copy-Item "src/main/resources/images/daemonWindows.ico" "dist/" -ErrorAction SilentlyContinue
+          Copy-Item "src/main/resources/images/daemonIcon.png" "dist/" -ErrorAction SilentlyContinue
+          Copy-Item "src/main/resources/images/daemon.png" "dist/" -ErrorAction SilentlyContinue
           Copy-Item -Recurse "src/main/resources/scripts" "dist/"
           New-Item -ItemType Directory -Path "dist/logs" | Out-Null
-          Copy-Item "logs/README.txt" "dist/logs/"
+          Copy-Item "logs/README.txt" "dist/logs/" -ErrorAction SilentlyContinue
+          
+          # Verify all scripts are included
+          $scriptCount = (Get-ChildItem -Path "dist/scripts" -Recurse -Filter "*.ps1" -File).Count
+          Write-Host "Included PowerShell scripts: $scriptCount"
+          
+          if ($scriptCount -lt 5) {
+            Write-Error "Expected at least 5 PowerShell scripts, found $scriptCount"
+            exit 1
+          }
+
+          # Verify required reg files are included
+          $requiredRegFiles = @(
+            "General Tweaks/regs/Registry-Optimize.reg",
+            "General Tweaks/regs/Registry-Defaults.reg"
+          )
+          foreach ($regFile in $requiredRegFiles) {
+            $fullPath = Join-Path "dist/scripts" $regFile
+            if (-not (Test-Path $fullPath)) {
+              Write-Error "Required reg file missing from dist: $fullPath"
+              exit 1
+            }
+            Write-Host "Verified reg file in dist: $regFile"
+          }
           
           # Create ZIP file using PowerShell
           Compress-Archive -Path "dist/*" -DestinationPath "PleaseTweakWindows.zip" -Force
+          
+          # Verify ZIP was created
+          if (Test-Path "PleaseTweakWindows.zip") {
+            $zipInfo = Get-Item "PleaseTweakWindows.zip"
+            Write-Host "Distribution package created: $($zipInfo.Length) bytes"
+          } else {
+            Write-Error "Failed to create distribution package"
+            exit 1
+          }
         shell: pwsh
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "PleaseTweakWindows v1.0.${{ github.run_number }}"
+          tag_name: ${{ github.event.release.tag_name }}
+          name: ${{ github.event.release.name }}
           files: PleaseTweakWindows.zip
           draft: false
           prerelease: false

@@ -1,0 +1,324 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for obfuscated code
+        run: |
+          Write-Host "Scanning for obfuscated code patterns..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          $obfuscationPatterns = @(
+            'RunAsTI',
+            'TrustedInstaller.*powershell',
+            'iex\s*\(.*env:',
+            'Invoke-Expression.*\$env',
+            '\[System\.Reflection\.Assembly\]::LoadWithPartialName.*obfuscat',
+            'base64.*decode',
+            'FromBase64String'
+          )
+          
+          $issues = 0
+          foreach ($script in $scripts) {
+            Write-Host "Scanning: $script"
+            $content = Get-Content $script -Raw
+            
+            foreach ($pattern in $obfuscationPatterns) {
+              if ($content -match $pattern) {
+                Write-Warning "Potential obfuscation pattern found in $script`: $pattern"
+                $issues++
+              }
+            }
+          }
+          
+          if ($issues -gt 0) {
+            Write-Error "Found $issues potential obfuscation patterns. Please review."
+            exit 1
+          } else {
+            Write-Host "[+] No obfuscated code patterns detected"
+          }
+        shell: pwsh
+
+      - name: Check for Windows Update disabling
+        run: |
+          Write-Host "Scanning for Windows Update disabling functionality..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          $updateDisablePatterns = @(
+            'WindowsUpdate.*disable|Disable.*WindowsUpdate',
+            'WUServer|WUStatusServer',
+            'UpdateServiceUrl',
+            'fuckyoumicrosoft',
+            'LGPO.*update|update.*LGPO',
+            'DisableUpdates|EnableUpdates',
+            'PreventWinUpdate.*True',
+            'SearchOrderConfig.*0.*driver.*update'
+          )
+          
+          $issues = 0
+          foreach ($script in $scripts) {
+            Write-Host "Scanning: $script"
+            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            
+            foreach ($pattern in $updateDisablePatterns) {
+              if ($content -match $pattern) {
+                Write-Error "Windows Update disabling pattern found in $script`: $pattern"
+                $issues++
+              }
+            }
+          }
+          
+          if ($issues -gt 0) {
+            Write-Error "Found $issues Windows Update disabling patterns. These must be removed."
+            exit 1
+          } else {
+            Write-Host "[+] No Windows Update disabling patterns detected"
+          }
+        shell: pwsh
+
+      - name: Check for security feature disabling
+        run: |
+          Write-Host "Scanning for security feature disabling..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          $securityDisablePatterns = @(
+            'Windows.*Defender.*disable|Disable.*Windows.*Defender',
+            'SmartScreen.*disable|Disable.*SmartScreen',
+            'Firewall.*disable|Disable.*Firewall',
+            'UAC.*disable|Disable.*UAC',
+            'SecurityHealthService.*disable',
+            'Set-MpPreference.*DisableRealtimeMonitoring',
+            'Set-MpPreference.*DisableBehaviorMonitoring',
+            'Set-MpPreference.*DisableIOAVProtection',
+            'Set-MpPreference.*DisableScriptScanning',
+            'Set-MpPreference.*DisableBlockAtFirstSeen',
+            'Set-MpPreference.*DisablePrivacyMode',
+            'Set-MpPreference.*DisableArchiveScanning',
+            'Set-MpPreference.*DisableIntrusionPreventionSystem',
+            'Set-MpPreference.*DisableNetworkProtection'
+          )
+          
+          $issues = 0
+          foreach ($script in $scripts) {
+            Write-Host "Scanning: $script"
+            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            
+            foreach ($pattern in $securityDisablePatterns) {
+              if ($content -match $pattern) {
+                Write-Error "Security feature disabling pattern found in $script`: $pattern"
+                $issues++
+              }
+            }
+          }
+          
+          if ($issues -gt 0) {
+            Write-Error "Found $issues security feature disabling patterns. These must be removed."
+            exit 1
+          } else {
+            Write-Host "[+] No security feature disabling patterns detected"
+          }
+        shell: pwsh
+
+      - name: Check for suspicious network calls
+        run: |
+          Write-Host "Scanning for suspicious network calls..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          $suspiciousPatterns = @(
+            'Invoke-WebRequest.*http://[^m]',
+            'Invoke-WebRequest.*https://[^g]',
+            'DownloadString.*http://[^m]',
+            'DownloadString.*https://[^g]',
+            'WebClient.*Download',
+            'Start-BitsTransfer.*http://[^m]',
+            'Start-BitsTransfer.*https://[^g]'
+          )
+          
+          $allowedDomains = @(
+            'github.com',
+            'microsoft.com',
+            'githubusercontent.com',
+            'raw.githubusercontent.com',
+            'oo-software.com',
+            'geforce.com',
+            '7-zip.org'
+          )
+          
+          $issues = 0
+          foreach ($script in $scripts) {
+            Write-Host "Scanning: $script"
+            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            
+            # Extract URLs
+            $urlMatches = [regex]::Matches($content, 'https?://[^\s''"`]+')
+            foreach ($match in $urlMatches) {
+              $url = $match.Value
+              $isAllowed = $false
+              
+              foreach ($domain in $allowedDomains) {
+                if ($url -like "*$domain*") {
+                  $isAllowed = $true
+                  break
+                }
+              }
+              
+              if (-not $isAllowed) {
+                Write-Warning "Suspicious URL found in $script`: $url"
+                $issues++
+              }
+            }
+          }
+          
+          if ($issues -gt 0) {
+            Write-Warning "Found $issues potentially suspicious network calls. Please review."
+            # Don't fail, just warn - some legitimate downloads may exist
+          } else {
+            Write-Host "[+] No suspicious network calls detected"
+          }
+        shell: pwsh
+
+      - name: Check for credential exposure
+        run: |
+          Write-Host "Scanning for exposed credentials..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          $credentialPatterns = @(
+            'password\s*=\s*["'']',
+            'pwd\s*=\s*["'']',
+            'passwd\s*=\s*["'']',
+            'secret\s*=\s*["'']',
+            'api[_-]?key\s*=\s*["'']',
+            'token\s*=\s*["'']',
+            'Authorization.*Bearer\s+[A-Za-z0-9]{20,}',
+            'ConvertTo-SecureString.*-AsPlainText'
+          )
+          
+          $issues = 0
+          foreach ($script in $scripts) {
+            Write-Host "Scanning: $script"
+            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            
+            foreach ($pattern in $credentialPatterns) {
+              if ($content -match $pattern) {
+                Write-Warning "Potential credential exposure pattern found in $script`: $pattern"
+                $issues++
+              }
+            }
+          }
+          
+          if ($issues -gt 0) {
+            Write-Warning "Found $issues potential credential exposure patterns. Please review."
+            # Don't fail, just warn - some false positives may exist
+          } else {
+            Write-Host "[+] No credential exposure patterns detected"
+          }
+        shell: pwsh
+
+      - name: Check for malicious registry modifications
+        run: |
+          Write-Host "Scanning for malicious registry modifications..."
+          
+          $scripts = @(
+            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
+            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
+            "src/main/resources/scripts/Privacy Security/privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/security.ps1",
+            "src/main/resources/scripts/Services management/Services-Management.ps1"
+          )
+          
+          $maliciousPatterns = @(
+            'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run.*powershell.*hidden',
+            'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run.*powershell.*hidden',
+            'Startup.*powershell.*hidden',
+            'reg.*add.*Run.*powershell.*-WindowStyle.*Hidden',
+            'reg.*add.*Run.*cmd.*\/c.*powershell.*hidden'
+          )
+          
+          $issues = 0
+          foreach ($script in $scripts) {
+            Write-Host "Scanning: $script"
+            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            
+            foreach ($pattern in $maliciousPatterns) {
+              if ($content -match $pattern) {
+                Write-Error "Malicious registry modification pattern found in $script`: $pattern"
+                $issues++
+              }
+            }
+          }
+          
+          if ($issues -gt 0) {
+            Write-Error "Found $issues malicious registry modification patterns. These must be removed."
+            exit 1
+          } else {
+            Write-Host "[+] No malicious registry modification patterns detected"
+          }
+        shell: pwsh
+
+      - name: Security scan summary
+        run: |
+          Write-Host "========================================"
+          Write-Host "Security Scan Summary"
+          Write-Host "========================================"
+          Write-Host "[+] All security checks completed"
+          Write-Host "[+] No critical security issues found"
+        shell: pwsh

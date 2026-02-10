@@ -17,14 +17,29 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
-/**
- * Copies packaged script resources to a temporary directory so they can be executed
- * regardless of the current working directory or packaging format (jar/native image).
- */
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public final class ResourceExtractor {
+    // Thread-safe singleton: scripts are extracted once per session
     private static final AtomicReference<Path> scriptsDirectory = new AtomicReference<>();
+    private static final Logger LOGGER = LoggerFactory.getLogger(ResourceExtractor.class);
 
     private ResourceExtractor() {
+    }
+
+    // Clean up extracted temp scripts on JVM shutdown
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            Path dir = scriptsDirectory.get();
+            if (dir != null) {
+                try {
+                    deleteDirectory(dir);
+                } catch (IOException e) {
+                    LOGGER.warn("Failed to cleanup temp directory: {}", dir, e);
+                }
+            }
+        }));
     }
 
     public static Path prepareScriptsPath() {
@@ -39,17 +54,37 @@ public final class ResourceExtractor {
             scriptsDirectory.compareAndSet(null, tempDir);
             return scriptsDirectory.get();
         } catch (IOException | URISyntaxException e) {
+            LOGGER.error("Failed to prepare scripts directory.", e);
             throw new IllegalStateException("Failed to prepare scripts directory", e);
+        }
+    }
+
+    private static void deleteDirectory(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            return;
+        }
+
+        try (Stream<Path> paths = Files.walk(directory)) {
+            paths.sorted((a, b) -> b.compareTo(a)) 
+                 .forEach(path -> {
+                     try {
+                         Files.deleteIfExists(path);
+                     } catch (IOException e) {
+                         LOGGER.debug("Failed to delete temp file: {}", path, e);
+                     }
+                 });
         }
     }
 
     private static void copyScripts(Path targetDir) throws IOException, URISyntaxException {
         URL scriptsUrl = ResourceExtractor.class.getResource("/scripts");
         if (scriptsUrl == null) {
+            LOGGER.error("Scripts resource not found on classpath.");
             throw new IOException("Scripts resource not found on classpath.");
         }
 
         URI scriptsUri = scriptsUrl.toURI();
+        // jar = running from .jar, file = IDE/dev, fallback = GraalVM native image
         String scheme = scriptsUri.getScheme();
         if ("jar".equalsIgnoreCase(scheme)) {
             copyFromJar(scriptsUri, targetDir);
@@ -61,13 +96,11 @@ public final class ResourceExtractor {
             copyDirectory(scriptsPath, targetDir);
             return;
         }
-
-        // Fallback for runtime environments without a real filesystem (e.g., GraalVM native image).
+        // Native image: use index.txt manifest to locate resources
         copyFromIndex(targetDir);
     }
 
     private static void copyFromJar(URI scriptsUri, Path targetDir) throws IOException {
-        // Strip the !/scripts suffix to get the jar location
         String uriString = scriptsUri.toString();
         int separatorIndex = uriString.indexOf("!/");
         URI jarUri = separatorIndex > 0 ? URI.create(uriString.substring(0, separatorIndex)) : scriptsUri;
@@ -102,11 +135,13 @@ public final class ResourceExtractor {
             }
             try (var in = ResourceExtractor.class.getResourceAsStream("/scripts/" + relativePath)) {
                 if (in == null) {
+                    LOGGER.error("Missing resource: /scripts/{}", relativePath);
                     throw new IOException("Missing resource: /scripts/" + relativePath);
                 }
                 Files.copy(in, destination, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
+            LOGGER.error("Failed to copy resource: {}", relativePath, e);
             throw new RuntimeException("Failed to copy resource: " + relativePath, e);
         }
     }
@@ -127,6 +162,7 @@ public final class ResourceExtractor {
                         Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
                     }
                 } catch (IOException e) {
+                    LOGGER.error("Failed to copy resource: {}", path, e);
                     throw new RuntimeException("Failed to copy resource: " + path, e);
                 }
             });

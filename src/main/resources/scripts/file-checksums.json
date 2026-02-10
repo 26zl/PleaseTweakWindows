@@ -1,0 +1,38 @@
+{
+  "comment": "SHA256 checksums for scripts and downloaded files. Updated: 2026-01-18",
+  "version": "2.1.0",
+  "scripts": {
+    "CommonFunctions.ps1": "01F55CF8C68BE5D87829852C134497C0C3AD1916DB0BAEFA9BF526E4F06F88F3",
+    "Gaming optimizations/Gaming-Optimizations.ps1": "B01DD0841DAFD68B1455D5220BD81E71524EF6A62B9402E17CB4C628E2356BAF",
+    "Gaming optimizations/revert-gaming.ps1": "B60DEDBE5053B81088CB1246C374D48F5C22820FB51E599DF3BBED20C9D5A45F",
+    "Network optimizations/Network-Optimizations.ps1": "C8FDC294B75AE2C75F170AE876EEBDE148A4DF0C532F7E2E9056322B5DE4806B",
+    "Network optimizations/revert-network.ps1": "EFA3E81FC0875C5BFB678457F935FEC9312C7861D8E4285C6E5C30E9EECC9687",
+    "General Tweaks/General-Tweaks.ps1": "74BA5CD1C8F5CE807F209A327EFDE68A8EAB934574F46C0B544B2C19CEE9BA9E",
+    "General Tweaks/revert-general.ps1": "1CD8899688DFA3D38CB0335A8418B381B0CAA707612F0FF62628EC82DE7718A6",
+    "Privacy Security/privacy.ps1": "12109201AF270D2C28EB8C747E576A39ED9BE2B28FDACA7AE9CB373B2B31F686",
+    "Privacy Security/revert-privacy.ps1": "DBA50BD90CFC9C90F1FB41D892A3DA4A9EAC501AA38F554E3513B7AB14455536",
+    "Privacy Security/security.ps1": "8B46682FDB00090018D23FCC39BEE9C5403C3367948E730717857792DA20649E",
+    "Privacy Security/revert-security.ps1": "9394737253A6AB7861F6A874A4CFEDEC84E2B615AE58F71762BFF9497A26344F",
+    "Services management/Services-Management.ps1": "CE6953E427109D507727E1E07CEABDA6A2AF43EC77CEA13BDDBAEBF41F01E152",
+    "Services management/revert-services.ps1": "8877A1D792F6862BD37010569767AEFAF493D3A22BE21487A1A13787FA0C9376",
+    "create_restore_point.ps1": "BFBD1F9B346AC5F4DFEFD35218CD9E8E058C7E48A510702689735D8B432683E7"
+  },
+  "downloads": {
+    "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe": "DYNAMIC",
+    "https://aka.ms/vs/17/release/vc_redist.x64.exe": "DYNAMIC",
+    "https://aka.ms/vs/17/release/vc_redist.x86.exe": "DYNAMIC",
+    "https://download.sysinternals.com/files/Autoruns.zip": "DYNAMIC",
+    "https://aka.ms/GamingRepairTool": "DYNAMIC",
+    "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip": "5D692E812A701627EDD6D165D0B60175FF4F772C758A7DAC869D613E1BEB8063",
+    "https://github.com/FR33THYFR33THY/files/raw/main/AMD%20Driver.exe": "DYNAMIC",
+    "https://www.7-zip.org/a/7z2501-x64.exe": "DYNAMIC",
+    "https://github.com/FR33THYFR33THY/files/raw/main/DDU.zip": "DYNAMIC",
+    "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe": "DYNAMIC"
+  },
+  "notes": [
+    "DYNAMIC means the file changes frequently and checksum validation is skipped",
+    "Script checksums are updated automatically when scripts change",
+    "To regenerate: Get-FileHash -Algorithm SHA256 <file> | Select-Object -ExpandProperty Hash",
+    "TODO: Pin SHA256 hashes for remaining DYNAMIC downloads. DDU and AMD Driver still use FR33THYFR33THY (no stable official direct URL available)"
+  ]
+}
