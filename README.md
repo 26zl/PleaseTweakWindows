@@ -1,5 +1,10 @@
 # PleaseTweakWindows
 
+![Build](https://github.com/26zl/PleaseTweakWindows/actions/workflows/build.yml/badge.svg)
+![License](https://img.shields.io/github/license/26zl/PleaseTweakWindows)
+![Downloads](https://img.shields.io/github/downloads/26zl/PleaseTweakWindows/total)
+![Stars](https://img.shields.io/github/stars/26zl/PleaseTweakWindows)
+
 > **This project is currently under active development and testing. Use at your own risk.**
 
 Windows optimization tool for performance tuning, gaming, network, privacy, security, and system customization.
