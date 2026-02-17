@@ -438,11 +438,21 @@ foreach (`$app in `$apps) {
 
     "driver-clean" {
         Write-Output "[*] Installing DDU..."
-        Get-FileFromWeb -URL "https://github.com/FR33THYFR33THY/files/raw/main/DDU.zip" -File "$env:TEMP\DDU.zip"
-        Expand-Archive "$env:TEMP\DDU.zip" -DestinationPath "$env:TEMP\DDU" -Force -ErrorAction SilentlyContinue
+        $dduUrl = "https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.0.exe"
+        $dduExe = "$env:TEMP\DDU-setup.exe"
+        $dduDir = "$env:TEMP\DDU"
+        Get-FileFromWeb -URL $dduUrl -File $dduExe
+        # DDU distributes as a self-extracting 7z archive; extract with 7-Zip
+        $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
+        if (-not (Test-Path $sevenZip)) {
+            Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
+            Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
+        }
+        Remove-Item -Recurse -Force $dduDir -ErrorAction SilentlyContinue
+        cmd /c "`"$sevenZip`" x `"$dduExe`" -o`"$dduDir`" -y" | Out-Null
         $WshShell = New-Object -ComObject WScript.Shell
         $s = $WshShell.CreateShortcut("$Home\Desktop\Display Driver Uninstaller.lnk")
-        $s.TargetPath = "$env:TEMP\DDU\Display Driver Uninstaller.exe"
+        $s.TargetPath = "$dduDir\Display Driver Uninstaller.exe"
         $s.Save()
         Write-Output "[+] SUCCESS: DDU installed to Desktop"
         exit 0

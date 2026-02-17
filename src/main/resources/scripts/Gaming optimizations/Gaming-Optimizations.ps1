@@ -11,6 +11,7 @@ param(
         "nvidia-settings-on",
         "nvidia-settings-default",
         "nvidia-driver-install",
+        "amd-driver-install",
         "p0-state-on",
         "p0-state-default",
         "ulps-disable",
@@ -106,22 +107,48 @@ switch ($Action.ToLowerInvariant()) {
 
     "nvidia-driver-install" {
         Write-Output "[*] Finding latest NVIDIA driver..."
+        $nvidiaGpuKeys = Get-GpuClassKeysByVendor -Vendor "NVIDIA"
+        if (-not $nvidiaGpuKeys -or $nvidiaGpuKeys.Count -eq 0) {
+            Write-Output "[-] ERROR: No NVIDIA GPU detected. Cannot install NVIDIA driver."
+            exit 1
+        }
         Remove-Item -Recurse -Force "$env:TEMP\NvidiaDriver.exe" -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force "$env:TEMP\NvidiaDriver" -ErrorAction SilentlyContinue
-        $uri = 'https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=120&pfid=929&osID=57&languageCode=1033&isWHQL=1&dch=1&sort1=0&numberOfResults=1'
+        # Query NVIDIA API for latest Game Ready driver (psid=131 = GeForce RTX 50 Series, pfid=1066 = RTX 5090)
+        # The returned driver is universal and supports all modern GeForce GPUs (RTX 50/40/30/20, GTX 16)
+        $uri = 'https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=131&pfid=1066&osID=57&languageCode=1033&isWHQL=1&dch=1&sort1=0&numberOfResults=1'
         $response = Invoke-WebRequest -Uri $uri -Method GET -UseBasicParsing
         $payload = $response.Content | ConvertFrom-Json
         $version = $payload.IDS[0].downloadInfo.Version
-        $windowsVersion = if ([Environment]::OSVersion.Version -ge (New-Object 'Version' 9,1)) {"win10-win11"} else {"win8-win7"}
-        $windowsArchitecture = if ([Environment]::Is64BitOperatingSystem) {"64bit"} else {"32bit"}
-        $url = "https://international.download.nvidia.com/Windows/$version/$version-desktop-$windowsVersion-$windowsArchitecture-international-dch-whql.exe"
+        $url = $payload.IDS[0].downloadInfo.DownloadURL
+        if (-not $url) {
+            Write-Output "[-] ERROR: Could not retrieve NVIDIA driver download URL from API."
+            exit 1
+        }
         Write-Output "[*] Downloading NVIDIA Driver $version..."
         Get-FileFromWeb -URL $url -File "$env:TEMP\NvidiaDriver.exe"
-        Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
-        Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
-        cmd /c "`"C:\Program Files\7-Zip\7z.exe`" x `"$env:TEMP\NvidiaDriver.exe`" -o`"$env:TEMP\NvidiaDriver`" -y" | Out-Null
+        $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
+        if (-not (Test-Path $sevenZip)) {
+            Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
+            Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
+        }
+        cmd /c "`"$sevenZip`" x `"$env:TEMP\NvidiaDriver.exe`" -o`"$env:TEMP\NvidiaDriver`" -y" | Out-Null
         Start-Process "$env:TEMP\NvidiaDriver\setup.exe"
         Write-Output "[+] SUCCESS: NVIDIA Driver installer launched"
+        exit 0
+    }
+
+    "amd-driver-install" {
+        Write-Output "[*] Opening AMD driver download page..."
+        $amdGpuKeys = Get-GpuClassKeysByVendor -Vendor "AMD"
+        if (-not $amdGpuKeys -or $amdGpuKeys.Count -eq 0) {
+            Write-Output "[-] ERROR: No AMD GPU detected. Cannot install AMD driver."
+            exit 1
+        }
+        # AMD has no public API for driver lookups. Open the official download page
+        # which always offers the latest Auto-Detect installer.
+        Start-Process "https://www.amd.com/en/support/download/drivers.html"
+        Write-Output "[+] SUCCESS: AMD driver download page opened - click 'Download Windows Drivers' to get the latest installer"
         exit 0
     }
 
@@ -284,9 +311,12 @@ switch ($Action.ToLowerInvariant()) {
     "directx-install" {
         Write-Output "[*] Installing DirectX Runtime..."
         Get-FileFromWeb -URL "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe" -File "$env:TEMP\DirectX.exe"
-        Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
-        Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
-        cmd /c "`"C:\Program Files\7-Zip\7z.exe`" x `"$env:TEMP\DirectX.exe`" -o`"$env:TEMP\DirectX`" -y" | Out-Null
+        $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
+        if (-not (Test-Path $sevenZip)) {
+            Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
+            Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
+        }
+        cmd /c "`"$sevenZip`" x `"$env:TEMP\DirectX.exe`" -o`"$env:TEMP\DirectX`" -y" | Out-Null
         Start-Process "$env:TEMP\DirectX\DXSETUP.exe"
         Write-Output "[+] SUCCESS: DirectX installer launched"
         exit 0

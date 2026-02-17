@@ -346,11 +346,8 @@ function Get-FileFromWeb {
     # Auto-load hash from file-checksums.json if not provided
     if (-not $ExpectedHash) {
         $ExpectedHash = Get-ChecksumFromFile -URL $URL
-        # If hash is marked as REQUIRED, warn but allow download (hash will be verified if provided later)
         if ($ExpectedHash -eq "REQUIRED") {
-            Write-Warning "SECURITY WARNING: Hash verification is REQUIRED for this file but no hash was found in file-checksums.json. URL: $URL"
-            Write-Warning "This file will be downloaded WITHOUT hash verification. Update file-checksums.json with actual SHA256 hash before release."
-            $ExpectedHash = $null  # Clear REQUIRED marker to allow download
+            throw "SECURITY: Hash verification is REQUIRED for $URL but no hash found in file-checksums.json. Update the file with actual SHA256 hash."
         }
     }
 
@@ -371,7 +368,9 @@ function Get-FileFromWeb {
         'oo-software.com',
         'geforce.com',
         'nvidia.com',
-        '7-zip.org'
+        '7-zip.org',
+        'wagnardsoft.com',
+        'amd.com'
     )
 
     # Use exact domain matching to prevent bypass via subdomain attacks
@@ -409,20 +408,7 @@ function Get-FileFromWeb {
     # require explicit hash verification to prevent supply-chain attacks
     $isThirdParty = $hostname -like "*.githubusercontent.com" -or $hostname -like "*.github.com"
     if ($isThirdParty -and -not $ExpectedHash) {
-        Write-Warning "SECURITY WARNING: Downloading from third-party source without hash verification!"
-        Write-Warning "This file will NOT be verified for integrity. Supply-chain attacks are possible."
-
-        # In embedded mode (GUI), auto-accept third-party downloads with warning
-        if ($env:PTW_EMBEDDED -eq '1') {
-            Write-Warning "Auto-accepting unverified download in GUI mode (PTW_EMBEDDED=1)"
-            Write-Warning "Proceeding without verification (NOT RECOMMENDED)"
-        } else {
-            $response = Read-Host "Continue without verification? (y/n)"
-            if ($response -ne 'y') {
-                throw "Download cancelled - hash verification required for third-party sources"
-            }
-            Write-Warning "Proceeding without verification (NOT RECOMMENDED)"
-        }
+        throw "SECURITY: Unverified third-party download blocked. Add SHA256 hash to file-checksums.json for: $URL"
     }
 
     function Show-Progress {

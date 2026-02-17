@@ -2,12 +2,12 @@
   "comment": "SHA256 checksums for scripts and downloaded files. Updated: 2026-01-18",
   "version": "2.1.0",
   "scripts": {
-    "CommonFunctions.ps1": "01F55CF8C68BE5D87829852C134497C0C3AD1916DB0BAEFA9BF526E4F06F88F3",
-    "Gaming optimizations/Gaming-Optimizations.ps1": "B01DD0841DAFD68B1455D5220BD81E71524EF6A62B9402E17CB4C628E2356BAF",
+    "CommonFunctions.ps1": "60B237DB088A447A42F911DA80392EEF1E53F2CF62052AA3155EE61984D5A1DF",
+    "Gaming optimizations/Gaming-Optimizations.ps1": "3B63693B5F6683BF1542E011E8168E97F72BC75CE4963CE9463C4F22BEBDC165",
     "Gaming optimizations/revert-gaming.ps1": "B60DEDBE5053B81088CB1246C374D48F5C22820FB51E599DF3BBED20C9D5A45F",
     "Network optimizations/Network-Optimizations.ps1": "C8FDC294B75AE2C75F170AE876EEBDE148A4DF0C532F7E2E9056322B5DE4806B",
     "Network optimizations/revert-network.ps1": "EFA3E81FC0875C5BFB678457F935FEC9312C7861D8E4285C6E5C30E9EECC9687",
-    "General Tweaks/General-Tweaks.ps1": "74BA5CD1C8F5CE807F209A327EFDE68A8EAB934574F46C0B544B2C19CEE9BA9E",
+    "General Tweaks/General-Tweaks.ps1": "96EC0BC70AC6AA14A82B642289B3634948DA4DB909D16A39FB8F318799234FCC",
     "General Tweaks/revert-general.ps1": "1CD8899688DFA3D38CB0335A8418B381B0CAA707612F0FF62628EC82DE7718A6",
     "Privacy Security/privacy.ps1": "12109201AF270D2C28EB8C747E576A39ED9BE2B28FDACA7AE9CB373B2B31F686",
     "Privacy Security/revert-privacy.ps1": "DBA50BD90CFC9C90F1FB41D892A3DA4A9EAC501AA38F554E3513B7AB14455536",
@@ -25,7 +25,7 @@
     "https://aka.ms/GamingRepairTool": "DYNAMIC",
     "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip": "5D692E812A701627EDD6D165D0B60175FF4F772C758A7DAC869D613E1BEB8063",
     "https://www.7-zip.org/a/7z2501-x64.exe": "DYNAMIC",
-    "https://github.com/FR33THYFR33THY/files/raw/main/DDU.zip": "DYNAMIC",
+    "https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.0.exe": "E03D19810750E5D6C07F3534EE06BEC6CE7EF9B45BE752B2803C6A20768A7917",
     "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe": "DYNAMIC",
     "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/304fddef-b073-4e0a-b1ff-c2ea02584017/MicrosoftEdgeWebview2Setup.exe": "DYNAMIC"
   },
@@ -33,6 +33,6 @@
     "DYNAMIC means the file changes frequently and checksum validation is skipped",
     "Script checksums are updated automatically when scripts change",
     "To regenerate: Get-FileHash -Algorithm SHA256 <file> | Select-Object -ExpandProperty Hash",
-    "TODO: Pin SHA256 hashes for remaining DYNAMIC downloads. DDU and AMD Driver still use FR33THYFR33THY (no stable official direct URL available)"
+    "TODO: Pin SHA256 hashes for remaining DYNAMIC downloads where stable URLs are available"
   ]
 }
