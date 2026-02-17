@@ -112,6 +112,7 @@ jobs:
       - name: Verify index.txt
         run: |
           $indexFile = "src/main/resources/scripts/index.txt"
+          $scriptsDir = "src/main/resources/scripts"
           if (-not (Test-Path $indexFile)) {
             Write-Error "index.txt not found"
             exit 1
