@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate-scripts:
@@ -290,11 +290,18 @@ jobs:
           $allowedDomains = @(
             'github.com',
             'microsoft.com',
+            'aka.ms',
             'githubusercontent.com',
+            'sysinternals.com',
             'oo-software.com',
             'geforce.com',
             'nvidia.com',
-            '7-zip.org'
+            '7-zip.org',
+            'wagnardsoft.com',
+            'amd.com',
+            'cloudflare-dns.com',
+            'dns.google',
+            'dns.quad9.net'
           )
 
           $issues = 0
@@ -330,8 +337,8 @@ jobs:
           }
 
           if ($issues -gt 0) {
-            Write-Warning "Found $issues potentially suspicious network calls. Please review."
-            # Don't fail, just warn - some legitimate downloads may exist
+            Write-Error "Found $issues potentially suspicious network calls."
+            exit 1
           } else {
             Write-Host "[+] No suspicious network calls detected"
           }
@@ -368,8 +375,8 @@ jobs:
           }
 
           if ($issues -gt 0) {
-            Write-Warning "Found $issues potential credential exposure patterns. Please review."
-            # Don't fail, just warn - some false positives may exist
+            Write-Error "Found $issues potential credential exposure patterns."
+            exit 1
           } else {
             Write-Host "[+] No credential exposure patterns detected"
           }
@@ -860,6 +867,8 @@ jobs:
     runs-on: windows-latest
     needs: build-exe
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository

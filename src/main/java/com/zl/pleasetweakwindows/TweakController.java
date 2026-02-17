@@ -37,6 +37,10 @@ public class TweakController {
                 "nvidia-driver-install",
                 "Install/update NVIDIA driver or NvCleanInstall"));
 
+        gaming.addSubTweak(new SubTweak("AMD Driver",
+                "amd-driver-install",
+                "Install/update AMD Radeon driver"));
+
         gaming.addSubTweak(new SubTweak("P0 State Nvidia", SubTweak.SubTweakType.TOGGLE,
                 "p0-state-on", "p0-state-default",
                 "Force maximum GPU performance state (disable dynamic P-states)"));

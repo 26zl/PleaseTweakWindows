@@ -47,7 +47,8 @@ public class DialogUtils {
         "security-always-install-elevated-disable",
         "security-sehop-enable",
         "security-ps2-downgrade-protection-enable",
-        "security-wcn-disable"
+        "security-wcn-disable",
+        "amd-driver-install"
     );
 
     // Subset with stronger warning text
@@ -197,6 +198,10 @@ public class DialogUtils {
             case "ui-hibernation-disable" ->
                 "'" + actionName + "' will disable hibernation.\n\n" +
                 "This removes hiberfil.sys and may affect Fast Startup and sleep behavior.";
+            case "amd-driver-install" ->
+                "AMD's driver download page will open in your browser.\n\n" +
+                "Click 'Download Windows Drivers' on the AMD page to get the latest Auto-Detect installer.\n" +
+                "The installer will detect your GPU and download the correct driver.";
             default -> 
                 "'" + actionName + "' will make changes to your system.\n\n" +
                 "Are you sure you want to proceed?";

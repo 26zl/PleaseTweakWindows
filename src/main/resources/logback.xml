@@ -44,6 +44,7 @@
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>${LOG_DIR}/${APP_NAME}-error-%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>90</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
         </rollingPolicy>
     </appender>
 
