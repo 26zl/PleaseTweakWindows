@@ -11,6 +11,8 @@ param(
     [string]$Mode = 'RevertAndRepair'
 )
 
+$script:ScriptVersion = "2.1.0"
+
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
@@ -45,6 +47,8 @@ if ($doRevert -or $doRepair) {
     if (-not (Test-Path $regPath)) {
         Write-PTWError "Registry file not found: $regPath"
         Write-Output "        No changes were applied."
+        $global:LASTEXITCODE = 1
+        return
     } else {
         Import-RegistryFile -RegFile $regPath | Out-Null
         Write-PTWSuccess "Services restored to Windows defaults"

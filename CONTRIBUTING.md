@@ -8,7 +8,7 @@ Thanks for your interest in contributing. This guide covers everything you need 
 - **Maven 3.9.9+**
 - **GraalVM Native Image** (for building the .exe)
 - **Windows 10/11** (scripts only work on Windows)
-- **PowerShell 5.1+** (7+ recommended)
+- **Windows PowerShell 5.1** (built-in, the app does not use PowerShell 7)
 
 ## Getting Started
 
@@ -22,7 +22,7 @@ mvn test
 
 | Command | What it does |
 | --- | --- |
-| `mvn test` | Run all 34 unit tests |
+| `mvn test` | Run all unit tests |
 | `mvn javafx:run` | Run the app in dev mode |
 | `mvn clean package -Pnative` | Build native .exe |
 | `Build.bat` | Full build + distribution ZIP |
@@ -33,23 +33,28 @@ mvn test
 
 ```text
 src/main/java/com/zl/pleasetweakwindows/
-    Main.java               JavaFX entry point
-    TweakController.java    Tweak/SubTweak definitions
+    Main.java               JavaFX entry point, window chrome, close handling
+    TweakController.java    Tweak/SubTweak definitions (6 categories)
+    Tweak.java              Category data model
+    SubTweak.java           Individual action data model (TOGGLE / BUTTON)
     UiLogic.java            Accordion UI + button handlers
-    Executor.java           Script runner (4-thread pool)
-    ResourceExtractor.java  Extracts scripts to temp dir
-    DialogUtils.java        Confirmation dialogs
+    Executor.java           Script runner (4-thread pool, cancellation)
+    ResourceExtractor.java  Extracts scripts to temp dir on startup
+    DialogUtils.java        Confirmation dialogs for destructive actions
     RestorePointGuard.java  Restore point prompt (once per session)
+    UpdateChecker.java      GitHub release checker (async, non-blocking)
+    ProcessRunner.java      Process abstraction interface (for testability)
+    ProcessRunnerFactory.java  Factory interface for ProcessRunner
 
 src/main/resources/scripts/
-    CommonFunctions.ps1     Shared utilities (registry, downloads, logging)
-    index.txt               Resource manifest for native image
+    CommonFunctions.ps1     Shared utilities (registry, downloads, GPU helpers, transactions)
+    index.txt               Resource manifest for native image embedding
     file-checksums.json     SHA256 hashes for downloaded files
-    Gaming optimizations/   Gaming-Optimizations.ps1 + revert-gaming.ps1
-    Network optimizations/  Network-Optimizations.ps1 + revert-network.ps1
-    General Tweaks/         General-Tweaks.ps1 + revert-general.ps1
-    Privacy Security/       privacy.ps1, security.ps1 + reverts
-    Services management/    Services-Management.ps1 + revert-services.ps1
+    Gaming optimizations/   Gaming-Optimizations.ps1 (apply + revert via -Action), revert-gaming.ps1
+    Network optimizations/  Network-Optimizations.ps1 (apply + revert via -Action), revert-network.ps1
+    General Tweaks/         General-Tweaks.ps1 (apply + revert via -Action), revert-general.ps1 + regs/
+    Privacy Security/       privacy.ps1 + revert-privacy.ps1, security.ps1 + revert-security.ps1, regs/
+    Services management/    Services-Management.ps1 (apply + revert via -Action), revert-services.ps1 + regs/
 ```
 
 ## Adding a New Tweak
@@ -80,7 +85,8 @@ src/main/resources/scripts/
 
 ### Revert Scripts
 
-- Accept `-Mode <Revert|Repair|RevertAndRepair>` parameter
+- Most accept `-Mode <Revert|Repair|RevertAndRepair>` parameter (default `RevertAndRepair`).
+- `revert-privacy.ps1` and `revert-security.ps1` also accept `-Action` for individual sub-tweak reverts.
 - Require `#Requires -RunAsAdministrator`
 - Dot-source `CommonFunctions.ps1`
 
@@ -94,10 +100,11 @@ src/main/resources/scripts/
 
 Use functions from `CommonFunctions.ps1` instead of defining local copies:
 
-- `Set-RegDword`, `Set-RegSz`, `Remove-RegValue`, `Remove-RegKey`
-- `Get-FileFromWeb` (secure download with checksum verification)
+- `Set-RegDword`, `Set-RegSz`, `Set-RegValueSafe`, `Remove-RegValue`, `Remove-RegKey`
+- `Set-RegValueSafeTx`, `Start-PTWTransaction`, `Undo-PTWTransaction`, `Stop-PTWTransaction` (transactional registry ops)
+- `Get-FileFromWeb` (secure download with domain whitelist + SHA256 checksum verification)
 - `Write-PTWSuccess`, `Write-PTWWarning`, `Write-PTWError`, `Write-PTWLog`
-- `Get-ActiveAdapter`, `Import-RegistryFile`, `Wait-ForUser`
+- `Get-ActiveAdapter`, `Get-GpuClassKeysByVendor`, `Import-RegistryFile`, `Wait-ForUser`
 
 ## Java Conventions
 
@@ -108,13 +115,15 @@ Use functions from `CommonFunctions.ps1` instead of defining local copies:
 
 ## CI Checks
 
-All of these must pass before merging:
+All checks are in a single workflow (`build.yml`) with 5 jobs. All must pass before merging:
 
-| Workflow | What it checks |
+| Job | What it checks |
 | --- | --- |
-| **build.yml** | Script syntax, structure, index.txt consistency, native build |
-| **functionality-test.yml** | PSScriptAnalyzer, non-interactive architecture, Java-PS action ID match |
-| **security.yml** | Obfuscated code, credential exposure, security feature disabling, suspicious URLs |
+| **validate-scripts** | PowerShell syntax, parameter structure, `index.txt` consistency, `$script:ScriptVersion` |
+| **security-scan** | Obfuscated code, credential exposure, security feature disabling, suspicious URLs, hardcoded paths |
+| **functional-testing** | PSScriptAnalyzer, non-interactive architecture (no `Read-Host`), Java-to-PowerShell action ID match, revert script structure |
+| **build-exe** | Maven tests, Windows resource compilation (`rc.exe`), GraalVM native image build |
+| **create-release** | Distribution ZIP + GitHub release (main branch only) |
 
 ### PSScriptAnalyzer
 
@@ -130,7 +139,7 @@ Runs on all `.ps1` files. Errors fail the build, warnings are reported. Excluded
 mvn test
 ```
 
-Tests cover: `Executor` (command building, cancellation, validation), `DialogUtils`, `TweakController`, `SubTweak`, `ResourceExtractor`, `Tweak`.
+Tests cover: `Executor` (command building, cancellation, validation, integration), `DialogUtils`, `TweakController` (definitions + path resolution), `SubTweak`, `Tweak`, `ResourceExtractor` (extraction + idempotency), `UpdateChecker` (version comparison + JSON parsing), `ActionIdConsistency` (Java-to-PowerShell ID match).
 
 If you add new Java functionality, add corresponding tests in `src/test/java/`.
 

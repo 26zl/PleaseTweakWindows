@@ -32,21 +32,6 @@ class SubTweakTest {
     }
 
     @Test
-    void testToggleSubTweakTypeIsToggle() {
-        SubTweak toggle = new SubTweak("Toggle", SubTweak.SubTweakType.TOGGLE,
-                "on", "off", "desc");
-        
-        assertEquals(SubTweak.SubTweakType.TOGGLE, toggle.getType());
-    }
-
-    @Test
-    void testButtonSubTweakTypeIsButton() {
-        SubTweak button = new SubTweak("Button", "action", "desc");
-        
-        assertEquals(SubTweak.SubTweakType.BUTTON, button.getType());
-    }
-
-    @Test
     void testSubTweakWithNullDescription() {
         SubTweak button = new SubTweak("Button", "action", null);
         

@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,16 +25,23 @@ import org.junit.jupiter.api.Test;
 class ExecutorCommandBuildTest {
 
     private final List<List<String>> capturedCommands = new ArrayList<>();
+    private Executor executor;
+
+    @BeforeEach
+    void setUp() {
+        executor = new Executor();
+    }
 
     @AfterEach
-    void resetFactory() {
-        Executor.resetProcessRunnerFactory();
+    void tearDown() {
+        executor.resetProcessRunnerFactory();
         capturedCommands.clear();
+        executor.shutdown();
     }
 
     @Test
     void buildsPowerShellCommandWithActionForConsolidatedScripts() {
-        Executor.setProcessRunnerFactory(cmd -> new FakeProcessRunner(cmd, capturedCommands));
+        executor.setProcessRunnerFactory(cmd -> new FakeProcessRunner(cmd, capturedCommands));
 
         CountDownLatch done = new CountDownLatch(1);
         // Use a real existing script path to pass validation, but process start is stubbed.
@@ -42,7 +50,7 @@ class ExecutorCommandBuildTest {
                 .resolve("Gaming-Optimizations.ps1")
                 .toString();
 
-        Executor.runScript(realScriptPath, null, done::countDown, "nvidia-settings-on");
+        executor.runScript(realScriptPath, null, done::countDown, "nvidia-settings-on");
         try {
             done.await(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
@@ -61,12 +69,10 @@ class ExecutorCommandBuildTest {
     }
 
     private static class FakeProcessRunner implements ProcessRunner {
-        private final List<String> command;
         private final Map<String, String> env = new HashMap<>();
 
         FakeProcessRunner(List<String> command, List<List<String>> capture) {
-            this.command = new ArrayList<>(command);
-            capture.add(this.command);
+            capture.add(new ArrayList<>(command));
         }
 
         @Override

@@ -42,10 +42,26 @@ switch ($Action.ToLowerInvariant()) {
         Write-Output "[*] Applying Services Optimization (Minimal)..."
         Write-Output "[!] NOTE: Wi-Fi and Bluetooth may not work with minimal services"
         $regPath = Join-Path $PSScriptRoot "regs\servicesTweaked.reg"
+        $defaultRegPath = Join-Path $PSScriptRoot "regs\servicesDefault.reg"
         if (Test-Path $regPath) {
-            Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$regPath`"" -Wait -NoNewWindow
-            Start-Sleep -Seconds 2
-            Write-Output "[+] SUCCESS: Services optimization applied (restart required)"
+            try {
+                $proc = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$regPath`"" -Wait -PassThru -NoNewWindow
+                if ($proc.ExitCode -ne 0) {
+                    throw "regedit.exe exited with code $($proc.ExitCode)"
+                }
+                Start-Sleep -Seconds 2
+                Write-Output "[+] SUCCESS: Services optimization applied (restart required)"
+            } catch {
+                Write-Output "[-] ERROR during services optimization: $($_.Exception.Message)"
+                Write-Output "[!] Attempting rollback with default services registry..."
+                if (Test-Path $defaultRegPath) {
+                    Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$defaultRegPath`"" -Wait -NoNewWindow
+                    Write-Output "[+] Rollback applied. Restart to restore defaults."
+                } else {
+                    Write-Output "[-] Rollback file not found: $defaultRegPath"
+                }
+                exit 1
+            }
         } else {
             Write-Output "[-] ERROR: Registry file not found: $regPath"
             exit 1

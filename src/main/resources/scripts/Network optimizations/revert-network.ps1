@@ -11,6 +11,8 @@ param(
     [string]$Mode = 'RevertAndRepair'
 )
 
+$script:ScriptVersion = "2.1.0"
+
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {

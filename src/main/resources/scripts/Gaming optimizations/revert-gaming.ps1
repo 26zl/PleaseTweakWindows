@@ -11,6 +11,8 @@ param(
     [string]$Mode = 'RevertAndRepair'
 )
 
+$script:ScriptVersion = "2.1.0"
+
 function Set-ServiceStartIfPresent {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -39,7 +41,7 @@ function Confirm-Inspector {
 
     if (Test-Path $InspectorPath) { return $true }
 
-    $drsPath = "C:\ProgramData\NVIDIA Corporation\Drs"
+    $drsPath = "$env:ProgramData\NVIDIA Corporation\Drs"
     if (Test-Path $drsPath) {
         Get-ChildItem -Path $drsPath -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
     }
@@ -235,7 +237,7 @@ if ($doRepair) {
     Register-AppxIfPresent -NameLike "*Microsoft.XboxIdentityProvider*"
     Register-AppxIfPresent -NameLike "*Microsoft.XboxSpeechToTextOverlay*"
     Register-AppxIfPresent -NameLike "*Microsoft.WindowsStore*"
-    Register-AppxIfPresent -NameLike "*Microsoft.Microsoft.StorePurchaseApp*"
+    Register-AppxIfPresent -NameLike "*Microsoft.StorePurchaseApp*"
     Write-PTWSuccess "Xbox & gaming apps processed"
 
     # Edge WebView

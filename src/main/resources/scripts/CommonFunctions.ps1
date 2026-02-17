@@ -164,6 +164,79 @@ function Set-RegistryDefaultValueSafe {
 }
 #endregion
 
+#region Transaction Support
+function Start-PTWTransaction {
+    $script:PTWTransactionEntries = @()
+    Write-Verbose "PTW Transaction started"
+}
+
+function Save-RegState {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name
+    )
+    $entry = @{ Path = $Path; Name = $Name; Existed = $false; PreviousValue = $null; PreviousType = $null }
+    try {
+        if (Test-Path -LiteralPath $Path) {
+            $prop = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+            if ($null -ne $prop -and $null -ne $prop.$Name) {
+                $entry.Existed = $true
+                $entry.PreviousValue = $prop.$Name
+                $item = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+                if ($item) {
+                    $entry.PreviousType = $item.GetValueKind($Name).ToString()
+                }
+            }
+        }
+    } catch {
+        Write-Verbose "Save-RegState: Could not read ${Path}\${Name}: $($_.Exception.Message)"
+    }
+    $script:PTWTransactionEntries += $entry
+}
+
+function Set-RegValueSafeTx {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][ValidateSet('DWord','String')][string]$Type,
+        [Parameter(Mandatory)]$Value
+    )
+    Save-RegState -Path $Path -Name $Name
+    Set-RegValueSafe -Path $Path -Name $Name -Type $Type -Value $Value
+}
+
+function Undo-PTWTransaction {
+    if (-not $script:PTWTransactionEntries) {
+        Write-Verbose "No transaction entries to undo"
+        return
+    }
+    Write-Output "[!] Rolling back registry changes..."
+    $reversed = @($script:PTWTransactionEntries)
+    [Array]::Reverse($reversed)
+    foreach ($entry in $reversed) {
+        try {
+            if ($entry.Existed) {
+                $type = if ($entry.PreviousType -eq 'DWord') { 'DWord' } else { 'String' }
+                Set-RegValueSafe -Path $entry.Path -Name $entry.Name -Type $type -Value $entry.PreviousValue
+                Write-Verbose "Restored: $($entry.Path)\$($entry.Name)"
+            } else {
+                Remove-RegValueSafe -Path $entry.Path -Name $entry.Name
+                Write-Verbose "Removed new value: $($entry.Path)\$($entry.Name)"
+            }
+        } catch {
+            Write-Warning "Rollback failed for $($entry.Path)\$($entry.Name): $($_.Exception.Message)"
+        }
+    }
+    Write-Output "[+] Rollback completed ($($reversed.Count) entries)"
+}
+
+function Stop-PTWTransaction {
+    $script:PTWTransactionEntries = $null
+    Write-Verbose "PTW Transaction stopped"
+}
+#endregion
+
 #region GPU Registry Helpers
 function Get-GpuClassKeysByVendor {
     param(
@@ -297,6 +370,7 @@ function Get-FileFromWeb {
         'download.sysinternals.com',
         'oo-software.com',
         'geforce.com',
+        'nvidia.com',
         '7-zip.org'
     )
 
@@ -371,7 +445,6 @@ function Get-FileFromWeb {
         $request = [System.Net.HttpWebRequest]::Create($URL)
         $request.UserAgent = "PleaseTweakWindows/1.0"
         $response = $request.GetResponse()
-        if ($response.StatusCode -eq 401 -or $response.StatusCode -eq 403 -or $response.StatusCode -eq 404) { throw "Remote file either doesn't exist, is unauthorized, or is forbidden for '$URL'." }
         if ($File -match '^\.\\') { $File = Join-Path (Get-Location -PSProvider 'FileSystem') ($File -Split '^\.')[1] }
         if ($File -and !(Split-Path $File)) { $File = Join-Path (Get-Location -PSProvider 'FileSystem') $File }
         if ($File) { $fileDirectory = $([System.IO.Path]::GetDirectoryName($File)); if (!(Test-Path($fileDirectory))) { [System.IO.Directory]::CreateDirectory($fileDirectory) | Out-Null } }
@@ -384,9 +457,9 @@ function Get-FileFromWeb {
             $count = $reader.Read($buffer, 0, $buffer.Length)
             $writer.Write($buffer, 0, $count)
             $total += $count
-            if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $total -ProgressText " $($File.Name)" }
+            if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $total -ProgressText " $([System.IO.Path]::GetFileName($File))" }
         } while ($count -gt 0)
-        if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $fullSize -ProgressText " $($File.Name)" -Complete }
+        if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $fullSize -ProgressText " $([System.IO.Path]::GetFileName($File))" -Complete }
 
         # Verify checksum if provided, or compute and cache for dynamic files
         $actualHash = (Get-FileHash -Path $File -Algorithm SHA256).Hash

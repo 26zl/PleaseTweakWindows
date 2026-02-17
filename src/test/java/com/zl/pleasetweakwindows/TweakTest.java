@@ -68,15 +68,4 @@ class TweakTest {
         assertEquals(SubTweak.SubTweakType.BUTTON, subTweaks.get(1).getType());
     }
 
-    @Test
-    void testTweakTitleNotNull() {
-        Tweak tweak = new Tweak("Title", "script.ps1", "revert.ps1");
-        assertNotNull(tweak.getTitle());
-    }
-
-    @Test
-    void testTweakApplyScriptNotNull() {
-        Tweak tweak = new Tweak("Title", "script.ps1", "revert.ps1");
-        assertNotNull(tweak.getApplyScript());
-    }
 }

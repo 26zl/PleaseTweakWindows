@@ -42,7 +42,7 @@ public final class ResourceExtractor {
         }));
     }
 
-    public static Path prepareScriptsPath() {
+    public static synchronized Path prepareScriptsPath() {
         Path existing = scriptsDirectory.get();
         if (existing != null) {
             return existing;
@@ -51,8 +51,8 @@ public final class ResourceExtractor {
         try {
             Path tempDir = Files.createTempDirectory("pleasetweakwindows-scripts");
             copyScripts(tempDir);
-            scriptsDirectory.compareAndSet(null, tempDir);
-            return scriptsDirectory.get();
+            scriptsDirectory.set(tempDir);
+            return tempDir;
         } catch (IOException | URISyntaxException e) {
             LOGGER.error("Failed to prepare scripts directory.", e);
             throw new IllegalStateException("Failed to prepare scripts directory", e);
@@ -106,19 +106,30 @@ public final class ResourceExtractor {
         URI jarUri = separatorIndex > 0 ? URI.create(uriString.substring(0, separatorIndex)) : scriptsUri;
 
         FileSystem fileSystem;
+        boolean ownedFileSystem = false;
         try {
             fileSystem = FileSystems.newFileSystem(jarUri, Map.of());
+            ownedFileSystem = true;
         } catch (FileSystemAlreadyExistsException e) {
             fileSystem = FileSystems.getFileSystem(jarUri);
         }
 
-        Path scriptsPath = fileSystem.getPath("scripts");
-        copyDirectory(scriptsPath, targetDir);
+        try {
+            Path scriptsPath = fileSystem.getPath("scripts");
+            copyDirectory(scriptsPath, targetDir);
+        } finally {
+            if (ownedFileSystem) {
+                fileSystem.close();
+            }
+        }
     }
 
     private static void copyFromIndex(Path targetDir) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                ResourceExtractor.class.getResourceAsStream("/scripts/index.txt")))) {
+        var stream = ResourceExtractor.class.getResourceAsStream("/scripts/index.txt");
+        if (stream == null) {
+            throw new IOException("Script manifest not found: /scripts/index.txt");
+        }
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
             reader.lines().forEach(relativePath -> copySingleResource(relativePath, targetDir));
         }
     }

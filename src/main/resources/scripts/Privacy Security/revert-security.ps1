@@ -18,6 +18,8 @@ param(
     [string]$Action = ''
 )
 
+$script:ScriptVersion = "2.1.0"
+
 # Dot-source common functions
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"

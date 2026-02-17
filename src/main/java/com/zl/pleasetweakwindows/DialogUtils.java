@@ -25,20 +25,18 @@ public class DialogUtils {
         "cleanup-run",
         "registry-apply",
         "tls-hardening",
+        "firewall-hardening",
         "smart-optimize-aggressive",
         "ui-online-content-disable",
         "ui-secure-recent-docs",
         "ui-remove-this-pc-folders",
         "ui-lock-screen-notifications-disable",
-        "ui-live-tiles-disable",
         "ui-store-open-with-disable",
         "ui-quick-access-recent-disable",
         "ui-sync-provider-notifications-disable",
         "ui-hibernation-disable",
         "ui-camera-osd-enable",
-        "ui-app-usage-tracking-disable",
-        "ui-recent-apps-disable",
-        "ui-backtracking-disable",
+        "copilot-disable",
         "security-improve-network",
         "security-clipboard-data-disable",
         "security-spectre-meltdown-enable",
@@ -173,6 +171,10 @@ public class DialogUtils {
             case "tls-hardening" -> 
                 "'" + actionName + "' will disable legacy TLS/SSL protocols.\n\n" +
                 "WARNING: This may break connectivity with older websites, VPNs, or enterprise systems.";
+            case "firewall-hardening" ->
+                "'" + actionName + "' will modify Windows Firewall policies.\n\n" +
+                "This changes default inbound/outbound rules for all profiles. " +
+                "Some applications may be blocked.";
             case "security-improve-network" ->
                 "'" + actionName + "' will harden SMB/NetBIOS and disable legacy network components.\n\n" +
                 "This may affect file sharing, remote access, or older devices on your network.";
@@ -186,6 +188,9 @@ public class DialogUtils {
                 "'" + actionName + "' applies aggressive network adapter changes.\n\n" +
                 "It may disable Flow Control/Jumbo Frames and force Interrupt Moderation.\n" +
                 "This can reduce throughput on some LANs or increase latency.";
+            case "copilot-disable" ->
+                "'" + actionName + "' will disable Windows Copilot.\n\n" +
+                "This removes the Copilot app and sets group policy to prevent it from running.";
             case "ui-remove-this-pc-folders" ->
                 "'" + actionName + "' will hide standard folders from This PC.\n\n" +
                 "The folders remain on disk, but Explorer shortcuts will be hidden.";

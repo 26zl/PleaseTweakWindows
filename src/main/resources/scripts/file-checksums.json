@@ -24,10 +24,10 @@
     "https://download.sysinternals.com/files/Autoruns.zip": "DYNAMIC",
     "https://aka.ms/GamingRepairTool": "DYNAMIC",
     "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip": "5D692E812A701627EDD6D165D0B60175FF4F772C758A7DAC869D613E1BEB8063",
-    "https://github.com/FR33THYFR33THY/files/raw/main/AMD%20Driver.exe": "DYNAMIC",
     "https://www.7-zip.org/a/7z2501-x64.exe": "DYNAMIC",
     "https://github.com/FR33THYFR33THY/files/raw/main/DDU.zip": "DYNAMIC",
-    "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe": "DYNAMIC"
+    "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe": "DYNAMIC",
+    "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/304fddef-b073-4e0a-b1ff-c2ea02584017/MicrosoftEdgeWebview2Setup.exe": "DYNAMIC"
   },
   "notes": [
     "DYNAMIC means the file changes frequently and checksum validation is skipped",

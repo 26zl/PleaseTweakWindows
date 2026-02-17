@@ -15,7 +15,8 @@ permissions:
 jobs:
   validate-scripts:
     name: Validate PowerShell Scripts
-    runs-on: windows-2022
+    runs-on: windows-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -30,6 +31,12 @@ jobs:
             "src/main/resources/scripts/Privacy Security/privacy.ps1",
             "src/main/resources/scripts/Privacy Security/security.ps1",
             "src/main/resources/scripts/Services management/Services-Management.ps1",
+            "src/main/resources/scripts/Privacy Security/revert-privacy.ps1",
+            "src/main/resources/scripts/Privacy Security/revert-security.ps1",
+            "src/main/resources/scripts/Gaming optimizations/revert-gaming.ps1",
+            "src/main/resources/scripts/General Tweaks/revert-general.ps1",
+            "src/main/resources/scripts/Network optimizations/revert-network.ps1",
+            "src/main/resources/scripts/Services management/revert-services.ps1",
             "src/main/resources/scripts/create_restore_point.ps1",
             "src/main/resources/scripts/CommonFunctions.ps1"
           )
@@ -92,8 +99,8 @@ jobs:
               exit 1
             }
 
-            # Verify NO Read-Host (non-interactive)
-            if ($content -match '^\s*Read-Host' -and $content -notmatch '#.*Read-Host') {
+            # Verify NO Read-Host (non-interactive) — (?m) makes ^ match start of each line
+            if ($content -match '(?m)^\s*Read-Host' -and $content -notmatch '(?m)^\s*#.*Read-Host') {
               Write-Error "Script should be non-interactive (no Read-Host): $script"
               exit 1
             }
@@ -118,6 +125,8 @@ jobs:
             "Privacy Security/privacy.ps1",
             "Privacy Security/security.ps1",
             "Services management/Services-Management.ps1",
+            "Privacy Security/revert-privacy.ps1",
+            "Privacy Security/revert-security.ps1",
             "create_restore_point.ps1",
             "CommonFunctions.ps1"
           )
@@ -129,12 +138,24 @@ jobs:
             }
           }
 
+          # Reverse check: every entry in index.txt must correspond to a real file
+          foreach ($entry in $indexContent) {
+            $trimmed = $entry.Trim()
+            if (-not $trimmed) { continue }
+            $fullPath = Join-Path $scriptsDir $trimmed
+            if (-not (Test-Path $fullPath)) {
+              Write-Error "index.txt references non-existent file: $trimmed"
+              exit 1
+            }
+          }
+
           Write-Host "index.txt validation passed"
         shell: pwsh
 
   security-scan:
     name: Security Scan
-    runs-on: windows-2022
+    runs-on: windows-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -144,14 +165,7 @@ jobs:
         run: |
           Write-Host "Scanning for obfuscated code patterns..."
 
-          $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
-          )
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
 
           $obfuscationPatterns = @(
             'RunAsTI',
@@ -165,12 +179,12 @@ jobs:
 
           $issues = 0
           foreach ($script in $scripts) {
-            Write-Host "Scanning: $script"
-            $content = Get-Content $script -Raw
+            Write-Host "Scanning: $($script.FullName)"
+            $content = Get-Content $script.FullName -Raw
 
             foreach ($pattern in $obfuscationPatterns) {
               if ($content -match $pattern) {
-                Write-Warning "Potential obfuscation pattern found in $script`: $pattern"
+                Write-Warning "Potential obfuscation pattern found in $($script.Name)`: $pattern"
                 $issues++
               }
             }
@@ -188,14 +202,7 @@ jobs:
         run: |
           Write-Host "Scanning for Windows Update disabling functionality..."
 
-          $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
-          )
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
 
           $updateDisablePatterns = @(
             'WindowsUpdate.*disable|Disable.*WindowsUpdate',
@@ -210,12 +217,12 @@ jobs:
 
           $issues = 0
           foreach ($script in $scripts) {
-            Write-Host "Scanning: $script"
-            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            Write-Host "Scanning: $($script.FullName)"
+            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
 
             foreach ($pattern in $updateDisablePatterns) {
               if ($content -match $pattern) {
-                Write-Error "Windows Update disabling pattern found in $script`: $pattern"
+                Write-Error "Windows Update disabling pattern found in $($script.Name)`: $pattern"
                 $issues++
               }
             }
@@ -233,14 +240,7 @@ jobs:
         run: |
           Write-Host "Scanning for security feature disabling..."
 
-          $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
-          )
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
 
           $securityDisablePatterns = @(
             'Windows.*Defender.*disable|Disable.*Windows.*Defender',
@@ -261,12 +261,12 @@ jobs:
 
           $issues = 0
           foreach ($script in $scripts) {
-            Write-Host "Scanning: $script"
-            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            Write-Host "Scanning: $($script.FullName)"
+            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
 
             foreach ($pattern in $securityDisablePatterns) {
               if ($content -match $pattern) {
-                Write-Error "Security feature disabling pattern found in $script`: $pattern"
+                Write-Error "Security feature disabling pattern found in $($script.Name)`: $pattern"
                 $issues++
               }
             }
@@ -284,39 +284,22 @@ jobs:
         run: |
           Write-Host "Scanning for suspicious network calls..."
 
-          $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
-          )
-
-          $suspiciousPatterns = @(
-            'Invoke-WebRequest.*http://[^m]',
-            'Invoke-WebRequest.*https://[^g]',
-            'DownloadString.*http://[^m]',
-            'DownloadString.*https://[^g]',
-            'WebClient.*Download',
-            'Start-BitsTransfer.*http://[^m]',
-            'Start-BitsTransfer.*https://[^g]'
-          )
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
 
           $allowedDomains = @(
             'github.com',
             'microsoft.com',
             'githubusercontent.com',
-            'raw.githubusercontent.com',
             'oo-software.com',
             'geforce.com',
+            'nvidia.com',
             '7-zip.org'
           )
 
           $issues = 0
           foreach ($script in $scripts) {
-            Write-Host "Scanning: $script"
-            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            Write-Host "Scanning: $($script.FullName)"
+            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
 
             # Extract URLs
             $urlMatches = [regex]::Matches($content, 'https?://[^\s''"`]+')
@@ -324,15 +307,22 @@ jobs:
               $url = $match.Value
               $isAllowed = $false
 
-              foreach ($domain in $allowedDomains) {
-                if ($url -like "*$domain*") {
-                  $isAllowed = $true
-                  break
+              # Parse the host from the URL and check against allowed domains
+              try {
+                $uri = [System.Uri]::new($url)
+                $host_ = $uri.Host
+                foreach ($domain in $allowedDomains) {
+                  if ($host_ -eq $domain -or $host_.EndsWith(".$domain")) {
+                    $isAllowed = $true
+                    break
+                  }
                 }
+              } catch {
+                # Malformed URL — flag it
               }
 
               if (-not $isAllowed) {
-                Write-Warning "Suspicious URL found in $script`: $url"
+                Write-Warning "Suspicious URL found in $($script.Name)`: $url"
                 $issues++
               }
             }
@@ -350,14 +340,7 @@ jobs:
         run: |
           Write-Host "Scanning for exposed credentials..."
 
-          $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
-          )
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
 
           $credentialPatterns = @(
             'password\s*=\s*["'']',
@@ -372,12 +355,12 @@ jobs:
 
           $issues = 0
           foreach ($script in $scripts) {
-            Write-Host "Scanning: $script"
-            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            Write-Host "Scanning: $($script.FullName)"
+            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
 
             foreach ($pattern in $credentialPatterns) {
               if ($content -match $pattern) {
-                Write-Warning "Potential credential exposure pattern found in $script`: $pattern"
+                Write-Warning "Potential credential exposure pattern found in $($script.Name)`: $pattern"
                 $issues++
               }
             }
@@ -395,14 +378,7 @@ jobs:
         run: |
           Write-Host "Scanning for malicious registry modifications..."
 
-          $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
-          )
+          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
 
           $maliciousPatterns = @(
             'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run.*powershell.*hidden',
@@ -414,12 +390,12 @@ jobs:
 
           $issues = 0
           foreach ($script in $scripts) {
-            Write-Host "Scanning: $script"
-            $content = Get-Content $script -Raw -ErrorAction SilentlyContinue
+            Write-Host "Scanning: $($script.FullName)"
+            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
 
             foreach ($pattern in $maliciousPatterns) {
               if ($content -match $pattern) {
-                Write-Error "Malicious registry modification pattern found in $script`: $pattern"
+                Write-Error "Malicious registry modification pattern found in $($script.Name)`: $pattern"
                 $issues++
               }
             }
@@ -537,27 +513,26 @@ jobs:
           }
         shell: pwsh
 
-      - name: Security scan summary
-        run: |
-          Write-Host "========================================"
-          Write-Host "Security Scan Summary"
-          Write-Host "========================================"
-          Write-Host "[+] All security checks completed"
-          Write-Host "[+] No critical security issues found"
-        shell: pwsh
-
   functional-testing:
     name: Functional Testing
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache PSScriptAnalyzer module
+        uses: actions/cache@v4
+        with:
+          path: ~/Documents/PowerShell/Modules/PSScriptAnalyzer
+          key: psscriptanalyzer-windows-latest
+
       - name: Run PSScriptAnalyzer
         run: |
-          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          }
 
           $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
           Write-Host "Analyzing $($scripts.Count) PowerShell scripts..."
@@ -638,11 +613,9 @@ jobs:
               exit 1
             }
 
-            # Syntax check
-            $parseErrors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$parseErrors)
-            if ($parseErrors.Count -gt 0) {
-              Write-Error "Syntax errors in $scriptPath"
+            # Verify NO Read-Host (non-interactive) — (?m) makes ^ match start of each line
+            if ($content -match '(?m)^\s*Read-Host') {
+              Write-Error "Script should be non-interactive (no Read-Host): $scriptPath"
               exit 1
             }
 
@@ -659,15 +632,15 @@ jobs:
           $javaFile = "src/main/java/com/zl/pleasetweakwindows/TweakController.java"
           $javaContent = Get-Content $javaFile -Raw
 
-          # Extract action IDs from Java (exclude revert IDs - handled dynamically by revert scripts)
-          $javaActions = [regex]::Matches($javaContent, '"([a-z]+-[a-z-]+)"') |
+          # Extract action IDs from Java (exclude revert IDs - handled by revert scripts)
+          $javaActions = [regex]::Matches($javaContent, '"([a-z][a-z0-9]+-[a-z0-9-]+)"') |
             ForEach-Object { $_.Groups[1].Value } |
             Where-Object { $_ -notmatch '-revert$' } |
             Sort-Object -Unique
 
           Write-Host "Found $($javaActions.Count) non-revert action IDs in Java"
 
-          # Get all PS scripts content
+          # Get all PS scripts content (excluding revert scripts, CommonFunctions, restore point)
           $psScripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse |
             Where-Object { $_.Name -notlike "revert-*" -and $_.Name -ne "CommonFunctions.ps1" -and $_.Name -ne "create_restore_point.ps1" }
 
@@ -731,11 +704,11 @@ jobs:
           Write-Host "Testing revert scripts structure..."
 
           $revertScripts = @(
-            "src/main/resources/scripts/Gaming optimizations/revert-gaming.ps1",
-            "src/main/resources/scripts/Network optimizations/revert-network.ps1",
-            "src/main/resources/scripts/General Tweaks/revert-general.ps1",
             "src/main/resources/scripts/Privacy Security/revert-privacy.ps1",
             "src/main/resources/scripts/Privacy Security/revert-security.ps1",
+            "src/main/resources/scripts/Gaming optimizations/revert-gaming.ps1",
+            "src/main/resources/scripts/General Tweaks/revert-general.ps1",
+            "src/main/resources/scripts/Network optimizations/revert-network.ps1",
             "src/main/resources/scripts/Services management/revert-services.ps1"
           )
 
@@ -761,6 +734,12 @@ jobs:
               exit 1
             }
 
+            # Verify version metadata
+            if ($content -notmatch '\$script:ScriptVersion') {
+              Write-Error "Missing version metadata in $scriptPath"
+              exit 1
+            }
+
             # Syntax check
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$parseErrors)
@@ -775,22 +754,11 @@ jobs:
           Write-Host "[+] All revert scripts have correct structure"
         shell: pwsh
 
-      - name: Functionality test summary
-        run: |
-          Write-Host "========================================"
-          Write-Host "Functionality Test Summary"
-          Write-Host "========================================"
-          Write-Host "[+] PSScriptAnalyzer passed"
-          Write-Host "[+] Non-interactive architecture validated"
-          Write-Host "[+] Java action IDs match PowerShell handlers"
-          Write-Host "[+] Revert scripts structure validated"
-          Write-Host "[+] All functionality tests passed"
-        shell: pwsh
-
   build-exe:
     name: Build Windows EXE
-    runs-on: windows-2022
+    runs-on: windows-latest
     needs: [validate-scripts, security-scan, functional-testing]
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -829,18 +797,12 @@ jobs:
       - name: Build EXE
         run: mvn -Pnative package
 
-      - name: List target directory contents
-        run: |
-          echo "Listing target directory contents:"
-          dir target /s
-        shell: cmd
-
       - name: Verify EXE exists
         run: |
           if (Test-Path "target/PleaseTweakWindows.exe") {
             Write-Host "[+] EXE file found at target/PleaseTweakWindows.exe"
             $fileInfo = Get-Item "target/PleaseTweakWindows.exe"
-            Write-Host "File size: $($fileInfo.Length) bytes"
+            Write-Host "File size: $([math]::Round($fileInfo.Length / 1MB, 1)) MB ($($fileInfo.Length) bytes)"
           } else {
             Write-Error "[-] EXE file not found at target/PleaseTweakWindows.exe"
             Write-Host "Build may have failed or the output path is different."
@@ -856,6 +818,8 @@ jobs:
             "General Tweaks/General-Tweaks.ps1",
             "Privacy Security/privacy.ps1",
             "Privacy Security/security.ps1",
+            "Privacy Security/revert-privacy.ps1",
+            "Privacy Security/revert-security.ps1",
             "Services management/Services-Management.ps1",
             "create_restore_point.ps1"
           )
@@ -892,7 +856,7 @@ jobs:
 
   create-release:
     name: Create Release
-    runs-on: windows-2022
+    runs-on: windows-latest
     needs: build-exe
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
@@ -936,10 +900,20 @@ jobs:
           New-Item -ItemType Directory -Path "dist" | Out-Null
           Copy-Item "./artifacts/PleaseTweakWindows.exe" "dist/"
           Copy-Item "README.md" "dist/"
-          Copy-Item "LICENSE" "dist/" -ErrorAction SilentlyContinue
+          if (Test-Path "LICENSE") {
+            Copy-Item "LICENSE" "dist/"
+          } else {
+            Write-Warning "LICENSE file not found — release will ship without it"
+          }
           Copy-Item -Recurse "src/main/resources/scripts" "dist/"
           New-Item -ItemType Directory -Path "dist/logs" | Out-Null
           Copy-Item "logs/README.txt" "dist/logs/" -ErrorAction SilentlyContinue
+
+          # Remove unused revert scripts from distribution
+          Remove-Item "dist/scripts/Gaming optimizations/revert-gaming.ps1" -ErrorAction SilentlyContinue
+          Remove-Item "dist/scripts/General Tweaks/revert-general.ps1" -ErrorAction SilentlyContinue
+          Remove-Item "dist/scripts/Network optimizations/revert-network.ps1" -ErrorAction SilentlyContinue
+          Remove-Item "dist/scripts/Services management/revert-services.ps1" -ErrorAction SilentlyContinue
 
           # Verify all scripts are included
           $scriptCount = (Get-ChildItem -Path "dist/scripts" -Recurse -Filter "*.ps1" -File).Count

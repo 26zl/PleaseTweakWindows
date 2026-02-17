@@ -36,8 +36,4 @@ public class Tweak {
     public List<SubTweak> getSubTweaks() {
         return Collections.unmodifiableList(subTweaks);
     }
-
-    public boolean hasSubTweaks() {
-        return !subTweaks.isEmpty();
-    }
 }

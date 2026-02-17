@@ -5,7 +5,7 @@
 ![Downloads](https://img.shields.io/github/downloads/26zl/PleaseTweakWindows/total)
 ![Stars](https://img.shields.io/github/stars/26zl/PleaseTweakWindows)
 
-> **This project is currently under active development and testing. Use at your own risk.**
+> **This tool modifies Windows system settings. Always create a restore point before use.**
 
 Windows optimization tool for performance tuning, gaming, network, privacy, security, and system customization.
 
@@ -32,12 +32,12 @@ Windows optimization tool for performance tuning, gaming, network, privacy, secu
 
 | Category | Sub-tweaks | Description |
 | --- | --- | --- |
-| **Gaming** | 12 | GPU drivers, Game Bar, FSO/FSE, MSI mode, DirectX, polling rate |
-| **Network** | 3 | IPv4 adapter bindings, TCP/IP optimization, DNS |
-| **General** | 15 | Power plans, bloatware removal, registry tweaks, scaling fixes |
+| **Gaming** | 10 | GPU drivers, Game Bar, MSI mode, DirectX, polling rate |
+| **Network** | 3 | IPv4 adapter bindings, Smart Network Optimization, Smart Network Optimization (Aggressive) |
+| **General** | 16 | Power plans, bloatware removal, registry tweaks, scaling fixes |
 | **Services** | 2 | Disable unnecessary Windows services, restore defaults |
-| **Privacy** | 18 | Telemetry, Copilot, DNS-over-HTTPS, tracking, Live Tiles |
-| **Security** | 11 | Firewall hardening, TLS, DEP, SEHOP, Spectre/Meltdown protection |
+| **Privacy** | 14 | Telemetry, Copilot, DNS-over-HTTPS, tracking, Explorer privacy |
+| **Security** | 13 | Firewall hardening, TLS, DEP, SEHOP, Spectre/Meltdown protection |
 
 Each category supports **Apply** (execute tweak) and **Revert** (restore defaults).
 
@@ -60,18 +60,18 @@ Revert Scripts    (Restore defaults + repair components)
 
 - Windows 10/11
 - Administrator privileges
-- PowerShell 5.1+ (7+ recommended)
+- Windows PowerShell 5.1 (built-in)
 
 ## Build from Source
 
 ```cmd
-REM Requires: GraalVM 25+, Maven 3.9+, Java 21
+REM Requires: Liberica NIK 21+ (or GraalVM with JavaFX), Maven 3.9.9+, Java 21
 git clone https://github.com/26zl/PleaseTweakWindows.git
 cd PleaseTweakWindows
 Build.bat
 ```
 
-The build produces a native Windows executable (~31 MB) with no Java runtime dependency.
+The build produces a native Windows executable with no Java runtime dependency.
 
 ## Disclaimer
 
