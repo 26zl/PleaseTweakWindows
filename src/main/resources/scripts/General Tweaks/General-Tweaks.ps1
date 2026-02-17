@@ -64,13 +64,14 @@ if (Test-Path $commonFunctionsPath) {
 } else {
     Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
 }
-$script:CanDownload = Get-Command Get-FileFromWeb -ErrorAction SilentlyContinue
-
-function Import-RegistryFile {
+function Import-LocalRegistryFile {
     param([string]$FileName)
     $regPath = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath "regs") -ChildPath $FileName
     if (Test-Path $regPath) {
-        Start-Process -FilePath "regedit.exe" -ArgumentList "/s `"$regPath`"" -Wait
+        $p = Start-Process -FilePath "regedit.exe" -ArgumentList "/s `"$regPath`"" -Wait -PassThru
+        if ($p.ExitCode -ne 0) {
+            Write-Output "[-] WARNING: Registry import returned exit code $($p.ExitCode) for $FileName"
+        }
     }
 }
 
@@ -116,7 +117,7 @@ switch ($Action.ToLowerInvariant()) {
 
     "bloatware-remove" {
         Write-Output "[*] Removing bloatware (protecting system components)..."
-        $progressPreference = 'SilentlyContinue'
+        $ProgressPreference = 'SilentlyContinue'
         $protectedPrefixes = @(
             # Core Windows Shell
             'Microsoft.Windows.ShellExperienceHost',
@@ -244,7 +245,7 @@ foreach (`$app in `$apps) {
             }
         }
         Stop-Process -Force -Name OneDrive -ErrorAction SilentlyContinue
-        cmd /c "C:\Windows\SysWOW64\OneDriveSetup.exe -uninstall >nul 2>&1"
+        cmd /c "$env:SystemRoot\SysWOW64\OneDriveSetup.exe -uninstall >nul 2>&1"
         Write-Output "[+] SUCCESS: Removed $removed apps (restart required)"
         Write-Output "[i] Backup list: $backupPath"
         Write-Output "[i] Restore script: $restoreScriptPath"
@@ -315,13 +316,21 @@ foreach (`$app in `$apps) {
         }
 
         Write-Output "[*] Applying Registry Tweaks..."
-        schtasks /Change /DISABLE /TN "\Microsoft\Windows\Defrag\ScheduledDefrag" 2>$null
-        powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 0
-        Import-RegistryFile -FileName "Registry-Optimize.reg"
+        try {
+            powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 0
+            Import-LocalRegistryFile -FileName "Registry-Optimize.reg"
 
-        if (!(Test-Path $markerPath)) { New-Item -Path $markerPath -Force | Out-Null }
-        Set-ItemProperty -Path $markerPath -Name "RegistryOptimized" -Value 1
-        Write-Output "[+] SUCCESS: Registry tweaks applied (restart required)"
+            if (!(Test-Path $markerPath)) { New-Item -Path $markerPath -Force | Out-Null }
+            Set-ItemProperty -Path $markerPath -Name "RegistryOptimized" -Value 1
+            Write-Output "[+] SUCCESS: Registry tweaks applied (restart required)"
+        } catch {
+            Write-Output "[-] ERROR during registry tweaks: $($_.Exception.Message)"
+            Write-Output "[!] Attempting rollback with default registry settings..."
+            Import-LocalRegistryFile -FileName "Registry-Defaults.reg"
+            Remove-ItemProperty -Path $markerPath -Name "RegistryOptimized" -ErrorAction SilentlyContinue
+            Write-Output "[+] Rollback applied. Restart to restore defaults."
+            exit 1
+        }
         exit 0
     }
 
@@ -340,6 +349,10 @@ foreach (`$app in `$apps) {
 
     "scaling-default" {
         Write-Output "[*] Restoring default scaling..."
+        Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseSensitivity" -Value "10"
+        Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseSpeed" -Value "1"
+        Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseThreshold1" -Value "6"
+        Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseThreshold2" -Value "10"
         Remove-RegValue -Path "Registry::HKCU\Control Panel\Desktop" -Name "Win8DpiScaling"
         Remove-RegValue -Path "Registry::HKCU\Control Panel\Desktop" -Name "LogPixels"
         Remove-RegValue -Path "Registry::HKCU\Control Panel\Desktop" -Name "EnablePerProcessSystemDPI"
@@ -357,9 +370,10 @@ foreach (`$app in `$apps) {
         $g = [System.Drawing.Graphics]::FromImage($bmp)
         $g.FillRectangle([System.Drawing.Brushes]::Black, 0, 0, $w, $h)
         $g.Dispose()
-        $bmp.Save("C:\Windows\Black.jpg")
+        $blackJpgPath = "$env:SystemRoot\Black.jpg"
+        $bmp.Save($blackJpgPath)
         $bmp.Dispose()
-        Set-RegSz -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath" -Value "C:\Windows\Black.jpg"
+        Set-RegSz -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath" -Value $blackJpgPath
         Set-RegDword -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImageStatus" -Value 1
         Write-Output "[+] SUCCESS: Lock Screen disabled (restart required)"
         exit 0
@@ -460,7 +474,7 @@ foreach (`$app in `$apps) {
 
     "cleanup-run" {
         Write-Output "[*] Running System Cleanup..."
-        $paths = @("$env:TEMP","$env:SystemDrive\Windows\Temp","$env:SystemDrive\Windows\Prefetch")
+        $paths = @("$env:TEMP","$env:SystemDrive\Windows\Temp")
         foreach ($p in $paths) { Remove-Item -Path "$p\*" -Recurse -Force -ErrorAction SilentlyContinue }
         try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Could not clear recycle bin: $($_.Exception.Message)" }
         Write-Output "[+] SUCCESS: System cleanup complete"
@@ -469,10 +483,6 @@ foreach (`$app in `$apps) {
 
     "autoruns-open" {
         Write-Output "[*] Launching Sysinternals Autoruns..."
-        if (-not $script:CanDownload) {
-            Write-Output "[-] ERROR: Download helper not available (CommonFunctions.ps1 missing)"
-            exit 1
-        }
         $autorunsZip = Join-Path $env:TEMP "Autoruns.zip"
         $autorunsDir = Join-Path $env:TEMP "Autoruns"
         Remove-Item -Path $autorunsZip -Force -ErrorAction SilentlyContinue

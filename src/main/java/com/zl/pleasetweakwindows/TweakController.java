@@ -2,6 +2,7 @@ package com.zl.pleasetweakwindows;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class TweakController {
@@ -12,7 +13,7 @@ public class TweakController {
     }
 
     public List<Tweak> getTweaks() {
-        return tweaks;
+        return Collections.unmodifiableList(tweaks);
     }
 
     public void loadTweaks() {
@@ -32,10 +33,6 @@ public class TweakController {
                 "nvidia-settings-on", "nvidia-settings-default",
                 "Optimize NVIDIA control panel settings for gaming performance"));
 
-        gaming.addSubTweak(new SubTweak("AMD Driver",
-                "amd-driver-install",
-                "Install optimized AMD driver"));
-
         gaming.addSubTweak(new SubTweak("Nvidia Driver",
                 "nvidia-driver-install",
                 "Install/update NVIDIA driver or NvCleanInstall"));
@@ -51,11 +48,6 @@ public class TweakController {
         gaming.addSubTweak(new SubTweak("Controller Overclock", SubTweak.SubTweakType.TOGGLE,
                 "controller-oc-on", "controller-oc-default",
                 "Enable USB controller overclock with Secure Boot"));
-
-        gaming.addSubTweak(new SubTweak("Fullscreen Mode", SubTweak.SubTweakType.TOGGLE,
-                "fse-on", "fso-on",
-                "Choose between FSE (Exclusive) or FSO (Optimizations)",
-                "FSE", "FSO"));
 
         gaming.addSubTweak(new SubTweak("Xbox Game Bar", SubTweak.SubTweakType.TOGGLE,
                 "gamebar-off", "gamebar-on",
@@ -213,10 +205,6 @@ public class TweakController {
                 "ui-lock-screen-notifications-disable", "ui-lock-screen-notifications-revert",
                 "Disable notifications shown on the lock screen"));
 
-        privacy.addSubTweak(new SubTweak("Disable Live Tiles push notifications", SubTweak.SubTweakType.TOGGLE,
-                "ui-live-tiles-disable", "ui-live-tiles-revert",
-                "Disable Live Tiles push notifications"));
-
         privacy.addSubTweak(new SubTweak("Disable the 'Look for an app in the Store' option", SubTweak.SubTweakType.TOGGLE,
                 "ui-store-open-with-disable", "ui-store-open-with-revert",
                 "Remove the Store prompt when opening unknown file types"));
@@ -237,20 +225,8 @@ public class TweakController {
                 "ui-camera-osd-enable", "ui-camera-osd-revert",
                 "Show on-screen notifications when the camera turns on/off"));
 
-        privacy.addSubTweak(new SubTweak("Disable app usage tracking", SubTweak.SubTweakType.TOGGLE,
-                "ui-app-usage-tracking-disable", "ui-app-usage-tracking-revert",
-                "Disable app usage tracking (MFU)"));
-
-        privacy.addSubTweak(new SubTweak("Disable recent apps", SubTweak.SubTweakType.TOGGLE,
-                "ui-recent-apps-disable", "ui-recent-apps-revert",
-                "Disable recently used apps list"));
-
-        privacy.addSubTweak(new SubTweak("Disable backtracking", SubTweak.SubTweakType.TOGGLE,
-                "ui-backtracking-disable", "ui-backtracking-revert",
-                "Disable backtracking navigation history"));
-
-        privacy.addSubTweak(new SubTweak("Disable Copilot",
-                "copilot-disable",
+        privacy.addSubTweak(new SubTweak("Disable Copilot", SubTweak.SubTweakType.TOGGLE,
+                "copilot-disable", "copilot-disable-revert",
                 "Disable Windows Copilot AI assistant"));
 
         privacy.addSubTweak(new SubTweak("Set Cloudflare DNS",
@@ -261,8 +237,8 @@ public class TweakController {
                 "dns-google",
                 "Set DNS to Google (8.8.8.8, 8.8.4.4)"));
 
-        privacy.addSubTweak(new SubTweak("Enable DNS over HTTPS (DoH)",
-                "doh-enable",
+        privacy.addSubTweak(new SubTweak("Enable DNS over HTTPS (DoH)", SubTweak.SubTweakType.TOGGLE,
+                "doh-enable", "doh-enable-revert",
                 "Enable encrypted DNS for common DNS providers"));
 
         addTweak(privacy);

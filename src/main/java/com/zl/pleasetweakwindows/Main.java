@@ -6,17 +6,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javafx.application.Application;
-import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -57,6 +59,8 @@ public class Main extends Application {
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
     private double dragOffsetX;
     private double dragOffsetY;
+    private Executor executor;
+    private UiLogic uiLogic;
 
     @Override
     public void start(Stage stage) {
@@ -71,12 +75,36 @@ public class Main extends Application {
 
         if (!isRunningAsAdministrator()) {
             LOGGER.error("Application must be run as Administrator. Exiting immediately.");
-            Platform.exit();
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.initStyle(StageStyle.UTILITY);
+            alert.setTitle("Administrator Required");
+            alert.setHeaderText("PleaseTweakWindows requires Administrator privileges");
+            alert.setContentText("Please right-click the application and select \"Run as administrator\".");
+            alert.showAndWait();
             System.exit(1);
+            return;
         }
 
+        executor = new Executor();
+        uiLogic = new UiLogic(executor);
+
         // Extract bundled PS scripts to a temp directory for execution
-        String scriptDirectory = ResourceExtractor.prepareScriptsPath().toString() + File.separator;
+        String scriptDirectory;
+        try {
+            Path scriptsPath = ResourceExtractor.prepareScriptsPath();
+            scriptDirectory = scriptsPath.toString() + File.separator;
+            executor.setScriptsBaseDir(scriptsPath);
+        } catch (Exception e) {
+            LOGGER.error("Failed to extract scripts", e);
+            Alert extractAlert = new Alert(AlertType.ERROR);
+            extractAlert.initStyle(StageStyle.UTILITY);
+            extractAlert.setTitle("Startup Error");
+            extractAlert.setHeaderText("Failed to extract scripts");
+            extractAlert.setContentText("The application could not prepare its scripts directory.\n\n" + e.getMessage());
+            extractAlert.showAndWait();
+            System.exit(1);
+            return;
+        }
 
         logArea = new TextArea();
         logArea.setEditable(false);
@@ -84,7 +112,6 @@ public class Main extends Application {
         logArea.setPromptText("Verbose output will appear here...");
         logArea.setPrefHeight(500);
         logArea.setId("log-area");
-        VBox.setVgrow(logArea, Priority.ALWAYS);
 
         HBox headerBox = new HBox(15);
         headerBox.setAlignment(Pos.CENTER);
@@ -103,12 +130,12 @@ public class Main extends Application {
 
         Label titleLabel = new Label("PleaseTweakWindows");
         titleLabel.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #f5e6e6; -fx-effect: dropshadow(three-pass-box, rgba(204, 0, 0, 0.6), 10, 0, 0, 2);");
-        
+
         TextField searchField = new TextField();
         searchField.setPromptText("Search tweaks...");
         searchField.getStyleClass().add("search-field");
         searchField.setPrefWidth(200);
-        
+
         HBox titleBox = new HBox(20, titleLabel, searchField);
         titleBox.setAlignment(Pos.CENTER_LEFT);
 
@@ -119,6 +146,9 @@ public class Main extends Application {
 
         headerBox.getChildren().addAll(titleBox, spacer, windowControls);
         enableWindowDrag(stage, headerBox);
+
+        VBox topContainer = new VBox();
+        topContainer.getChildren().add(headerBox);
 
         TweakController tweakController = new TweakController();
         tweakController.loadTweaks();
@@ -134,15 +164,16 @@ public class Main extends Application {
         restorePointBtn.setOnAction(e -> {
             String scriptPath = scriptDirectory + "create_restore_point.ps1";
             scriptsRunning.set(true);
-            Executor.runScript(scriptPath, logArea, () -> Platform.runLater(() -> {
+            executor.runScript(scriptPath, logArea, () -> {
                 scriptsRunning.set(false);
                 RestorePointGuard.markCreated();
-            }), null);
+            }, null);
         });
         tweaksBox.getChildren().add(restorePointBtn);
 
         for (Tweak tweak : tweakController.getTweaks()) {
-            VBox tweakItem = UiLogic.createExpandableTweakItem(tweak, logArea, scriptDirectory, scriptsRunning);
+            VBox tweakItem = uiLogic.createExpandableTweakItem(tweak, logArea, scriptDirectory, scriptsRunning);
+            tweakItem.setUserData(tweak);
             tweaksBox.getChildren().add(tweakItem);
         }
 
@@ -153,7 +184,6 @@ public class Main extends Application {
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
             String filter = newVal.toLowerCase().trim();
-            int tweakIndex = 0;
             for (var node : tweaksBox.getChildren()) {
                 switch (node) {
                     case VBox tweakItem -> {
@@ -163,11 +193,8 @@ public class Main extends Application {
                             continue;
                         }
                         boolean matches = false;
-                        Tweak tweak = tweakIndex < tweakController.getTweaks().size()
-                            ? tweakController.getTweaks().get(tweakIndex) : null;
-                        tweakIndex++;
-
-                        if (tweak != null) {
+                        Object userData = tweakItem.getUserData();
+                        if (userData instanceof Tweak tweak) {
                             if (tweak.getTitle().toLowerCase().contains(filter)) {
                                 matches = true;
                             }
@@ -200,30 +227,21 @@ public class Main extends Application {
         rightBox.setAlignment(Pos.TOP_CENTER);
         rightBox.getStyleClass().add("right-box");
         rightBox.setPadding(new Insets(20));
-        
+
         Button clearButton = new Button("Clear");
         clearButton.setOnAction(e -> logArea.clear());
-        
+
         Button closeButton = new Button("Close");
-        closeButton.setOnAction(e -> {
-            if (Executor.hasActiveOperations()) {
-                if (DialogUtils.showCancelConfirmation(stage)) {
-                    Executor.cancelAllOperations();
-                    stage.close();
-                }
-            } else {
-                stage.close();
-            }
-        });
-        
+        closeButton.setOnAction(e -> handleCloseRequest(stage));
+
         HBox buttonBar = new HBox(10, clearButton, closeButton);
         buttonBar.setAlignment(Pos.CENTER);
-        
+
         rightBox.getChildren().addAll(new Label("Verbose Output:"), logArea, buttonBar);
         VBox.setVgrow(logArea, Priority.ALWAYS);
 
         BorderPane mainPane = new BorderPane();
-        mainPane.setTop(headerBox);
+        mainPane.setTop(topContainer);
         mainPane.setLeft(tweaksScrollPane);
         mainPane.setCenter(rightBox);
 
@@ -234,12 +252,16 @@ public class Main extends Application {
         stage.setTitle("PleaseTweakWindows");
         stage.show();
         LOGGER.info("UI started.");
+
+        new UpdateChecker(topContainer).checkAsync();
     }
 
     @Override
     public void stop() throws Exception {
         LOGGER.info("Shutting down PleaseTweakWindows.");
-        Executor.shutdown();
+        if (executor != null) {
+            executor.shutdown();
+        }
         super.stop();
     }
 
@@ -279,12 +301,23 @@ public class Main extends Application {
 
         Button close = new Button("X");
         close.getStyleClass().addAll("window-button", "window-close");
-        close.setOnAction(e -> stage.close());
+        close.setOnAction(e -> handleCloseRequest(stage));
 
         HBox controls = new HBox(6, minimize, maximize, close);
         controls.setAlignment(Pos.CENTER_RIGHT);
         controls.getStyleClass().add("window-controls");
         return controls;
+    }
+
+    private void handleCloseRequest(Stage stage) {
+        if (executor != null && executor.hasActiveOperations()) {
+            if (DialogUtils.showCancelConfirmation(stage)) {
+                executor.cancelAllOperations();
+                stage.close();
+            }
+        } else {
+            stage.close();
+        }
     }
 
     private void enableWindowDrag(Stage stage, HBox dragArea) {
@@ -306,24 +339,32 @@ public class Main extends Application {
     }
 
     private boolean isRunningAsAdministrator() {
-        if (!System.getProperty("os.name").toLowerCase().contains("windows")) {
+        String osName = System.getProperty("os.name");
+        if (osName == null || !osName.toLowerCase().contains("windows")) {
             return true;
         }
 
         try {
             // "net session" returns 0 only when running as admin
-        ProcessBuilder pb = new ProcessBuilder("net", "session");
+            ProcessBuilder pb = new ProcessBuilder("net", "session");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             try {
                 p.getInputStream().readAllBytes();
-                int exitCode = p.waitFor();
-                return exitCode == 0;
+                boolean finished = p.waitFor(5, TimeUnit.SECONDS);
+                if (!finished) {
+                    p.destroyForcibly();
+                    return false;
+                }
+                return p.exitValue() == 0;
             } finally {
                 p.destroy();
             }
         } catch (IOException | InterruptedException e) {
             LOGGER.warn("Administrator privilege check failed: {}", e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             return false;
         }
     }

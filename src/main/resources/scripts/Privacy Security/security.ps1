@@ -397,116 +397,130 @@ function Set-TlsHardening {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Apply TLS hardening")) { return }
-    $regSets = @(
-        # Require strong Diffie-Hellman keys (2048-bit).
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\Diffie-Hellman'; Name = 'ServerMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
-        # Require strong Diffie-Hellman keys (client).
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\Diffie-Hellman'; Name = 'ClientMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
-        # Require strong RSA keys (PKCS, breaks Hyper-V VMs).
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\PKCS'; Name = 'ServerMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
-        # Require strong RSA keys (client).
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\PKCS'; Name = 'ClientMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
-        # Disable insecure renegotiation (clients).
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'AllowInsecureRenegoClients'; Type = 'DWord'; Value = 0 },
-        # Disable insecure renegotiation (servers).
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'AllowInsecureRenegoServers'; Type = 'DWord'; Value = 0 },
-        # Disable renegotiation on server.
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'DisableRenegoOnServer'; Type = 'DWord'; Value = 1 },
-        # Disable renegotiation on client.
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'DisableRenegoOnClient'; Type = 'DWord'; Value = 1 },
-        # Enable TLS SCSV protection.
-        [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'UseScsvForTls'; Type = 'DWord'; Value = 1 },
-        # Disable insecure connections from .NET apps (v2).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v2.0.50727'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
-        # Disable insecure connections from .NET apps (v2, 32-bit).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v2.0.50727'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
-        # Disable insecure connections from .NET apps (v4).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
-        # Disable insecure connections from .NET apps (v4, 32-bit).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
-        # Enable secure defaults for legacy .NET apps (v2).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v2.0.50727'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 },
-        # Enable secure defaults for legacy .NET apps (v2, 32-bit).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v2.0.50727'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 },
-        # Enable secure defaults for legacy .NET apps (v4).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 },
-        # Enable secure defaults for legacy .NET apps (v4, 32-bit).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 }
-    )
 
-    foreach ($r in $regSets) {
-        Set-RegValueSafe -Path $r.Path -Name $r.Name -Type $r.Type -Value $r.Value
-    }
+    Start-PTWTransaction
+    try {
+        $regSets = @(
+            # Require strong Diffie-Hellman keys (2048-bit).
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\Diffie-Hellman'; Name = 'ServerMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
+            # Require strong Diffie-Hellman keys (client).
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\Diffie-Hellman'; Name = 'ClientMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
+            # Require strong RSA keys (PKCS, breaks Hyper-V VMs).
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\PKCS'; Name = 'ServerMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
+            # Require strong RSA keys (client).
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms\PKCS'; Name = 'ClientMinKeyBitLength'; Type = 'DWord'; Value = 2048 },
+            # Disable insecure renegotiation (clients).
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'AllowInsecureRenegoClients'; Type = 'DWord'; Value = 0 },
+            # Disable insecure renegotiation (servers).
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'AllowInsecureRenegoServers'; Type = 'DWord'; Value = 0 },
+            # Disable renegotiation on server.
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'DisableRenegoOnServer'; Type = 'DWord'; Value = 1 },
+            # Disable renegotiation on client.
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'DisableRenegoOnClient'; Type = 'DWord'; Value = 1 },
+            # Enable TLS SCSV protection.
+            [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL'; Name = 'UseScsvForTls'; Type = 'DWord'; Value = 1 },
+            # Disable insecure connections from .NET apps (v2).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v2.0.50727'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
+            # Disable insecure connections from .NET apps (v2, 32-bit).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v2.0.50727'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
+            # Disable insecure connections from .NET apps (v4).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
+            # Disable insecure connections from .NET apps (v4, 32-bit).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319'; Name = 'SchUseStrongCrypto'; Type = 'DWord'; Value = 1 },
+            # Enable secure defaults for legacy .NET apps (v2).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v2.0.50727'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 },
+            # Enable secure defaults for legacy .NET apps (v2, 32-bit).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v2.0.50727'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 },
+            # Enable secure defaults for legacy .NET apps (v4).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 },
+            # Enable secure defaults for legacy .NET apps (v4, 32-bit).
+            [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319'; Name = 'SystemDefaultTlsVersions'; Type = 'DWord'; Value = 1 }
+        )
 
-    # Disable insecure ciphers.
-    $ciphers = @(
-        'RC2 40/128',
-        'RC2 56/128',
-        'RC2 128/128',
-        'RC4 128/128',
-        'RC4 64/128',
-        'RC4 56/128',
-        'RC4 40/128',
-        'DES 56/56',
-        'Triple DES 168',
-        'Triple DES 168/168',
-        'NULL'
-    )
-    foreach ($cipher in $ciphers) {
-        Set-RegValueSafe -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers\$cipher" -Name 'Enabled' -Type 'DWord' -Value 0
-    }
+        foreach ($r in $regSets) {
+            Set-RegValueSafeTx -Path $r.Path -Name $r.Name -Type $r.Type -Value $r.Value
+        }
 
-    # Disable insecure hashes.
-    $hashes = @('MD5','SHA')
-    foreach ($hash in $hashes) {
-        Set-RegValueSafe -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes\$hash" -Name 'Enabled' -Type 'DWord' -Value 0
-    }
+        # Disable insecure ciphers.
+        $ciphers = @(
+            'RC2 40/128',
+            'RC2 56/128',
+            'RC2 128/128',
+            'RC4 128/128',
+            'RC4 64/128',
+            'RC4 56/128',
+            'RC4 40/128',
+            'DES 56/56',
+            'Triple DES 168',
+            'Triple DES 168/168',
+            'NULL'
+        )
+        foreach ($cipher in $ciphers) {
+            Set-RegValueSafeTx -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers\$cipher" -Name 'Enabled' -Type 'DWord' -Value 0
+        }
 
-    $protocols = @(
-        # Disable SSL 2.0 (server).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Server'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable SSL 2.0 (client).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable SSL 3.0 (server).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Server'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable SSL 3.0 (client).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Client'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable TLS 1.0 (server).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable TLS 1.0 (client).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Client'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable TLS 1.1 (server).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable TLS 1.1 (client).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Client'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable DTLS 1.0 (server).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.0\Server'; Enabled = 0; DisabledByDefault = 1 },
-        # Disable DTLS 1.0 (client).
-        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.0\Client'; Enabled = 0; DisabledByDefault = 1 }
-    )
+        # Disable insecure hashes.
+        $hashes = @('MD5','SHA')
+        foreach ($hash in $hashes) {
+            Set-RegValueSafeTx -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes\$hash" -Name 'Enabled' -Type 'DWord' -Value 0
+        }
 
-    $build = Get-OsBuildNumber
-    if ($build -ge 14393) {
-        # Enable DTLS 1.2 (server).
-        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Server'; Enabled = 1; DisabledByDefault = 0 }
-        # Enable DTLS 1.2 (client).
-        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Client'; Enabled = 1; DisabledByDefault = 0 }
-    } else {
-        Write-Output "[i] Skipping DTLS 1.2 enable (build $build < 14393)"
-    }
+        $protocols = @(
+            # Disable SSL 2.0 (server).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Server'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable SSL 2.0 (client).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable SSL 3.0 (server).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Server'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable SSL 3.0 (client).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Client'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable TLS 1.0 (server).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable TLS 1.0 (client).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Client'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable TLS 1.1 (server).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable TLS 1.1 (client).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Client'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable DTLS 1.0 (server).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.0\Server'; Enabled = 0; DisabledByDefault = 1 },
+            # Disable DTLS 1.0 (client).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.0\Client'; Enabled = 0; DisabledByDefault = 1 },
+            # Explicitly enable TLS 1.2 (server).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server'; Enabled = 1; DisabledByDefault = 0 },
+            # Explicitly enable TLS 1.2 (client).
+            @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client'; Enabled = 1; DisabledByDefault = 0 }
+        )
 
-    if ($build -ge 20348) {
-        # Enable TLS 1.3 (server).
-        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server'; Enabled = 1; DisabledByDefault = 0 }
-        # Enable TLS 1.3 (client).
-        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client'; Enabled = 1; DisabledByDefault = 0 }
-    } else {
-        Write-Output "[i] Skipping TLS 1.3 enable (build $build < 20348)"
-    }
+        $build = Get-OsBuildNumber
+        if ($build -ge 14393) {
+            # Enable DTLS 1.2 (server).
+            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Server'; Enabled = 1; DisabledByDefault = 0 }
+            # Enable DTLS 1.2 (client).
+            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Client'; Enabled = 1; DisabledByDefault = 0 }
+        } else {
+            Write-Output "[i] Skipping DTLS 1.2 enable (build $build < 14393)"
+        }
 
-    foreach ($proto in $protocols) {
-        Set-RegValueSafe -Path $proto.Path -Name 'Enabled' -Type 'DWord' -Value $proto.Enabled
-        Set-RegValueSafe -Path $proto.Path -Name 'DisabledByDefault' -Type 'DWord' -Value $proto.DisabledByDefault
+        if ($build -ge 20348) {
+            # Enable TLS 1.3 (server).
+            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server'; Enabled = 1; DisabledByDefault = 0 }
+            # Enable TLS 1.3 (client).
+            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client'; Enabled = 1; DisabledByDefault = 0 }
+        } else {
+            Write-Output "[i] Skipping TLS 1.3 enable (build $build < 20348)"
+        }
+
+        foreach ($proto in $protocols) {
+            Set-RegValueSafeTx -Path $proto.Path -Name 'Enabled' -Type 'DWord' -Value $proto.Enabled
+            Set-RegValueSafeTx -Path $proto.Path -Name 'DisabledByDefault' -Type 'DWord' -Value $proto.DisabledByDefault
+        }
+    } catch {
+        Write-Output "[-] ERROR during TLS hardening: $($_.Exception.Message)"
+        Undo-PTWTransaction
+        throw
+    } finally {
+        Stop-PTWTransaction
     }
 }
 

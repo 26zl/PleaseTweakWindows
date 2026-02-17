@@ -68,7 +68,7 @@ echo [*] STEP 1: Running unit tests
 echo ========================================================================
 echo.
 
-mvn test
+call mvn test
 if %errorlevel% neq 0 (
     echo.
     echo [-] ERROR: Tests failed!
@@ -91,8 +91,8 @@ echo ========================================================================
 echo.
 
 set "RC_EXE="
-for /f "delims=" %%R in ('where /r "C:\Program Files (x86)\Windows Kits\10\bin" rc.exe 2^>nul ^| findstr /i "x64"') do (
-    set "RC_EXE=%%R"
+for /f "delims=" %%R in ('where /r "C:\Program Files (x86)\Windows Kits\10\bin" rc.exe 2^>nul ^| findstr /i "x64" ^| sort /r') do (
+    if not defined RC_EXE set "RC_EXE=%%R"
 )
 
 if defined RC_EXE (
@@ -124,7 +124,7 @@ echo ========================================================================
 echo [*] This will create a true native executable (no Java required)...
 echo.
 
-mvn clean package -Pnative
+call mvn clean package -Pnative
 if %errorlevel% neq 0 (
     echo.
     echo [-] ERROR: Maven build failed!
@@ -166,9 +166,13 @@ if exist "%NATIVE_EXE%" (
     exit /b 1
 )
 
-:: Copy scripts directory
+:: Copy scripts directory and remove unused revert scripts
 if exist "src\main\resources\scripts" (
     xcopy "src\main\resources\scripts" "%OUTPUT_DIR%\scripts\" /E /I /Q > nul
+    del /Q "%OUTPUT_DIR%\scripts\Gaming optimizations\revert-gaming.ps1" 2>nul
+    del /Q "%OUTPUT_DIR%\scripts\General Tweaks\revert-general.ps1" 2>nul
+    del /Q "%OUTPUT_DIR%\scripts\Network optimizations\revert-network.ps1" 2>nul
+    del /Q "%OUTPUT_DIR%\scripts\Services management\revert-services.ps1" 2>nul
     echo [+] Scripts directory copied to distribution
 )
 
@@ -221,10 +225,8 @@ echo.
 echo [+] This executable:
 echo     - Requires NO Java installation
 echo     - Starts in less than 1 second
-echo     - Is only ~31 MB in size
 echo     - Works on any Windows 10/11 system
-echo     - Includes PowerShell 7+ detection
-echo     - Has modern console styling
+echo     - Uses Windows PowerShell 5.1 (built-in)
 echo.
 echo [+] Ready for distribution!
 echo.

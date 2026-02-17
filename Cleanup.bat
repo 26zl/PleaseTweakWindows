@@ -18,11 +18,15 @@ if exist "dependency-reduced-pom.xml" del /Q "dependency-reduced-pom.xml"
 echo [*] Removing log files...
 if exist "logs" (
     del /Q "logs\*.log" 2>nul
+    del /Q "logs\*.log.gz" 2>nul
     del /Q "logs\*.tmp" 2>nul
 )
 
 echo [*] Removing temp script folders...
 for /d %%D in ("%TEMP%\pleasetweakwindows-scripts*") do rd /S /Q "%%D"
+
+echo [*] Removing update preferences...
+if exist "ptw-update-prefs.properties" del /Q "ptw-update-prefs.properties"
 
 echo.
 echo [+] Cleanup complete.

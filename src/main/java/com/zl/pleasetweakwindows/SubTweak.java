@@ -6,8 +6,6 @@ public class SubTweak {
     private final String applyAction;
     private final String revertAction;
     private final String description;
-    private final String applyLabel;
-    private final String revertLabel;
 
     public enum SubTweakType {
         TOGGLE, // Apply + Revert buttons
@@ -15,17 +13,11 @@ public class SubTweak {
     }
 
     public SubTweak(String name, SubTweakType type, String applyAction, String revertAction, String description) {
-        this(name, type, applyAction, revertAction, description, null, null);
-    }
-
-    public SubTweak(String name, SubTweakType type, String applyAction, String revertAction, String description, String applyLabel, String revertLabel) {
         this.name = name;
         this.type = type;
         this.applyAction = applyAction;
         this.revertAction = revertAction;
         this.description = description;
-        this.applyLabel = applyLabel;
-        this.revertLabel = revertLabel;
     }
 
     public SubTweak(String name, String applyAction, String description) {
@@ -50,14 +42,6 @@ public class SubTweak {
 
     public String getDescription() {
         return description;
-    }
-
-    public String getApplyLabel() {
-        return applyLabel;
-    }
-
-    public String getRevertLabel() {
-        return revertLabel;
     }
 
 }

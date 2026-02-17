@@ -13,6 +13,8 @@ param(
     [string]$Action = ''
 )
 
+$script:ScriptVersion = "2.1.0"
+
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
@@ -106,10 +108,6 @@ function Restore-UiLockScreenNotification {
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name 'DisableLockScreenAppNotifications'
 }
 
-function Restore-UiLiveTile {
-    Remove-RegValueSafe -Path 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications' -Name 'NoTileApplicationNotification'
-}
-
 function Restore-UiStoreOpenWith {
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -Name 'NoUseStoreOpenWith'
 }
@@ -143,20 +141,8 @@ function Restore-UiCameraOsd {
     Remove-RegValueSafe -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name 'NoPhysicalCameraLED'
 }
 
-function Restore-UiAppUsageTracking {
-    Remove-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\EdgeUI' -Name 'DisableMFUTracking'
-}
-
-function Restore-UiRecentApp {
-    Remove-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\EdgeUI' -Name 'DisableRecentApps'
-}
-
-function Restore-UiBacktracking {
-    Remove-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\EdgeUI' -Name 'TurnOffBackstack'
-}
-
 function Restore-Copilot {
-    $progressPreference = 'SilentlyContinue'
+    $ProgressPreference = 'SilentlyContinue'
     Get-AppXPackage -AllUsers *Microsoft.Windows.Ai.Copilot.Provider* | ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue }
     Get-AppXPackage -AllUsers *Microsoft.Copilot* | ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue }
     Remove-RegKey -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot"
@@ -212,7 +198,7 @@ if ($Action) {
     Write-Output ""
 
     switch ($Action.ToLowerInvariant()) {
-        "copilot-enable" {
+        "copilot-disable-revert" {
             try {
                 Restore-Copilot
                 Write-Output " [OK] Copilot restored to default"
@@ -222,17 +208,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 1
             }
         }
-        "dns-default" {
-            try {
-                Restore-DnsAndDoh
-                Write-Output " [OK] DNS and DoH reverted"
-                $global:LASTEXITCODE = 0
-            } catch {
-                Write-Output " [WARN] DNS/DoH revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
-            }
-        }
-        "doh-disable" {
+        "doh-enable-revert" {
             try {
                 Restore-DnsAndDoh
                 Write-Output " [OK] DoH disabled and DNS reset"
@@ -279,16 +255,6 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Lock screen notifications revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
-            }
-        }
-        "ui-live-tiles-revert" {
-            try {
-                Restore-UiLiveTile
-                Write-Output " [OK] Live Tiles notifications restored"
-                $global:LASTEXITCODE = 0
-            } catch {
-                Write-Output " [WARN] Live Tiles revert failed: $($_.Exception.Message)"
                 $global:LASTEXITCODE = 1
             }
         }
@@ -342,36 +308,6 @@ if ($Action) {
                 $global:LASTEXITCODE = 1
             }
         }
-        "ui-app-usage-tracking-revert" {
-            try {
-                Restore-UiAppUsageTracking
-                Write-Output " [OK] App usage tracking restored"
-                $global:LASTEXITCODE = 0
-            } catch {
-                Write-Output " [WARN] App usage tracking revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
-            }
-        }
-        "ui-recent-apps-revert" {
-            try {
-                Restore-UiRecentApp
-                Write-Output " [OK] Recent apps restored"
-                $global:LASTEXITCODE = 0
-            } catch {
-                Write-Output " [WARN] Recent apps revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
-            }
-        }
-        "ui-backtracking-revert" {
-            try {
-                Restore-UiBacktracking
-                Write-Output " [OK] Backtracking restored"
-                $global:LASTEXITCODE = 0
-            } catch {
-                Write-Output " [WARN] Backtracking revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
-            }
-        }
         default {
             Write-PTWError "Unknown action: $Action"
             $global:LASTEXITCODE = 1
@@ -396,7 +332,7 @@ Write-Output " Privacy - $Mode"
 Write-Output "========================================"
 Write-Output ""
 
-if ($doRevert -or $doRepair) {
+if ($doRevert) {
     Write-Output " [1/3] Reverting Copilot settings..."
     try {
         Restore-Copilot
@@ -419,20 +355,17 @@ if ($doRevert -or $doRepair) {
         Restore-UiSecureRecentDocList
         Restore-UiThisPcFolderList
         Restore-UiLockScreenNotification
-        Restore-UiLiveTile
         Restore-UiStoreOpenWith
         Restore-UiQuickAccessRecentItem
         Restore-UiSyncProviderNotification
         Restore-UiHibernation
         Restore-UiCameraOsd
-        Restore-UiAppUsageTracking
-        Restore-UiRecentApp
-        Restore-UiBacktracking
         Write-Output " [OK] UI and Explorer privacy tweaks reverted"
     } catch {
         Write-Output " [WARN] UI/Explorer revert failed: $($_.Exception.Message)"
     }
-
+} else {
+    Write-Output " [i] Skipping revert (Mode=$Mode)"
 }
 
 Write-Output ""

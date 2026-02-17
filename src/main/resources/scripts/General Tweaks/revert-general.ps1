@@ -11,6 +11,8 @@ param(
     [string]$Mode = 'RevertAndRepair'
 )
 
+$script:ScriptVersion = "2.1.0"
+
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
@@ -26,7 +28,6 @@ function Resolve-FallbackRegPath {
     }
     return $null
 }
-#endregion
 
 $ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'SilentlyContinue'
@@ -42,7 +43,7 @@ Write-Output ""
 
 #region REVERT Operations
 if ($doRevert) {
-    $totalSteps = 9
+    $totalSteps = 8
     $currentStep = 0
 
     # Power plans & power policy
@@ -112,7 +113,6 @@ if ($doRevert) {
         (Join-Path $PSScriptRoot "Registry-Defaults.reg")
     )
     if ($fallback) {
-        schtasks /Change /ENABLE /TN "\Microsoft\Windows\Defrag\ScheduledDefrag" 2>$null | Out-Null
         powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 1 2>$null | Out-Null
         Import-RegistryFile -RegFile $fallback | Out-Null
         $regSuccess = $true
@@ -150,35 +150,6 @@ if ($doRevert) {
     cmd /c "start explorer.exe >nul 2>&1"
     cmd /c "sc start WSearch >nul 2>&1"
     Write-PTWSuccess "Shell & search restored"
-
-    # Taskbar defaults
-    $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Restoring taskbar defaults..."
-    $taskbarSuccess = $false
-    $fallbackTaskbar = Resolve-FallbackRegPath -Candidates @(
-        (Join-Path $PSScriptRoot "regs\Taskbar Default.reg"),
-        (Join-Path $PSScriptRoot "regs\Taskbar-Default.reg"),
-        (Join-Path $PSScriptRoot "Taskbar Default.reg"),
-        (Join-Path $PSScriptRoot "Taskbar-Default.reg")
-    )
-    if ($fallbackTaskbar) {
-        Import-RegistryFile -RegFile $fallbackTaskbar | Out-Null
-        $taskbarSuccess = $true
-    }
-    Remove-Item -Recurse -Force "$env:USERPROFILE\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState\start2.bin" -ErrorAction SilentlyContinue | Out-Null
-    Remove-Item -Recurse -Force "$env:SystemDrive\Windows\StartMenuLayout.xml" -ErrorAction SilentlyContinue | Out-Null
-    foreach ($regAlias in @("HKLM", "HKCU")) {
-        $keyPath = "$($regAlias):\SOFTWARE\Policies\Microsoft\Windows\Explorer"
-        if (Test-Path $keyPath) {
-            Remove-ItemProperty -Path $keyPath -Name "LockedStartLayout" -ErrorAction SilentlyContinue | Out-Null
-            Remove-ItemProperty -Path $keyPath -Name "StartLayoutFile" -ErrorAction SilentlyContinue | Out-Null
-        }
-    }
-    if ($taskbarSuccess) {
-        Write-PTWSuccess "Taskbar defaults restored"
-    } else {
-        Write-PTWWarning "Taskbar defaults not found (skipped)"
-    }
 
     # Keyboard shortcuts
     $currentStep++
@@ -289,16 +260,16 @@ if ($doRepair) {
     # OneDrive
     $repairStep++
     Write-Output "  [$repairStep/$repairSteps] Reinstalling OneDrive..."
-    if (Test-Path "C:\Windows\SysWOW64\OneDriveSetup.exe") {
+    if (Test-Path "$env:SystemRoot\SysWOW64\OneDriveSetup.exe") {
         try {
-            $null = Start-Process -FilePath "C:\Windows\SysWOW64\OneDriveSetup.exe" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
+            $null = Start-Process -FilePath "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
             Write-PTWSuccess "OneDrive installer launched"
         } catch {
             Write-PTWWarning "Could not launch OneDrive installer"
         }
-    } elseif (Test-Path "C:\Windows\System32\OneDriveSetup.exe") {
+    } elseif (Test-Path "$env:SystemRoot\System32\OneDriveSetup.exe") {
         try {
-            $null = Start-Process -FilePath "C:\Windows\System32\OneDriveSetup.exe" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
+            $null = Start-Process -FilePath "$env:SystemRoot\System32\OneDriveSetup.exe" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
             Write-PTWSuccess "OneDrive installer launched"
         } catch {
             Write-PTWWarning "Could not launch OneDrive installer"

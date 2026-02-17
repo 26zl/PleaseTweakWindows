@@ -5,7 +5,6 @@ import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -26,10 +25,15 @@ public class UiLogic {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(UiLogic.class);
     // Tracked for accordion behavior: only one category open at a time
-    private static final List<VBox> allSubTweaksBoxes = new ArrayList<>();
-    private static final List<Button> allExpandButtons = new ArrayList<>();
+    private final List<VBox> allSubTweaksBoxes = new ArrayList<>();
+    private final List<Button> allExpandButtons = new ArrayList<>();
+    private final Executor executor;
 
-    public static VBox createExpandableTweakItem(Tweak tweak, TextArea logArea, String scriptDirectory, BooleanProperty scriptsRunning) {
+    public UiLogic(Executor executor) {
+        this.executor = executor;
+    }
+
+    public VBox createExpandableTweakItem(Tweak tweak, TextArea logArea, String scriptDirectory, BooleanProperty scriptsRunning) {
         VBox container = new VBox(5);
         container.getStyleClass().add("tweak-container");
 
@@ -42,7 +46,7 @@ public class UiLogic {
         categoryLabel.getStyleClass().add("category-title");
         categoryLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
 
-        Button expandButton = new Button("▼");
+        Button expandButton = new Button("\u25bc");
         expandButton.getStyleClass().add("expand-button");
         expandButton.setMinWidth(40);
 
@@ -52,10 +56,8 @@ public class UiLogic {
         subTweaksBox.setManaged(false);
         subTweaksBox.setVisible(false);
 
-        if (tweak.hasSubTweaks()) {
-            for (SubTweak subTweak : tweak.getSubTweaks()) {
-                subTweaksBox.getChildren().add(createSubTweakItem(subTweak, tweak, logArea, scriptDirectory, scriptsRunning));
-            }
+        for (SubTweak subTweak : tweak.getSubTweaks()) {
+            subTweaksBox.getChildren().add(createSubTweakItem(subTweak, tweak, logArea, scriptDirectory, scriptsRunning));
         }
 
         allSubTweaksBoxes.add(subTweaksBox);
@@ -71,13 +73,13 @@ public class UiLogic {
                 if (box != subTweaksBox) {
                     box.setVisible(false);
                     box.setManaged(false);
-                    btn.setText("▼");
+                    btn.setText("\u25bc");
                 }
             }
-            
+
             subTweaksBox.setVisible(!isExpanded);
             subTweaksBox.setManaged(!isExpanded);
-            expandButton.setText(isExpanded ? "▼" : "▲");
+            expandButton.setText(isExpanded ? "\u25bc" : "\u25b2");
         });
 
         Button runFullScriptButton = new Button("Run Full Script");
@@ -92,13 +94,12 @@ public class UiLogic {
                 Stage owner = resolveOwnerStage(runFullScriptButton);
                 Runnable runAction = () -> {
                     scriptsRunning.set(true);
-                    Executor.runScript(scriptPath, logArea, () -> {
-                        Platform.runLater(() -> scriptsRunning.set(false));
-                    }, "Menu");
+                    executor.runScript(scriptPath, logArea, () -> scriptsRunning.set(false), "Menu");
                 };
-                RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction);
+                RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction, executor);
             } else {
                 LOGGER.warn("Script not found: {}", scriptPath);
+                logArea.appendText("Script not found: " + scriptPath + "\n");
             }
         });
 
@@ -108,7 +109,7 @@ public class UiLogic {
         return container;
     }
 
-    private static HBox createSubTweakItem(SubTweak subTweak, Tweak parentTweak, TextArea logArea, String scriptDirectory, BooleanProperty scriptsRunning) {
+    private HBox createSubTweakItem(SubTweak subTweak, Tweak parentTweak, TextArea logArea, String scriptDirectory, BooleanProperty scriptsRunning) {
         HBox itemBox = new HBox(10);
         itemBox.setAlignment(Pos.CENTER_LEFT);
         itemBox.getStyleClass().add("sub-tweak-item");
@@ -129,28 +130,23 @@ public class UiLogic {
         spinner.setMaxSize(20, 20);
         spinner.setVisible(false);
 
-        String applyLabel = subTweak.getApplyLabel();
-        Button applyButton = new Button((applyLabel == null || applyLabel.isBlank()) ? "Apply" : applyLabel);
+        Button applyButton = new Button("Apply");
         applyButton.setMinWidth(70);
         applyButton.getStyleClass().add("apply-button");
         applyButton.disableProperty().bind(scriptsRunning);
 
         Button revertButton = null;
         if (subTweak.getType() == SubTweak.SubTweakType.TOGGLE && subTweak.getRevertAction() != null) {
-            String revertLabel = subTweak.getRevertLabel();
-            revertButton = new Button((revertLabel == null || revertLabel.isBlank()) ? "Revert" : revertLabel);
+            revertButton = new Button("Revert");
             revertButton.setMinWidth(70);
             revertButton.getStyleClass().add("revert-button");
             revertButton.disableProperty().bind(scriptsRunning);
         }
 
-        // Effectively final copy for use in lambdas
-        Button finalRevertButton = revertButton;
-
         applyButton.setOnAction(e -> executeSubTweakAction(
                 scriptDirectory + parentTweak.getApplyScript(),
                 subTweak.getApplyAction(), "apply",
-                applyButton, applyButton, finalRevertButton,
+                applyButton,
                 spinner, logArea, scriptsRunning, scriptDirectory, subTweak.getName()));
 
         itemBox.getChildren().addAll(nameLabel, applyButton);
@@ -159,10 +155,13 @@ public class UiLogic {
             Button finalRevertButtonInner = revertButton;
             revertButton.setOnAction(e -> {
                 String revertScript = parentTweak.getRevertScript();
+                if (revertScript == null || revertScript.isBlank()) {
+                    LOGGER.warn("No revert script defined for: {}, using apply script", subTweak.getName());
+                }
                 String revertPath = scriptDirectory + ((revertScript == null || revertScript.isBlank())
                         ? parentTweak.getApplyScript() : revertScript);
                 executeSubTweakAction(revertPath, subTweak.getRevertAction(), "revert",
-                        finalRevertButtonInner, applyButton, finalRevertButtonInner,
+                        finalRevertButtonInner,
                         spinner, logArea, scriptsRunning, scriptDirectory, subTweak.getName());
             });
 
@@ -175,8 +174,8 @@ public class UiLogic {
     }
 
     // Shared handler for both apply and revert button clicks
-    private static void executeSubTweakAction(String scriptPath, String action, String actionType,
-                                                Button triggerButton, Button applyButton, Button revertButton,
+    private void executeSubTweakAction(String scriptPath, String action, String actionType,
+                                                Button triggerButton,
                                                 ProgressIndicator spinner, TextArea logArea,
                                                 BooleanProperty scriptsRunning, String scriptDirectory,
                                                 String subTweakName) {
@@ -197,19 +196,15 @@ public class UiLogic {
             }
 
             LOGGER.debug("Executing {} action: {} for {}", actionType, action, subTweakName);
-            applyButton.setDisable(true);
-            if (revertButton != null) revertButton.setDisable(true);
             spinner.setVisible(true);
             scriptsRunning.set(true);
-            Executor.runScript(scriptPath, logArea, () -> Platform.runLater(() -> {
+            executor.runScript(scriptPath, logArea, () -> {
                 scriptsRunning.set(false);
                 spinner.setVisible(false);
-                applyButton.setDisable(false);
-                if (revertButton != null) revertButton.setDisable(false);
-            }), action);
+            }, action);
         };
 
-        RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction);
+        RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction, executor);
     }
 
     private static Stage resolveOwnerStage(Button button) {

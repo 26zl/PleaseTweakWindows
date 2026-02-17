@@ -151,7 +151,7 @@ tramp
 
 # Claude
 .claude/
-CLAUDE.MD
+CLAUDE.md
 nul
 
 # JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, PhpStorm, RubyMine, CLion, DataGrip, GoLand, Rider, AppCode)

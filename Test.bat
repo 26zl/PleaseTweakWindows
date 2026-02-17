@@ -81,6 +81,7 @@ echo [*] STEP 2: Run application in development mode?
 echo ========================================================================
 echo.
 echo Do you want to run the application now? (Y/N)
+set "RUN_APP=N"
 set /p RUN_APP="Enter choice: "
 
 if /i "%RUN_APP%"=="Y" (

@@ -10,7 +10,6 @@ param(
     [ValidateSet(
         "nvidia-settings-on",
         "nvidia-settings-default",
-        "amd-driver-install",
         "nvidia-driver-install",
         "p0-state-on",
         "p0-state-default",
@@ -18,8 +17,6 @@ param(
         "ulps-enable",
         "controller-oc-on",
         "controller-oc-default",
-        "fse-on",
-        "fso-on",
         "gamebar-off",
         "gamebar-on",
         "msi-mode-on",
@@ -78,7 +75,7 @@ switch ($Action.ToLowerInvariant()) {
 
     "nvidia-settings-on" {
         Write-Output "[*] Applying NVIDIA Profile Inspector settings..."
-        $drsPath = "C:\ProgramData\NVIDIA Corporation\Drs"
+        $drsPath = "$env:ProgramData\NVIDIA Corporation\Drs"
         if (Test-Path $drsPath) { Get-ChildItem -Path $drsPath -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue }
         $inspectorDir = "$env:TEMP\nvidiaProfileInspector"
         if (-not (Test-Path "$inspectorDir\nvidiaProfileInspector.exe")) {
@@ -94,7 +91,7 @@ switch ($Action.ToLowerInvariant()) {
         }
         Start-Process -Wait "$inspectorDir\nvidiaProfileInspector.exe" -ArgumentList "$inspectorDir\Inspector.nip"
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\FTS" -Name "EnableGR535" -Value 0
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535" -Value 0
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535" -Value 0
         Write-Output "[+] SUCCESS: NVIDIA Profile applied"
         exit 0
     }
@@ -102,16 +99,8 @@ switch ($Action.ToLowerInvariant()) {
     "nvidia-settings-default" {
         Write-Output "[*] Resetting NVIDIA settings to default..."
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\FTS" -Name "EnableGR535"
-        Remove-RegValue -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535"
+        Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535"
         Write-Output "[+] SUCCESS: NVIDIA settings reset (restart required)"
-        exit 0
-    }
-
-    "amd-driver-install" {
-        Write-Output "[*] Downloading AMD Driver..."
-        Get-FileFromWeb -URL "https://github.com/FR33THYFR33THY/files/raw/main/AMD%20Driver.exe" -File "$env:TEMP\AMD Driver.exe"
-        Start-Process "$env:TEMP\AMD Driver.exe" -ArgumentList "/S"
-        Write-Output "[+] SUCCESS: AMD Driver installer launched"
         exit 0
     }
 
@@ -214,26 +203,6 @@ switch ($Action.ToLowerInvariant()) {
         exit 0
     }
 
-    "fse-on" {
-        Write-Output "[*] Enabling Fullscreen Exclusive (FSE)..."
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Value 1
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -Value 2
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_FSEBehavior" -Value 2
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_HonorUserFSEBehaviorMode" -Value 1
-        Write-Output "[+] SUCCESS: Fullscreen Exclusive enabled"
-        exit 0
-    }
-
-    "fso-on" {
-        Write-Output "[*] Enabling Fullscreen Optimizations (FSO)..."
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Value 0
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -Value 0
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_FSEBehavior" -Value 0
-        Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_HonorUserFSEBehaviorMode" -Value 0
-        Write-Output "[+] SUCCESS: Fullscreen Optimizations enabled"
-        exit 0
-    }
-
     "gamebar-off" {
         Write-Output "[*] Disabling Game Bar and Xbox services..."
         $markerPath = "HKCU:\Software\PleaseTweakWindows"
@@ -243,16 +212,16 @@ switch ($Action.ToLowerInvariant()) {
             exit 0
         }
 
-        $progressPreference = 'SilentlyContinue'
+        $ProgressPreference = 'SilentlyContinue'
         Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_Enabled" -Value 0
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 0
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "UseNexusForGameBarEnabled" -Value 0
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\GameInputSvc" -Name "Start" -Value 4
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\BcastDVRUserService" -Name "Start" -Value 4
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XboxGipSvc" -Name "Start" -Value 4
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XblAuthManager" -Name "Start" -Value 4
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XblGameSave" -Name "Start" -Value 4
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XboxNetApiSvc" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\GameInputSvc" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\BcastDVRUserService" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxGipSvc" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XblAuthManager" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XblGameSave" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxNetApiSvc" -Name "Start" -Value 4
         Stop-Process -Force -Name GameBar -ErrorAction SilentlyContinue
         if (!(Test-Path $markerPath)) { New-Item -Path $markerPath -Force | Out-Null }
         Set-ItemProperty -Path $markerPath -Name "GameBarDisabled" -Value 1
@@ -265,12 +234,12 @@ switch ($Action.ToLowerInvariant()) {
         Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_Enabled" -Value 1
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 1
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "UseNexusForGameBarEnabled" -Value 1
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\GameInputSvc" -Name "Start" -Value 3
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\BcastDVRUserService" -Name "Start" -Value 3
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XboxGipSvc" -Name "Start" -Value 3
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XblAuthManager" -Name "Start" -Value 3
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XblGameSave" -Name "Start" -Value 3
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\XboxNetApiSvc" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\GameInputSvc" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\BcastDVRUserService" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxGipSvc" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XblAuthManager" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XblGameSave" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxNetApiSvc" -Name "Start" -Value 3
         Remove-ItemProperty -Path "HKCU:\Software\PleaseTweakWindows" -Name "GameBarDisabled" -ErrorAction SilentlyContinue
         Write-Output "[+] SUCCESS: Game Bar enabled (restart required)"
         exit 0
@@ -281,7 +250,7 @@ switch ($Action.ToLowerInvariant()) {
         $gpuDevices = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue
         foreach ($gpu in $gpuDevices) {
             $instanceID = $gpu.InstanceId
-            Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 1
+            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 1
         }
         Write-Output "[+] SUCCESS: MSI Mode enabled (restart required)"
         exit 0
@@ -292,7 +261,7 @@ switch ($Action.ToLowerInvariant()) {
         $gpuDevices = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue
         foreach ($gpu in $gpuDevices) {
             $instanceID = $gpu.InstanceId
-            Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 0
+            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 0
         }
         Write-Output "[+] SUCCESS: MSI Mode disabled (restart required)"
         exit 0
@@ -326,7 +295,7 @@ switch ($Action.ToLowerInvariant()) {
     "mpo-on" {
         Write-Output "[*] Enabling MPO and Windowed Optimizations..."
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode"
-        Set-RegSz -Path "Registry::HKCU\Software\Microsoft\DirectX\UserGpuPreferences" -Name "DirectXUserGlobalSettings" -Value "VRROptimizeEnable=0;SwapEffectUpgradeEnable=1;"
+        Set-RegSz -Path "Registry::HKCU\Software\Microsoft\DirectX\UserGpuPreferences" -Name "DirectXUserGlobalSettings" -Value "VRROptimizeEnable=1;SwapEffectUpgradeEnable=1;"
         Write-Output "[+] SUCCESS: MPO enabled (restart required)"
         exit 0
     }

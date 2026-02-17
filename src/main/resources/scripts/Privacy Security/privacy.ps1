@@ -13,15 +13,11 @@ param(
         "ui-secure-recent-docs",
         "ui-remove-this-pc-folders",
         "ui-lock-screen-notifications-disable",
-        "ui-live-tiles-disable",
         "ui-store-open-with-disable",
         "ui-quick-access-recent-disable",
         "ui-sync-provider-notifications-disable",
         "ui-hibernation-disable",
         "ui-camera-osd-enable",
-        "ui-app-usage-tracking-disable",
-        "ui-recent-apps-disable",
-        "ui-backtracking-disable",
         "copilot-disable",
         "dns-cloudflare",
         "dns-google",
@@ -92,7 +88,6 @@ function Enable-AllDoh {
     ipconfig /flushdns | Out-Null
 }
 
-# Disable clipboard-related services
 function Hide-ExplorerFolder {
     param(
         [Parameter(Mandatory)][string]$FolderName,
@@ -211,15 +206,6 @@ function Invoke-UiLockScreenNotificationsDisable {
     Write-Output "[+] SUCCESS: lock screen notifications disabled"
 }
 
-function Invoke-UiLiveTilesDisable {
-    Write-Output "[*] Disabling Live Tiles notifications..."
-
-    # Disable Live Tiles push notifications.
-    Set-RegValueSafe -Path 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications' -Name 'NoTileApplicationNotification' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: Live Tiles notifications disabled"
-}
-
 function Invoke-UiStoreOpenWithDisable {
     Write-Output "[*] Disabling 'Look for app in the Store'..."
 
@@ -277,33 +263,6 @@ function Invoke-UiCameraOsdEnable {
     Write-Output "[+] SUCCESS: camera OSD notifications enabled"
 }
 
-function Invoke-UiAppUsageTrackingDisable {
-    Write-Output "[*] Disabling app usage tracking..."
-
-    # Disable app usage tracking.
-    Set-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\EdgeUI' -Name 'DisableMFUTracking' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: app usage tracking disabled"
-}
-
-function Invoke-UiRecentAppsDisable {
-    Write-Output "[*] Disabling recent apps..."
-
-    # Disable recent apps.
-    Set-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\EdgeUI' -Name 'DisableRecentApps' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: recent apps disabled"
-}
-
-function Invoke-UiBacktrackingDisable {
-    Write-Output "[*] Disabling backtracking..."
-
-    # Disable backtracking.
-    Set-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\EdgeUI' -Name 'TurnOffBackstack' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: backtracking disabled"
-}
-
 switch ($Action.ToLowerInvariant()) {
     "ooshutup-apply" {
         Write-Output "[*] Applying O&O ShutUp10++ Profile..."
@@ -346,11 +305,6 @@ switch ($Action.ToLowerInvariant()) {
         exit 0
     }
 
-    "ui-live-tiles-disable" {
-        Invoke-UiLiveTilesDisable
-        exit 0
-    }
-
     "ui-store-open-with-disable" {
         Invoke-UiStoreOpenWithDisable
         exit 0
@@ -376,24 +330,9 @@ switch ($Action.ToLowerInvariant()) {
         exit 0
     }
 
-    "ui-app-usage-tracking-disable" {
-        Invoke-UiAppUsageTrackingDisable
-        exit 0
-    }
-
-    "ui-recent-apps-disable" {
-        Invoke-UiRecentAppsDisable
-        exit 0
-    }
-
-    "ui-backtracking-disable" {
-        Invoke-UiBacktrackingDisable
-        exit 0
-    }
-
     "copilot-disable" {
         Write-Output "[*] Disabling Copilot..."
-        $progressPreference = 'SilentlyContinue'
+        $ProgressPreference = 'SilentlyContinue'
         Stop-Process -Name "OneDrive","WidgetService","Widgets" -Force -ErrorAction SilentlyContinue
         Get-AppxPackage -AllUsers *Microsoft.Windows.Ai.Copilot.Provider* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
         Get-AppxPackage -AllUsers *Microsoft.Copilot* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue

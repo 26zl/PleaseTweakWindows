@@ -1,6 +1,5 @@
 package com.zl.pleasetweakwindows;
 
-import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.scene.control.TextArea;
 import javafx.stage.Stage;
@@ -16,7 +15,7 @@ public final class RestorePointGuard {
     }
 
     // Prompt once per session, remember the choice
-    private static Decision decision = Decision.UNKNOWN;
+    private static volatile Decision decision = Decision.UNKNOWN;
 
     public static void markCreated() {
         decision = Decision.CREATED;
@@ -26,7 +25,8 @@ public final class RestorePointGuard {
                                           String scriptDirectory,
                                           TextArea logArea,
                                           BooleanProperty scriptsRunning,
-                                          Runnable onProceed) {
+                                          Runnable onProceed,
+                                          Executor executor) {
         if (decision != Decision.UNKNOWN) {
             onProceed.run();
             return;
@@ -35,13 +35,13 @@ public final class RestorePointGuard {
         DialogUtils.RestorePointDecision choice = DialogUtils.showRestorePointPrompt(owner);
         switch (choice) {
             case CREATE -> {
-                decision = Decision.CREATED;
                 String scriptPath = scriptDirectory + "create_restore_point.ps1";
                 scriptsRunning.set(true);
-                Executor.runScript(scriptPath, logArea, () -> Platform.runLater(() -> {
+                executor.runScript(scriptPath, logArea, () -> {
+                    decision = Decision.CREATED;
                     scriptsRunning.set(false);
                     onProceed.run();
-                }), null);
+                }, null);
             }
             case SKIP -> {
                 decision = Decision.SKIPPED;
