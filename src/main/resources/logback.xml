@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- Property for log directory - uses user.dir (where EXE is located) -->
-    <property name="LOG_DIR" value="${user.dir}/logs" />
+    <!-- Property for log directory - ptw.log.dir is set by Main before logback init, falls back to user.dir -->
+    <property name="LOG_DIR" value="${ptw.log.dir:-${user.dir}/logs}" />
     <property name="APP_NAME" value="PleaseTweakWindows" />
 
     <!-- Comment: Logs will be created in the 'logs' folder next to the EXE file.

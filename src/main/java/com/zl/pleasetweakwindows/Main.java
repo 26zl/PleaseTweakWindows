@@ -46,6 +46,8 @@ public class Main extends Application {
                     Path exeDir = Path.of(command).toAbsolutePath().getParent();
                     if (exeDir != null && Files.isDirectory(exeDir)) {
                         System.setProperty("user.dir", exeDir.toString());
+                        // Set log directory before logback initializes (must happen before Logger field init)
+                        System.setProperty("ptw.log.dir", exeDir.resolve("logs").toString());
                     }
                 }
             }

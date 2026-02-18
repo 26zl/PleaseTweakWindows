@@ -38,6 +38,42 @@ function Write-PTWWarning { param([string]$Text) Write-Output "[!] $Text" }
 function Write-PTWError { param([string]$Text) Write-Output "[-] $Text" }
 #endregion
 
+#region Detailed File Logging (file-only, not visible in GUI)
+# Writes detailed operation logs to a daily log file for debugging.
+# Activated automatically when PTW_EMBEDDED=1 and PTW_LOG_DIR is set by the Java GUI.
+$script:PTWDetailLogFile = $null
+
+function Write-PTWDetail {
+    param([string]$Message, [string]$Level = "INFO")
+    if (-not $script:PTWDetailLogFile) { return }
+    $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    "$ts [$Level] $Message" | Add-Content -LiteralPath $script:PTWDetailLogFile -Encoding UTF8 -ErrorAction SilentlyContinue
+}
+
+if ($env:PTW_EMBEDDED -eq '1' -and $env:PTW_LOG_DIR) {
+    $dateStamp = Get-Date -Format "yyyy-MM-dd"
+    $script:PTWDetailLogFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-detail-$dateStamp.log"
+
+    # Start a PowerShell transcript to capture ALL console output (Write-Output, Write-Warning,
+    # Write-Error, exceptions, etc.) to a separate transcript file. This catches every direct
+    # cmdlet output (services, network, apps, powercfg, etc.) that doesn't go through our helpers.
+    $script:PTWTranscriptFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-transcript-$dateStamp.log"
+    try {
+        Start-Transcript -Path $script:PTWTranscriptFile -Append -Force | Out-Null
+    } catch {
+        # Transcript may already be running (nested dot-source) — safe to ignore
+    }
+
+    # Log session header — the calling script name is derived from the call stack
+    $callerScript = try { (Get-PSCallStack | Where-Object { $_.ScriptName -and $_.ScriptName -ne $MyInvocation.MyCommand.Path } | Select-Object -First 1).ScriptName } catch { $null }
+    if (-not $callerScript) { $callerScript = $MyInvocation.ScriptName }
+    $callerName = if ($callerScript) { [System.IO.Path]::GetFileName($callerScript) } else { "unknown" }
+    Write-PTWDetail "================================================================"
+    Write-PTWDetail "Script: $callerName | PID: $PID"
+    Write-PTWDetail "================================================================"
+}
+#endregion
+
 #region Network Helpers
 function Get-ActiveAdapter {
     Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Virtual*' -and $_.Name -notlike '*vEthernet*' }
@@ -47,15 +83,34 @@ function Get-ActiveAdapter {
 #region File Helpers
 function Import-RegistryFile {
     param([Parameter(Mandatory=$true)][string]$RegFile)
+    Write-PTWDetail "IMPORT registry file: $RegFile"
     if (Test-Path $RegFile) {
         $p = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$RegFile`"" -Wait -PassThru -NoNewWindow
-        return ($p.ExitCode -eq 0)
+        $success = ($p.ExitCode -eq 0)
+        Write-PTWDetail "  $(if ($success) { 'OK' } else { "FAILED (exit code $($p.ExitCode))" })"
+        return $success
     }
+    Write-PTWDetail "  SKIP (file not found)"
     return $false
 }
 #endregion
 
 #region Registry Helpers (Safe)
+function ConvertTo-PSDrivePath {
+    param([string]$Path)
+    if ($Path -match '^Registry::(.+)$') {
+        $inner = $Matches[1]
+        if ($inner -match '^(HKLM|HKCU|HKCR|HKU|HKCC)\\(.*)$') {
+            return "$($Matches[1]):\$($Matches[2])"
+        }
+    }
+    # Handle bare HKEY_* paths (e.g. from Get-ChildItem .Name on registry keys)
+    if ($Path -match '^HKEY_LOCAL_MACHINE\\(.*)$') { return "HKLM:\$($Matches[1])" }
+    if ($Path -match '^HKEY_CURRENT_USER\\(.*)$') { return "HKCU:\$($Matches[1])" }
+    if ($Path -match '^HKEY_CLASSES_ROOT\\(.*)$') { return "HKCR:\$($Matches[1])" }
+    return $Path
+}
+
 function Set-RegValueSafe {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -64,14 +119,19 @@ function Set-RegValueSafe {
         [Parameter(Mandatory)][ValidateSet('DWord','String')][string]$Type,
         [Parameter(Mandatory)]$Value
     )
+    $Path = ConvertTo-PSDrivePath $Path
+    Write-PTWDetail "SET $Type $Path\$Name = $Value"
     try {
         if ($PSCmdlet.ShouldProcess("$Path\\$Name", "Set registry value")) {
             if (-not (Test-Path -LiteralPath $Path)) {
                 New-Item -Path $Path -Force | Out-Null
+                Write-PTWDetail "  Created registry key: $Path"
             }
             New-ItemProperty -Path $Path -Name $Name -PropertyType $Type -Value $Value -Force | Out-Null
+            Write-PTWDetail "  OK"
         }
     } catch {
+        Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to set ${Path}\\${Name}: $($_.Exception.Message)"
     }
 }
@@ -102,16 +162,24 @@ function Remove-RegValueSafe {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Name
     )
+    $Path = ConvertTo-PSDrivePath $Path
+    Write-PTWDetail "REMOVE value $Path\$Name"
     try {
         if (Test-Path -LiteralPath $Path) {
             $has = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
             if ($null -ne $has) {
                 if ($PSCmdlet.ShouldProcess("$Path\\$Name", "Remove registry value")) {
                     Remove-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+                    Write-PTWDetail "  OK (removed)"
                 }
+            } else {
+                Write-PTWDetail "  SKIP (value not found)"
             }
+        } else {
+            Write-PTWDetail "  SKIP (key not found)"
         }
     } catch {
+        Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to remove ${Path}\\${Name}: $($_.Exception.Message)"
     }
 }
@@ -128,13 +196,19 @@ function Remove-RegValue {
 function Remove-RegKeySafe {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param([Parameter(Mandatory)][string]$Path)
+    $Path = ConvertTo-PSDrivePath $Path
+    Write-PTWDetail "REMOVE key $Path"
     try {
         if (Test-Path -LiteralPath $Path) {
             if ($PSCmdlet.ShouldProcess($Path, "Remove registry key")) {
                 Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+                Write-PTWDetail "  OK (key removed)"
             }
+        } else {
+            Write-PTWDetail "  SKIP (key not found)"
         }
     } catch {
+        Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to remove key ${Path}: $($_.Exception.Message)"
     }
 }
@@ -151,14 +225,19 @@ function Set-RegistryDefaultValueSafe {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Value
     )
+    $Path = ConvertTo-PSDrivePath $Path
+    Write-PTWDetail "SET default $Path\(Default) = $Value"
     try {
         if ($PSCmdlet.ShouldProcess("$Path\\(Default)", "Set registry default value")) {
             if (-not (Test-Path -LiteralPath $Path)) {
                 New-Item -Path $Path -Force | Out-Null
+                Write-PTWDetail "  Created registry key: $Path"
             }
             New-ItemProperty -Path $Path -Name '(Default)' -PropertyType String -Value $Value -Force | Out-Null
+            Write-PTWDetail "  OK"
         }
     } catch {
+        Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to set default value for ${Path}: $($_.Exception.Message)"
     }
 }
@@ -168,6 +247,7 @@ function Set-RegistryDefaultValueSafe {
 function Start-PTWTransaction {
     $script:PTWTransactionEntries = @()
     Write-Verbose "PTW Transaction started"
+    Write-PTWDetail "TRANSACTION started"
 }
 
 function Save-RegState {
@@ -229,11 +309,13 @@ function Undo-PTWTransaction {
         }
     }
     Write-Output "[+] Rollback completed ($($reversed.Count) entries)"
+    Write-PTWDetail "TRANSACTION rollback completed ($($reversed.Count) entries)"
 }
 
 function Stop-PTWTransaction {
     $script:PTWTransactionEntries = $null
     Write-Verbose "PTW Transaction stopped"
+    Write-PTWDetail "TRANSACTION stopped"
 }
 #endregion
 
@@ -268,8 +350,12 @@ function Get-GpuClassKeysByVendor {
             if ($desc -match $vendorName) { $hasVendor = $true }
         }
 
-        if ($hasVendor) { $keys += $key.Name }
+        if ($hasVendor) {
+            $keys += $key.Name
+            Write-PTWDetail "  Found $Vendor GPU key: $($key.Name)"
+        }
     }
+    Write-PTWDetail "GPU scan for $Vendor complete: $($keys.Count) key(s) found"
     return $keys
 }
 #endregion
@@ -341,6 +427,7 @@ function Get-FileFromWeb {
         [Parameter(Mandatory=$false)][string]$ExpectedHash
     )
 
+    Write-PTWDetail "DOWNLOAD $URL -> $File"
     # Force TLS 1.2/1.3 for secure downloads (required by most modern servers)
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     # Auto-load hash from file-checksums.json if not provided
@@ -447,6 +534,10 @@ function Get-FileFromWeb {
         } while ($count -gt 0)
         if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $fullSize -ProgressText " $([System.IO.Path]::GetFileName($File))" -Complete }
 
+        # Close streams before hash verification to release the file lock
+        if ($writer) { $writer.Close(); $writer = $null }
+        if ($reader) { $reader.Close(); $reader = $null }
+
         # Verify checksum if provided, or compute and cache for dynamic files
         $actualHash = (Get-FileHash -Path $File -Algorithm SHA256).Hash
         if ($ExpectedHash) {
@@ -456,10 +547,12 @@ function Get-FileFromWeb {
                 throw "SECURITY: File hash mismatch! Expected: $ExpectedHash, Got: $actualHash. File deleted for safety."
             }
             Write-Information "File integrity verified successfully." -InformationAction Continue
+            Write-PTWDetail "  Hash verified OK: $actualHash"
         } else {
             # Cache checksum for dynamic files (for re-downloads in same session)
             Set-RuntimeChecksum -URL $URL -Hash $actualHash
             Write-Verbose "Computed checksum for dynamic file: $actualHash"
+            Write-PTWDetail "  Downloaded OK, hash cached: $actualHash"
         }
     }
     finally {

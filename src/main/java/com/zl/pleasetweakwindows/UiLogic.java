@@ -15,6 +15,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.application.Platform;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 
@@ -84,23 +85,27 @@ public class UiLogic {
 
         Button runFullScriptButton = new Button("Run Full Script");
         runFullScriptButton.getStyleClass().add("run-full-script-button");
-        runFullScriptButton.setTooltip(new Tooltip("Opens the PowerShell menu for this category"));
+        runFullScriptButton.setTooltip(new Tooltip("Runs all tweaks in this category sequentially"));
         runFullScriptButton.disableProperty().bind(scriptsRunning);
         runFullScriptButton.setOnAction(e -> {
             String scriptPath = scriptDirectory + tweak.getApplyScript();
             File scriptFile = new File(scriptPath);
-            if (scriptFile.exists()) {
-                LOGGER.info("Running full script menu for: {}", tweak.getTitle());
-                Stage owner = resolveOwnerStage(runFullScriptButton);
-                Runnable runAction = () -> {
-                    scriptsRunning.set(true);
-                    executor.runScript(scriptPath, logArea, () -> scriptsRunning.set(false), "Menu");
-                };
-                RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction, executor);
-            } else {
+            if (!scriptFile.exists()) {
                 LOGGER.warn("Script not found: {}", scriptPath);
                 logArea.appendText("Script not found: " + scriptPath + "\n");
+                return;
             }
+
+            List<SubTweak> subTweaks = tweak.getSubTweaks();
+            if (subTweaks.isEmpty()) return;
+
+            LOGGER.info("Running all sub-tweaks for: {}", tweak.getTitle());
+            Stage owner = resolveOwnerStage(runFullScriptButton);
+            Runnable runAction = () -> {
+                scriptsRunning.set(true);
+                runNextAction(scriptPath, subTweaks, 0, logArea, scriptsRunning, owner);
+            };
+            RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction, executor);
         });
 
         headerBox.getChildren().addAll(expandButton, categoryLabel, runFullScriptButton);
@@ -205,6 +210,33 @@ public class UiLogic {
         };
 
         RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction, executor);
+    }
+
+    private void runNextAction(String scriptPath, List<SubTweak> subTweaks, int index,
+                               TextArea logArea, BooleanProperty scriptsRunning, Stage owner) {
+        if (index >= subTweaks.size()) {
+            Platform.runLater(() -> scriptsRunning.set(false));
+            return;
+        }
+
+        SubTweak sub = subTweaks.get(index);
+        String action = sub.getApplyAction();
+
+        if (action == null || action.isEmpty()) {
+            runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner);
+            return;
+        }
+
+        if (DialogUtils.requiresConfirmation(action)) {
+            if (!DialogUtils.showConfirmation(action, sub.getName(), owner)) {
+                runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner);
+                return;
+            }
+        }
+
+        executor.runScript(scriptPath, logArea, () -> {
+            Platform.runLater(() -> runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner));
+        }, action);
     }
 
     private static Stage resolveOwnerStage(Button button) {
