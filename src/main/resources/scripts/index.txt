@@ -1,16 +1,20 @@
 CommonFunctions.ps1
 Gaming optimizations/Gaming-Optimizations.ps1
+Gaming optimizations/revert-gaming.ps1
 Gaming optimizations/reg/nvidia_profile.xml
 General Tweaks/General-Tweaks.ps1
+General Tweaks/revert-general.ps1
 General Tweaks/regs/Registry-Optimize.reg
 General Tweaks/regs/Registry-Defaults.reg
 Network optimizations/Network-Optimizations.ps1
+Network optimizations/revert-network.ps1
 Privacy Security/privacy.ps1
 Privacy Security/revert-privacy.ps1
 Privacy Security/security.ps1
 Privacy Security/revert-security.ps1
 Privacy Security/regs/ooshutup10.cfg
 Services management/Services-Management.ps1
+Services management/revert-services.ps1
 Services management/regs/servicesTweaked.reg
 Services management/regs/servicesDefault.reg
 create_restore_point.ps1

@@ -96,7 +96,15 @@ public final class ResourceExtractor {
             copyDirectory(scriptsPath, targetDir);
             return;
         }
-        // Native image: use index.txt manifest to locate resources
+        // Native image: prefer filesystem scripts/ next to the EXE (distributed by Build.bat),
+        // fall back to embedded resources via index.txt if not found
+        Path exeDirScripts = Paths.get(System.getProperty("user.dir"), "scripts");
+        if (Files.isDirectory(exeDirScripts)) {
+            LOGGER.info("Using filesystem scripts directory: {}", exeDirScripts);
+            copyDirectory(exeDirScripts, targetDir);
+            return;
+        }
+        LOGGER.warn("Filesystem scripts/ not found next to EXE, falling back to embedded resources");
         copyFromIndex(targetDir);
     }
 
