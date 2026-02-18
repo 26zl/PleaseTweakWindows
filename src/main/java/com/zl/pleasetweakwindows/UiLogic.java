@@ -203,7 +203,7 @@ public class UiLogic {
             LOGGER.debug("Executing {} action: {} for {}", actionType, action, subTweakName);
             spinner.setVisible(true);
             scriptsRunning.set(true);
-            executor.runScript(scriptPath, logArea, () -> {
+            executor.runScript(scriptPath, logArea, (exitCode) -> {
                 scriptsRunning.set(false);
                 spinner.setVisible(false);
             }, action);
@@ -234,7 +234,7 @@ public class UiLogic {
             }
         }
 
-        executor.runScript(scriptPath, logArea, () -> {
+        executor.runScript(scriptPath, logArea, (exitCode) -> {
             Platform.runLater(() -> runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner));
         }, action);
     }

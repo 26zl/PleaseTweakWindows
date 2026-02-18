@@ -26,7 +26,15 @@ class RestorePointGuardTest {
         // Reset to UNKNOWN before test
         Class<?> decisionEnum = Class.forName(
                 "com.zl.pleasetweakwindows.RestorePointGuard$Decision");
-        Object unknown = Enum.valueOf((Class<Enum>) decisionEnum, "UNKNOWN");
+        Object unknown = null;
+        for (Object constant : decisionEnum.getEnumConstants()) {
+            if (constant instanceof Enum<?> enumConstant &&
+                    "UNKNOWN".equals(enumConstant.name())) {
+                unknown = constant;
+                break;
+            }
+        }
+        assertNotNull(unknown, "Expected UNKNOWN enum constant to exist");
         decisionField.set(null, unknown);
 
         RestorePointGuard.markCreated();

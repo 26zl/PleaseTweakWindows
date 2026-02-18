@@ -166,9 +166,11 @@ public class Main extends Application {
         restorePointBtn.setOnAction(e -> {
             String scriptPath = scriptDirectory + "create_restore_point.ps1";
             scriptsRunning.set(true);
-            executor.runScript(scriptPath, logArea, () -> {
+            executor.runScript(scriptPath, logArea, (exitCode) -> {
                 scriptsRunning.set(false);
-                RestorePointGuard.markCreated();
+                if (exitCode == 0) {
+                    RestorePointGuard.markCreated();
+                }
             }, null);
         });
         tweaksBox.getChildren().add(restorePointBtn);

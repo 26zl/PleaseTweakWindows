@@ -28,11 +28,13 @@ class ExecutorCommandBuildTest {
     private Executor executor;
 
     @BeforeEach
+    @SuppressWarnings("unused")
     void setUp() {
         executor = new Executor();
     }
 
     @AfterEach
+    @SuppressWarnings("unused")
     void tearDown() {
         executor.resetProcessRunnerFactory();
         capturedCommands.clear();
@@ -50,7 +52,7 @@ class ExecutorCommandBuildTest {
                 .resolve("Gaming-Optimizations.ps1")
                 .toString();
 
-        executor.runScript(realScriptPath, null, done::countDown, "nvidia-settings-on");
+        executor.runScript(realScriptPath, null, (exitCode) -> done.countDown(), "nvidia-settings-on");
         try {
             done.await(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {

@@ -37,8 +37,11 @@ public final class RestorePointGuard {
             case CREATE -> {
                 String scriptPath = scriptDirectory + "create_restore_point.ps1";
                 scriptsRunning.set(true);
-                executor.runScript(scriptPath, logArea, () -> {
-                    decision = Decision.CREATED;
+                executor.runScript(scriptPath, logArea, (exitCode) -> {
+                    if (exitCode == 0) {
+                        decision = Decision.CREATED;
+                    }
+                    // Stay UNKNOWN on failure so user is prompted again next time
                     scriptsRunning.set(false);
                     onProceed.run();
                 }, null);
