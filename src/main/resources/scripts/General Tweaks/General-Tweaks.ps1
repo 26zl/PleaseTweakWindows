@@ -202,7 +202,7 @@ switch ($Action.ToLowerInvariant()) {
         }
 
         $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $logDir = Join-Path $env:ProgramData "PleaseTweakWindows\\logs"
+        $logDir = Join-Path $env:ProgramData "PleaseTweakWindows\logs"
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         $backupPath = Join-Path $logDir "bloatware-removed-$timestamp.json"
         $restoreScriptPath = Join-Path $logDir "bloatware-restore-$timestamp.ps1"

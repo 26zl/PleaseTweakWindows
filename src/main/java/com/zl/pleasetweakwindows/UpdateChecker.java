@@ -192,7 +192,7 @@ public class UpdateChecker {
     }
 
     private Path getPrefsPath() {
-        return Paths.get(System.getProperty("user.dir"), "ptw-update-prefs.properties");
+        return Paths.get(System.getProperty("user.dir"), "logs", "ptw-update-prefs.properties");
     }
 
     private boolean isDismissed(String version) {

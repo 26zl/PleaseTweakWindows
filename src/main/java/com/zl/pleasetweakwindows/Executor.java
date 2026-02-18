@@ -250,6 +250,12 @@ public class Executor {
             runner.redirectErrorStream(true);
             // Tell scripts they're running from the GUI (disables interactive prompts)
             runner.environment().put("PTW_EMBEDDED", "1");
+            // Pass log directory for detailed PowerShell file-only logging
+            String logDir = System.getProperty("ptw.log.dir");
+            if (logDir == null) {
+                logDir = Paths.get(System.getProperty("user.dir"), "logs").toString();
+            }
+            runner.environment().put("PTW_LOG_DIR", logDir);
             String processKey = scriptPath + "_" + keyCounter.incrementAndGet();
             try {
                 Process process = runner.start();

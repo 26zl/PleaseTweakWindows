@@ -61,6 +61,7 @@ Revert Scripts    (Restore defaults + repair components)
 - Windows 10/11
 - Administrator privileges
 - Windows PowerShell 5.1 (built-in)
+- [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) (most systems already have this installed)
 
 ## Build from Source
 
