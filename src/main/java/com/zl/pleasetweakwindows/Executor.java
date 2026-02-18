@@ -19,6 +19,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.IntConsumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,14 +126,16 @@ public class Executor {
     }
 
     private void rejectWithError(String message, String scriptPath, String action,
-                                              TextArea logArea, Runnable onComplete) {
+                                              TextArea logArea, IntConsumer onComplete) {
         logMessage(logArea, "Error: " + message);
         LOGGER.warn("{}: {}", message, scriptPath);
         logActionTelemetry(scriptPath, action, -1, 0);
-        runOnFxThread(onComplete);
+        if (onComplete != null) {
+            runOnFxThread(() -> onComplete.accept(-1));
+        }
     }
 
-    public void runScript(String scriptPath, TextArea logArea, Runnable onComplete, String action) {
+    public void runScript(String scriptPath, TextArea logArea, IntConsumer onComplete, String action) {
         if (!isValidScriptPath(scriptPath)) {
             rejectWithError("Invalid script path: " + scriptPath, scriptPath, action, logArea, onComplete);
             return;
@@ -156,12 +159,16 @@ public class Executor {
         activeFutures.put(futureKey, trackingFuture);
 
         executorService.submit(() -> {
+            int exitCode = -1;
             try {
-                executeScript(scriptPath, logArea, action);
+                exitCode = executeScript(scriptPath, logArea, action);
             } finally {
                 trackingFuture.complete(null);
                 activeFutures.remove(futureKey);
-                runOnFxThread(onComplete);
+                if (onComplete != null) {
+                    int finalCode = exitCode;
+                    runOnFxThread(() -> onComplete.accept(finalCode));
+                }
             }
         });
     }
@@ -216,7 +223,7 @@ public class Executor {
         }
     }
 
-    private void executeScript(String scriptPath, TextArea logArea, String action) {
+    private int executeScript(String scriptPath, TextArea logArea, String action) {
         long startNanos = System.nanoTime();
         int exitCode = -1;
         try {
@@ -308,6 +315,7 @@ public class Executor {
             long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
             logActionTelemetry(scriptPath, action, exitCode, durationMs);
         }
+        return exitCode;
     }
 
     private static void logMessage(TextArea logArea, String message) {

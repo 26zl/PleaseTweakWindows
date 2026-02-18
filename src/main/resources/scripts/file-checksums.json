@@ -18,13 +18,13 @@
     "create_restore_point.ps1": "BFBD1F9B346AC5F4DFEFD35218CD9E8E058C7E48A510702689735D8B432683E7"
   },
   "downloads": {
-    "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe": "DYNAMIC",
+    "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe": "053F76DCBB28802E23341B6A787E3B0791C0FA5C8D4D011B1044172DBF89C73B",
     "https://aka.ms/vs/17/release/vc_redist.x64.exe": "DYNAMIC",
     "https://aka.ms/vs/17/release/vc_redist.x86.exe": "DYNAMIC",
     "https://download.sysinternals.com/files/Autoruns.zip": "DYNAMIC",
     "https://aka.ms/GamingRepairTool": "DYNAMIC",
     "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip": "5D692E812A701627EDD6D165D0B60175FF4F772C758A7DAC869D613E1BEB8063",
-    "https://www.7-zip.org/a/7z2501-x64.exe": "DYNAMIC",
+    "https://www.7-zip.org/a/7z2501-x64.exe": "78AFA2A1C773CAF3CF7EDF62F857D2A8A5DA55FB0FFF5DA416074C0D28B2B55F",
     "https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.0.exe": "E03D19810750E5D6C07F3534EE06BEC6CE7EF9B45BE752B2803C6A20768A7917",
     "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe": "DYNAMIC",
     "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/304fddef-b073-4e0a-b1ff-c2ea02584017/MicrosoftEdgeWebview2Setup.exe": "DYNAMIC"
@@ -33,6 +33,6 @@
     "DYNAMIC means the file changes frequently and checksum validation is skipped",
     "Script checksums are updated automatically when scripts change",
     "To regenerate: Get-FileHash -Algorithm SHA256 <file> | Select-Object -ExpandProperty Hash",
-    "TODO: Pin SHA256 hashes for remaining DYNAMIC downloads where stable URLs are available"
+    "Remaining DYNAMIC entries update in-place (aka.ms redirects, Autoruns, OOSU10, WebView2) and cannot be pinned"
   ]
 }

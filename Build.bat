@@ -108,9 +108,11 @@ if defined RC_EXE (
     popd
     echo [+] app.res compiled successfully
 ) else (
-    echo [!] WARNING: rc.exe not found — Windows SDK not installed.
-    echo [!] The EXE will build without an embedded icon and manifest.
-    echo [!] Install "Windows SDK" or "Build Tools for Visual Studio" to fix this.
+    echo [-] ERROR: rc.exe not found — Windows SDK not installed.
+    echo [-] app.res is required by the native build linker (pom.xml).
+    echo [-] Install "Windows SDK" or "Build Tools for Visual Studio" to fix this.
+    pause
+    exit /b 1
 )
 
 echo.

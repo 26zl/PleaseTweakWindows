@@ -478,12 +478,11 @@ function Get-FileFromWeb {
     }
 
     if (-not $isTrusted) {
-        Write-Warning "Downloading from non-trusted domain: $URL"
-
-        # In embedded mode (GUI), auto-accept non-trusted domains with warning
         if ($env:PTW_EMBEDDED -eq '1') {
-            Write-Warning "Auto-accepting download in GUI mode (PTW_EMBEDDED=1)"
+            # In GUI mode, block untrusted domains — scripts must be non-interactive
+            throw "SECURITY: Download blocked from non-trusted domain in GUI mode: $hostname. Add the domain to the trusted list in CommonFunctions.ps1 if it is safe."
         } else {
+            Write-Warning "Downloading from non-trusted domain: $URL"
             $response = Read-Host "Continue? (y/n)"
             if ($response -ne 'y') {
                 throw "Download cancelled by user"
