@@ -1,8 +1,6 @@
 # PleaseTweakWindows
 
 ![Build](https://github.com/26zl/PleaseTweakWindows/actions/workflows/build.yml/badge.svg)
-![License](https://img.shields.io/github/license/26zl/PleaseTweakWindows)
-![Stars](https://img.shields.io/github/stars/26zl/PleaseTweakWindows)
 
 > **This tool modifies Windows system settings. Always create a restore point before use.**
 
