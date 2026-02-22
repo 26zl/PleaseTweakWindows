@@ -5,8 +5,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -148,6 +151,9 @@ public class Executor {
             rejectWithError("Invalid action parameter: " + action, scriptPath, action, logArea, onComplete);
             return;
         }
+        // Compute file hash before submitting to executor (TOCTOU protection)
+        String expectedHash = computeFileHash(scriptPath);
+
         logMessage(logArea, "════════════════════════════════════════════════");
         logMessage(logArea, "  Starting: " + new File(scriptPath).getName());
         logMessage(logArea, "════════════════════════════════════════════════");
@@ -161,7 +167,7 @@ public class Executor {
         executorService.submit(() -> {
             int exitCode = -1;
             try {
-                exitCode = executeScript(scriptPath, logArea, action);
+                exitCode = executeScript(scriptPath, logArea, action, expectedHash);
             } finally {
                 trackingFuture.complete(null);
                 activeFutures.remove(futureKey);
@@ -223,10 +229,20 @@ public class Executor {
         }
     }
 
-    private int executeScript(String scriptPath, TextArea logArea, String action) {
+    private int executeScript(String scriptPath, TextArea logArea, String action, String expectedHash) {
         long startNanos = System.nanoTime();
         int exitCode = -1;
         try {
+            // Verify script integrity before execution (TOCTOU protection)
+            if (expectedHash != null) {
+                String currentHash = computeFileHash(scriptPath);
+                if (!expectedHash.equals(currentHash)) {
+                    logMessage(logArea, "ERROR: Script integrity check failed - file was modified between validation and execution");
+                    LOGGER.error("TOCTOU: Script hash mismatch for {}. Expected={}, Got={}", scriptPath, expectedHash, currentHash);
+                    return -1;
+                }
+            }
+
             String scriptName = new File(scriptPath).getName().toLowerCase();
             // These scripts accept -Action parameter for sub-tweak dispatch
             boolean isConsolidatedScript = scriptName.equals("gaming-optimizations.ps1") ||
@@ -364,6 +380,32 @@ public class Executor {
         @Override
         public Map<String, String> environment() {
             return builder.environment();
+        }
+    }
+
+    /**
+     * Check if PowerShell 5.1 is available at the expected path.
+     */
+    public static boolean isPowerShellAvailable() {
+        return new File(POWERSHELL_PATH).exists();
+    }
+
+    /**
+     * Compute SHA-256 hash of a file for integrity verification.
+     */
+    static String computeFileHash(String filePath) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] fileBytes = Files.readAllBytes(Path.of(filePath));
+            byte[] hashBytes = digest.digest(fileBytes);
+            StringBuilder sb = new StringBuilder(hashBytes.length * 2);
+            for (byte b : hashBytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException | IOException e) {
+            LOGGER.warn("Could not compute file hash for {}: {}", filePath, e.getMessage());
+            return null;
         }
     }
 

@@ -157,7 +157,12 @@ function Invoke-SmartNetworkOptimization {
                 }
             }
             Write-Output "    - Restarting Adapter..."
-            Restart-NetAdapter -Name $Adapter.Name -ErrorAction SilentlyContinue
+            try {
+                Restart-NetAdapter -Name $Adapter.Name -ErrorAction Stop
+            } catch {
+                Write-Output "    - WARNING: Could not restart adapter '$($Adapter.Name)': $($_.Exception.Message)"
+                Write-Output "    - You may need to restart it manually or reboot."
+            }
         }
     }
     Write-Output "[+] Smart Optimization Complete!"

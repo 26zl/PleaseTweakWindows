@@ -212,31 +212,42 @@ public class UiLogic {
         RestorePointGuard.ensureRestorePoint(owner, scriptDirectory, logArea, scriptsRunning, runAction, executor);
     }
 
-    private void runNextAction(String scriptPath, List<SubTweak> subTweaks, int index,
+    /**
+     * Run sub-tweak actions sequentially using an iterative approach via the FX event loop.
+     * Each completion callback posts the next iteration via Platform.runLater,
+     * so there is no recursive stack growth — each invocation gets a fresh stack frame.
+     */
+    private void runNextAction(String scriptPath, List<SubTweak> subTweaks, int startIndex,
                                TextArea logArea, BooleanProperty scriptsRunning, Stage owner) {
-        if (index >= subTweaks.size()) {
-            Platform.runLater(() -> scriptsRunning.set(false));
-            return;
-        }
+        final int[] index = {startIndex};
 
-        SubTweak sub = subTweaks.get(index);
-        String action = sub.getApplyAction();
+        Runnable processNext = new Runnable() {
+            @Override
+            public void run() {
+                // Skip sub-tweaks with no action or declined confirmation
+                while (index[0] < subTweaks.size()) {
+                    SubTweak sub = subTweaks.get(index[0]);
+                    String action = sub.getApplyAction();
+                    index[0]++;
 
-        if (action == null || action.isEmpty()) {
-            runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner);
-            return;
-        }
+                    if (action == null || action.isEmpty()) {
+                        continue;
+                    }
+                    if (DialogUtils.requiresConfirmation(action) &&
+                            !DialogUtils.showConfirmation(action, sub.getName(), owner)) {
+                        continue;
+                    }
 
-        if (DialogUtils.requiresConfirmation(action)) {
-            if (!DialogUtils.showConfirmation(action, sub.getName(), owner)) {
-                runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner);
-                return;
+                    executor.runScript(scriptPath, logArea, (exitCode) -> {
+                        Platform.runLater(this);
+                    }, action);
+                    return;
+                }
+                // All actions processed
+                Platform.runLater(() -> scriptsRunning.set(false));
             }
-        }
-
-        executor.runScript(scriptPath, logArea, (exitCode) -> {
-            Platform.runLater(() -> runNextAction(scriptPath, subTweaks, index + 1, logArea, scriptsRunning, owner));
-        }, action);
+        };
+        processNext.run();
     }
 
     private static Stage resolveOwnerStage(Button button) {

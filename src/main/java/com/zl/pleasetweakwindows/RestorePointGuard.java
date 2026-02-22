@@ -14,11 +14,14 @@ public final class RestorePointGuard {
         SKIPPED
     }
 
-    // Prompt once per session, remember the choice
-    private static volatile Decision decision = Decision.UNKNOWN;
+    // Guarded by synchronized methods — no longer volatile
+    private static Decision decision = Decision.UNKNOWN;
+    private static final Object LOCK = new Object();
 
     public static void markCreated() {
-        decision = Decision.CREATED;
+        synchronized (LOCK) {
+            decision = Decision.CREATED;
+        }
     }
 
     public static void ensureRestorePoint(Stage owner,
@@ -27,9 +30,15 @@ public final class RestorePointGuard {
                                           BooleanProperty scriptsRunning,
                                           Runnable onProceed,
                                           Executor executor) {
-        if (decision != Decision.UNKNOWN) {
-            onProceed.run();
-            return;
+        if (onProceed == null) {
+            throw new IllegalArgumentException("onProceed callback must not be null");
+        }
+
+        synchronized (LOCK) {
+            if (decision != Decision.UNKNOWN) {
+                onProceed.run();
+                return;
+            }
         }
 
         DialogUtils.RestorePointDecision choice = DialogUtils.showRestorePointPrompt(owner);
@@ -39,7 +48,9 @@ public final class RestorePointGuard {
                 scriptsRunning.set(true);
                 executor.runScript(scriptPath, logArea, (exitCode) -> {
                     if (exitCode == 0) {
-                        decision = Decision.CREATED;
+                        synchronized (LOCK) {
+                            decision = Decision.CREATED;
+                        }
                     }
                     // Stay UNKNOWN on failure so user is prompted again next time
                     scriptsRunning.set(false);
@@ -47,7 +58,9 @@ public final class RestorePointGuard {
                 }, null);
             }
             case SKIP -> {
-                decision = Decision.SKIPPED;
+                synchronized (LOCK) {
+                    decision = Decision.SKIPPED;
+                }
                 onProceed.run();
             }
             case CANCEL -> {

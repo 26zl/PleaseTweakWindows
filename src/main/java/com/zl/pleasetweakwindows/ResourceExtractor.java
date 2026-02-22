@@ -13,6 +13,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -50,12 +57,40 @@ public final class ResourceExtractor {
 
         try {
             Path tempDir = Files.createTempDirectory("pleasetweakwindows-scripts");
+            restrictDirectoryPermissions(tempDir);
             copyScripts(tempDir);
             scriptsDirectory.set(tempDir);
             return tempDir;
         } catch (IOException | URISyntaxException e) {
             LOGGER.error("Failed to prepare scripts directory.", e);
             throw new IllegalStateException("Failed to prepare scripts directory", e);
+        }
+    }
+
+    /**
+     * Restrict temp directory ACL to current user only (owner full-control).
+     * Prevents other processes/users from modifying extracted scripts.
+     */
+    private static void restrictDirectoryPermissions(Path directory) {
+        try {
+            AclFileAttributeView aclView = Files.getFileAttributeView(directory, AclFileAttributeView.class);
+            if (aclView == null) {
+                LOGGER.debug("ACL not supported on filesystem, skipping permission restriction");
+                return;
+            }
+
+            UserPrincipal owner = aclView.getOwner();
+            AclEntry ownerEntry = AclEntry.newBuilder()
+                    .setType(AclEntryType.ALLOW)
+                    .setPrincipal(owner)
+                    .setPermissions(EnumSet.allOf(AclEntryPermission.class))
+                    .build();
+
+            // Replace default ACL with owner-only access
+            aclView.setAcl(List.of(ownerEntry));
+            LOGGER.debug("Restricted temp directory permissions to owner only: {}", directory);
+        } catch (IOException e) {
+            LOGGER.warn("Could not restrict temp directory permissions: {}", directory, e);
         }
     }
 
@@ -70,7 +105,7 @@ public final class ResourceExtractor {
                      try {
                          Files.deleteIfExists(path);
                      } catch (IOException e) {
-                         LOGGER.debug("Failed to delete temp file: {}", path, e);
+                         LOGGER.warn("Failed to delete temp file: {}", path, e);
                      }
                  });
         }

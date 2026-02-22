@@ -62,7 +62,7 @@
     </appender>
 
     <!-- Logger for your application -->
-    <logger name="com.zl.pleasetweakwindows" level="DEBUG" />
+    <logger name="com.zl.pleasetweakwindows" level="INFO" />
     <logger name="telemetry" level="INFO" additivity="false">
         <appender-ref ref="TELEMETRY_FILE" />
     </logger>
