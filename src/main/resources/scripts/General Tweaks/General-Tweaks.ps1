@@ -101,7 +101,7 @@ switch ($Action.ToLowerInvariant()) {
         if ((Get-ActivePowerSchemeId) -ne $schemeId) {
             cmd /c "powercfg /SETACTIVE $schemeId >nul 2>&1"
         }
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" -Name "ValueMax" -Value 0
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" -Name "ValueMax" -Value 0
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value 1
         Write-Output "[+] SUCCESS: Ultimate Power Plan applied (restart required)"
         exit 0
@@ -419,7 +419,7 @@ foreach (`$app in `$apps) {
 
     "keyboard-disable" {
         Write-Output "[*] Disabling Keyboard Shortcuts..."
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\hidserv" -Name "Start" -Value 4
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\hidserv" -Name "Start" -Value 4
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoWinKeys" -Value 1
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys" -Value 1
         Write-Output "[+] SUCCESS: Keyboard shortcuts disabled (restart required)"
@@ -428,7 +428,7 @@ foreach (`$app in `$apps) {
 
     "keyboard-enable" {
         Write-Output "[*] Enabling Keyboard Shortcuts..."
-        Set-RegDword -Path "Registry::HKLM\SYSTEM\ControlSet001\Services\hidserv" -Name "Start" -Value 3
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\hidserv" -Name "Start" -Value 3
         Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoWinKeys"
         Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys"
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map"

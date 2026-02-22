@@ -55,7 +55,10 @@ public class DialogUtils {
     private static final Set<String> HIGH_RISK_ACTIONS = Set.of(
         "services-disable",
         "driver-clean",
-        "tls-hardening"
+        "tls-hardening",
+        "firewall-hardening",
+        "security-spectre-meltdown-enable",
+        "security-improve-network"
     );
 
     public static boolean requiresConfirmation(String action) {
@@ -178,7 +181,10 @@ public class DialogUtils {
                 "Some applications may be blocked.";
             case "security-improve-network" ->
                 "'" + actionName + "' will harden SMB/NetBIOS and disable legacy network components.\n\n" +
-                "This may affect file sharing, remote access, or older devices on your network.";
+                "WARNING: This may break file sharing, remote access, or older devices on your network.";
+            case "security-spectre-meltdown-enable" ->
+                "'" + actionName + "' will enable Spectre/Meltdown CPU mitigations.\n\n" +
+                "WARNING: This may reduce CPU performance by 5-30% depending on workload.";
             case "security-clipboard-data-disable" ->
                 "'" + actionName + "' will disable clipboard sync and history.\n\n" +
                 "Clipboard sync across devices and history will stop working.";

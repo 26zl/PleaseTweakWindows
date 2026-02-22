@@ -180,14 +180,24 @@ public class UpdateChecker {
                 LOGGER.warn("Refused to open non-HTTP URL: {}", url);
                 return;
             }
-            Process process = new ProcessBuilder("cmd", "/c", "start", "", url.replace("&", "^&")).start();
-            process.getInputStream().close();
-            process.getErrorStream().close();
-            process.getOutputStream().close();
+            // Use rundll32 directly to avoid cmd.exe shell metacharacter injection.
+            // Run on daemon thread to avoid blocking the FX thread.
+            Thread thread = new Thread(() -> {
+                try {
+                    Process process = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start();
+                    try (var is = process.getInputStream();
+                         var es = process.getErrorStream();
+                         var os = process.getOutputStream()) {
+                        // Close all streams immediately to avoid resource leak
+                    }
+                } catch (IOException e) {
+                    LOGGER.warn("Failed to open browser: {}", e.getMessage());
+                }
+            });
+            thread.setDaemon(true);
+            thread.start();
         } catch (IllegalArgumentException e) {
             LOGGER.warn("Invalid URL: {}", url);
-        } catch (IOException e) {
-            LOGGER.warn("Failed to open browser: {}", e.getMessage());
         }
     }
 

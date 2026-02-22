@@ -249,7 +249,7 @@ Windows Registry Editor Version 5.00
 
 ; NETWORK AND INTERNET
 ; allow other network users to control or disable the shared internet connection
-[HKEY_LOCAL_MACHINE\System\ControlSet001\Control\Network\SharedAccessConnection]
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Network\SharedAccessConnection]
 "EnableControl"=dword:00000001
 
 ; SYSTEM AND SECURITY
@@ -848,7 +848,7 @@ Windows Registry Editor Version 5.00
 "EnableGR535"=dword:00000001
 
 ; new location
-[HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\nvlddmkm\Parameters\FTS]
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS]
 "EnableGR535"=dword:00000001
 
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS]

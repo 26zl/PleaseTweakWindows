@@ -766,7 +766,7 @@ Windows Registry Editor Version 5.00
 ; disable allow other network users to control or disable the shared internet connection
 
 
-[HKEY_LOCAL_MACHINE\System\ControlSet001\Control\Network\SharedAccessConnection]
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Network\SharedAccessConnection]
 
 
 "EnableControl"=dword:00000000
@@ -2539,7 +2539,7 @@ E0,F6,C5,D5,0E,CA,50,00,00
 ; new location
 
 
-[HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\nvlddmkm\Parameters\FTS]
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS]
 
 
 "EnableGR535"=dword:00000000

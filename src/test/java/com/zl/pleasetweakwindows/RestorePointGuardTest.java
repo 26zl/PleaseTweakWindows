@@ -48,9 +48,13 @@ class RestorePointGuardTest {
     }
 
     @Test
-    void decisionFieldIsVolatile() throws Exception {
-        Field decisionField = RestorePointGuard.class.getDeclaredField("decision");
-        assertTrue(Modifier.isVolatile(decisionField.getModifiers()),
-                "decision field should be volatile for thread safety");
+    void threadSafetyViaLockObject() throws Exception {
+        // decision field is guarded by a synchronized LOCK object (stronger than volatile)
+        Field lockField = RestorePointGuard.class.getDeclaredField("LOCK");
+        assertNotNull(lockField, "LOCK field should exist for synchronized access");
+        assertTrue(Modifier.isStatic(lockField.getModifiers()),
+                "LOCK field should be static");
+        assertTrue(Modifier.isFinal(lockField.getModifiers()),
+                "LOCK field should be final");
     }
 }

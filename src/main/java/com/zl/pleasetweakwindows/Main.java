@@ -40,9 +40,9 @@ public class Main extends Application {
         try {
             String command = ProcessHandle.current().info().command().orElse(null);
             if (command != null) {
-                String name = Path.of(command).getFileName().toString().toLowerCase();
+                Path fileName = Path.of(command).getFileName();
                 // Only override CWD when running as the native EXE, not via java/javaw
-                if (!name.startsWith("java")) {
+                if (fileName != null && !fileName.toString().toLowerCase().startsWith("java")) {
                     Path exeDir = Path.of(command).toAbsolutePath().getParent();
                     if (exeDir != null && Files.isDirectory(exeDir)) {
                         System.setProperty("user.dir", exeDir.toString());
@@ -83,6 +83,23 @@ public class Main extends Application {
             alert.setHeaderText("PleaseTweakWindows requires Administrator privileges");
             alert.setContentText("Please right-click the application and select \"Run as administrator\".");
             alert.showAndWait();
+            System.exit(1);
+            return;
+        }
+
+        if (!Executor.isPowerShellAvailable()) {
+            LOGGER.error("PowerShell 5.1 not found. Scripts cannot execute.");
+            Alert psAlert = new Alert(AlertType.ERROR);
+            psAlert.initStyle(StageStyle.UTILITY);
+            psAlert.setTitle("PowerShell Not Found");
+            psAlert.setHeaderText("Windows PowerShell 5.1 is required");
+            psAlert.setContentText("""
+                                   PleaseTweakWindows requires Windows PowerShell 5.1 (powershell.exe) to run scripts.
+                                   
+                                   Please ensure PowerShell 5.1 is installed and available at:
+                                   """ +
+                    System.getenv("SystemRoot") + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+            psAlert.showAndWait();
             System.exit(1);
             return;
         }
@@ -353,8 +370,8 @@ public class Main extends Application {
             ProcessBuilder pb = new ProcessBuilder("net", "session");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            try {
-                p.getInputStream().readAllBytes();
+            try (var is = p.getInputStream()) {
+                is.readAllBytes();
                 boolean finished = p.waitFor(5, TimeUnit.SECONDS);
                 if (!finished) {
                     p.destroyForcibly();
