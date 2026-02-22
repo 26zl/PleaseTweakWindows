@@ -1,149 +1,45 @@
-# Maven build directories
-/target/
-/dist/
-/out/
+# .NET build output
+**/bin/
+**/obj/
+**/dist/
+*.dll
+*.exe
+*.pdb
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+*.cache
 
-# Maven Wrapper (keep .mvn/ folder, but ignore auto-generated files)
-.mvn/wrapper/maven-wrapper.jar
-.mvn/wrapper/maven-wrapper.properties
-.mvn/timing.properties
+# .NET publish output
+**/publish/
 
-# Eclipse project files
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings/
-.springBeans
-.sts4-cache
-.metadata
-.tmp/
-.bin/
-*.launch
-.pydevproject
-.cproject
-.autotools
-.buildpath
-.target
-.tern-project
-.texlipse
-.recommenders/
-.apt_generated/
-.apt_generated_test/
-.cache-main
-.scala_dependencies
-.worksheet
-.externalToolBuilders/
+# NuGet
+*.nupkg
+nuget.exe
+**/packages/*
+*.nuget.props
+*.nuget.targets
 
-# NetBeans project files
-/nbproject/private/
-/nbbuild/
-/nbdist/
-/.nb-gradle/
-nbactions.xml
-nb-configuration.xml
-
-# VS Code and VSCodium workspace settings
+# VS Code
 .vscode/
 .vscode-oss/
-.code-workspace
 *.code-workspace
 
 # Visual Studio
 .vs/
 *.user
 *.userosscache
-*.sln.docstates
 *.suo
+*.sln.docstates
 *.userprefs
-*.pidb
-*.booproj
-*.svd
-*.pdb
-*.opendb
-*.opensdf
-*.sdf
-*.cachefile
-*.VC.db
-*.VC.VC.opendb
-*.psess
-*.vsp
-*.vspx
-*.sap
-*.pidb
-*.user
-*.aps
-*.pch
-*.vspscc
-*.vssscc
-.builds
-*.pidb
-*.svclog
-*.scc
+*.DotSettings.user
 
-# Android Studio
+# JetBrains IDEs (Rider, etc.)
+.idea/
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-
-# Xcode
-*.pbxuser
-!default.pbxuser
-*.mode1v3
-!default.mode1v3
-*.mode2v3
-!default.mode2v3
-*.perspectivev3
-!default.perspectivev3
-xcuserdata/
-*.moved-aside
-*.xccheckout
-*.xcscmblueprint
-DerivedData/
-*.hmap
-*.ipa
-*.xcuserstate
-project.xcworkspace/
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-sftp-config.json
-sftp-config-alt*.json
-vintageousrc
-
-# Vim
-*.swp
-*.swo
-*~
-.vimrc.local
-.netrwhist
-
-# Emacs
-*~
-\#*\#
-/.emacs.desktop
-/.emacs.desktop.lock
-*.elc
-auto-save-list
-tramp
-.\#*
-
-# Atom
-.ftpconfig
-.sftpconfig
+*.ipr
+*.iws
 
 # Cursor
 .cursor/
@@ -152,177 +48,46 @@ tramp
 # Claude
 .claude/
 CLAUDE.md
-nul
-
-# JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, PhpStorm, RubyMine, CLion, DataGrip, GoLand, Rider, AppCode)
-.idea/
-*.iml
-*.ipr
-*.iws
-.idea_modules/
-atlassian-ide-plugin.xml
-com_crashlytics_export_strings.xml
-crashlytics.properties
-crashlytics-build.properties
-fabric.properties
-.idea/replstate.xml
-.idea/httpRequests
-.idea/caches/build_file_checksums.ser
-
-# Additional IDEs and Editors
-# Kate
-.kateconfig
-.kateproject
-.kate-swp
-.kate-wp
-
-# KDevelop
-.kdev4/
-*.kdev4
-
-# Qt Creator
-*.pro.user
-*.pro.user.*
-*.qbs.user
-*.qbs.user.*
-*.moc
-moc_*.cpp
-moc_*.h
-qrc_*.cpp
-ui_*.h
-*.qm
-*.prl
-
-# Code::Blocks
-*.depend
-*.layout
-*.cbp
-
-# Dev-C++
-*.dev
-
-# Anjuta
-anjuta_symbian.db
-anjuta_symbian.db-journal
-anjuta_symbian.db-wal
-anjuta_symbian.db-shm
-
-# BlueJ
-*.ctxt
-
-# JCreator
-*.jcp
-*.jcu
-*.jpr
-*.jpx
-*.jws
-
-# MyEclipse
-.metadata
-bin/
-tmp/
-*.tmp
-*.bak
-*.swp
-*~.nib
-local.properties
-.settings/
-.loadpath
-.recommenders
 
 # Log files
-/log/
+/logs/
 *.log
-*.tmp
-*.bak
 
-# macOS system files
+# macOS
 .DS_Store
-.AppleDouble
-.LSOverride
-Icon
 ._*
-.Spotlight-V100
-.Trashes
-.VolumeIcon.icns
-.metadata_never_index
-.fseventsd
 
-# Windows system files
+# Windows
 Thumbs.db
 ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
+nul
 
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
-
-# Windows shortcuts
-*.lnk
-
-# Java compiled class files
-*.class
-
-# Linux system files
+# Linux
 *~
 .nfs*
 
-# Core dumps
-core
-*.core
-
-# Lock files
-*.lock
-
-# Trash directory for removable devices
-.Trash-*
-
-# Backup files
-*~
-
-# Java crash logs
-hs_err_pid*
-replay_pid*
-
-# Maven
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-pom.xml.bak
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-
-# Gradle
-bin/
-build/
-.gradle
-.gradletasknamecache
-gradle-app.setting
-!gradle-wrapper.jar
-
-# Package manager cache and temporary files
-*.lock
-*.bak
+# Temp / backup
 *.tmp
+*.bak
+*.swp
+*.swo
 
-# GitHub Actions workflow backup (Disabled workflows)
+# Archives
+*.zip
+
+# GitHub Actions
 .github/workflows/release.yml.disabled
 
-# Miscellaneous
-*.log
-logs/*.log
-*.logs/*
-
-# Snyk Security Extension - AI Rules (auto-generated)
-.cursor/rules/snyk_rules.mdc
-*.zip
-*.res
-custom-runtime/
-# Snyk Security Extension - AI Rules (auto-generated)
+# Snyk Security Extension
 .github/instructions/snyk_rules.instructions.md
 *instructions
+
+bin/
+obj/
+dist/
+*.user
+*.suo
+.vs/
+*.DotSettings.user

@@ -1,0 +1,159 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PleaseTweakWindows.ViewModels"
+        xmlns:views="using:PleaseTweakWindows.Views"
+        xmlns:conv="using:PleaseTweakWindows.Converters"
+        x:Class="PleaseTweakWindows.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="PleaseTweakWindows"
+        Width="1200" Height="850"
+        MinWidth="900" MinHeight="600"
+        Background="#0D0D0D"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="48"
+        SystemDecorations="Full">
+
+    <Window.Resources>
+        <conv:InverseBoolConverter x:Key="InverseBool" />
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Title bar area (must be first — sits in the non-client zone) -->
+        <Border DockPanel.Dock="Top"
+                Background="#0D0D0D"
+                Padding="16,6,8,6"
+                IsHitTestVisible="True"
+                x:Name="TitleBar"
+                Height="48">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <!-- App Title -->
+                <TextBlock Grid.Column="0"
+                           Text="PleaseTweakWindows"
+                           Classes="title"
+                           FontSize="20"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+
+                <!-- Search Field -->
+                <TextBox Grid.Column="1"
+                         Classes="search"
+                         Watermark="Search tweaks..."
+                         Text="{Binding SearchText, Mode=TwoWay}"
+                         Width="220"
+                         VerticalAlignment="Center"
+                         Margin="20,0,0,0" />
+
+                <!-- Window Controls -->
+                <StackPanel Grid.Column="3"
+                            Orientation="Horizontal"
+                            Spacing="2"
+                            VerticalAlignment="Center">
+                    <Button Content="&#x2014;"
+                            Classes="ghost"
+                            Click="OnMinimizeClick"
+                            FontSize="12"
+                            Padding="12,6" />
+                    <Button Content="&#x25A1;"
+                            Classes="ghost"
+                            Click="OnMaximizeClick"
+                            FontSize="12"
+                            Padding="12,6" />
+                    <Button Content="&#x2715;"
+                            Classes="ghost window-close"
+                            Click="OnCloseClick"
+                            FontSize="12"
+                            Padding="12,6" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Error overlay (shown if initialization fails) -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                Background="#2A1010"
+                BorderBrush="#FF5252"
+                BorderThickness="0,0,0,1"
+                Padding="16,10">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="#FF5252"
+                       FontSize="13"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Update Banner (below title bar, no overlap) -->
+        <Border DockPanel.Dock="Top"
+                Classes="update-banner"
+                IsVisible="{Binding ShowUpdateBanner}">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="&#x2B06;"
+                           Foreground="#4ADE80"
+                           FontSize="14"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Foreground="#C8F7D0"
+                           FontSize="13">
+                    <Run Text="Version " />
+                    <Run Text="{Binding UpdateVersion}" />
+                    <Run Text=" is available!" />
+                </TextBlock>
+                <Button Grid.Column="3"
+                        Content="Download"
+                        Classes="ghost"
+                        Foreground="#4ADE80"
+                        Command="{Binding OpenUpdateUrlCommand}"
+                        FontSize="13"
+                        Margin="0,0,8,0" />
+                <Button Grid.Column="4"
+                        Content="&#x2715;"
+                        Classes="ghost"
+                        Foreground="#4ADE80"
+                        Command="{Binding DismissUpdateCommand}"
+                        FontSize="12"
+                        Padding="6,2" />
+            </Grid>
+        </Border>
+
+        <!-- Main content area -->
+        <Grid ColumnDefinitions="420,*"
+              IsVisible="{Binding IsInitialized}">
+
+            <!-- Left Panel: Tweak Categories -->
+            <Border Grid.Column="0"
+                    Background="#0D0D0D"
+                    Padding="16,8,8,16">
+                <DockPanel>
+                    <!-- Restore Point Button -->
+                    <Button DockPanel.Dock="Top"
+                            Content="Create Restore Point"
+                            Classes="accent"
+                            Command="{Binding CreateRestorePointCommand}"
+                            IsEnabled="{Binding IsScriptsRunning, Converter={StaticResource InverseBool}}"
+                            HorizontalAlignment="Stretch"
+                            Margin="0,0,0,12" />
+
+                    <!-- Categories list -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding FilteredCategories}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TweakCategoryViewModel">
+                                    <views:TweakCategoryView DataContext="{Binding}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Right Panel: Log Output -->
+            <Border Grid.Column="1"
+                    Background="#0D0D0D"
+                    Padding="8,8,16,16">
+                <views:LogPanelView DataContext="{Binding LogPanel}" />
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

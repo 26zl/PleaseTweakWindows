@@ -43,7 +43,7 @@ Each category supports **Apply** (execute tweak) and **Revert** (restore default
 ## How It Works
 
 ```text
-JavaFX GUI
+Avalonia UI (.NET 9)
     |
 powershell -File <script>.ps1 -Action "<action-id>"
     |
@@ -60,18 +60,17 @@ Revert Scripts    (Restore defaults + repair components)
 - Windows 10/11
 - Administrator privileges
 - Windows PowerShell 5.1 (built-in)
-- [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) (most systems already have this installed)
 
 ## Build from Source
 
 ```cmd
-REM Requires: Liberica NIK 21+ (or GraalVM with JavaFX), Maven 3.9.9+, Java 21
+REM Requires: .NET 9 SDK
 git clone https://github.com/26zl/PleaseTweakWindows.git
 cd PleaseTweakWindows
 Build.bat
 ```
 
-The build produces a native Windows executable with no Java runtime dependency.
+The build produces a single-file self-contained Windows executable (no .NET runtime needed).
 
 ## Disclaimer
 

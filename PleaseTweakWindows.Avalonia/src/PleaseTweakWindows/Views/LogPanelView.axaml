@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PleaseTweakWindows.ViewModels"
+             x:Class="PleaseTweakWindows.Views.LogPanelView"
+             x:DataType="vm:LogPanelViewModel">
+
+    <DockPanel>
+        <!-- Header + Clear button -->
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,8">
+            <TextBlock Text="Verbose Output"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PtwTextPrimaryBrush}"
+                       VerticalAlignment="Center" />
+            <Button Content="Clear"
+                    Classes="ghost"
+                    Command="{Binding ClearCommand}"
+                    Margin="12,0,0,0"
+                    FontSize="12" />
+        </StackPanel>
+
+        <!-- Log text area -->
+        <TextBox Classes="log-area"
+                 Text="{Binding LogText, Mode=OneWay}"
+                 x:Name="LogTextBox"
+                 AcceptsReturn="True"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 Watermark="Verbose output will appear here..." />
+    </DockPanel>
+</UserControl>

@@ -1,0 +1,256 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ══════════════════════════════════════════════════
+         PleaseTweakWindows — Red/Black Modern Dark Theme
+         ══════════════════════════════════════════════════ -->
+
+    <Style Selector="Window">
+        <Setter Property="Background" Value="#0D0D0D" />
+    </Style>
+
+    <!-- ── Color Resources ── -->
+    <Styles.Resources>
+        <Color x:Key="PtwBackground">#0D0D0D</Color>
+        <Color x:Key="PtwSurface">#1A1A1A</Color>
+        <Color x:Key="PtwSurfaceHover">#242424</Color>
+        <Color x:Key="PtwBorder">#2E2E2E</Color>
+        <Color x:Key="PtwAccent">#E53935</Color>
+        <Color x:Key="PtwAccentHover">#EF5350</Color>
+        <Color x:Key="PtwAccentPressed">#C62828</Color>
+        <Color x:Key="PtwAccentSubtle">#2A1215</Color>
+        <Color x:Key="PtwSuccess">#4ADE80</Color>
+        <Color x:Key="PtwWarning">#FBBF24</Color>
+        <Color x:Key="PtwDanger">#FF5252</Color>
+        <Color x:Key="PtwTextPrimary">#F0F0F0</Color>
+        <Color x:Key="PtwTextSecondary">#8A8A8A</Color>
+        <Color x:Key="PtwLogBackground">#0A0A0A</Color>
+
+        <SolidColorBrush x:Key="PtwBackgroundBrush" Color="#0D0D0D" />
+        <SolidColorBrush x:Key="PtwSurfaceBrush" Color="#1A1A1A" />
+        <SolidColorBrush x:Key="PtwSurfaceHoverBrush" Color="#242424" />
+        <SolidColorBrush x:Key="PtwBorderBrush" Color="#2E2E2E" />
+        <SolidColorBrush x:Key="PtwAccentBrush" Color="#E53935" />
+        <SolidColorBrush x:Key="PtwAccentHoverBrush" Color="#EF5350" />
+        <SolidColorBrush x:Key="PtwAccentPressedBrush" Color="#C62828" />
+        <SolidColorBrush x:Key="PtwAccentSubtleBrush" Color="#2A1215" />
+        <SolidColorBrush x:Key="PtwSuccessBrush" Color="#4ADE80" />
+        <SolidColorBrush x:Key="PtwWarningBrush" Color="#FBBF24" />
+        <SolidColorBrush x:Key="PtwDangerBrush" Color="#FF5252" />
+        <SolidColorBrush x:Key="PtwTextPrimaryBrush" Color="#F0F0F0" />
+        <SolidColorBrush x:Key="PtwTextSecondaryBrush" Color="#8A8A8A" />
+        <SolidColorBrush x:Key="PtwLogBackgroundBrush" Color="#0A0A0A" />
+        <SolidColorBrush x:Key="PtwUpdateBarBrush" Color="#1A2A1A" />
+        <SolidColorBrush x:Key="PtwUpdateBorderBrush" Color="#2A4A2A" />
+    </Styles.Resources>
+
+    <!-- ── Global Typography ── -->
+    <Style Selector="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="Segoe UI Variable, Inter, Segoe UI, sans-serif" />
+    </Style>
+
+    <Style Selector="TextBlock.secondary">
+        <Setter Property="Foreground" Value="{StaticResource PtwTextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style Selector="TextBlock.title">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.category-title">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+    </Style>
+
+    <!-- ── Primary Button (Accent) ── -->
+    <Style Selector="Button.accent">
+        <Setter Property="Background" Value="{StaticResource PtwAccentBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="16,8" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource PtwAccentHoverBrush}" />
+    </Style>
+    <Style Selector="Button.accent:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource PtwAccentPressedBrush}" />
+    </Style>
+
+    <!-- ── Apply Button ── -->
+    <Style Selector="Button.apply">
+        <Setter Property="Background" Value="{StaticResource PtwAccentBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="MinWidth" Value="70" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.apply:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource PtwAccentHoverBrush}" />
+    </Style>
+    <Style Selector="Button.apply:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource PtwAccentPressedBrush}" />
+    </Style>
+
+    <!-- ── Revert Button ── -->
+    <Style Selector="Button.revert">
+        <Setter Property="Background" Value="#1E1E1E" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="MinWidth" Value="70" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#3A3A3A" />
+    </Style>
+    <Style Selector="Button.revert:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#2A2A2A" />
+    </Style>
+
+    <!-- ── Danger Button ── -->
+    <Style Selector="Button.danger">
+        <Setter Property="Background" Value="{StaticResource PtwDangerBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="16,8" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#EF4444" />
+    </Style>
+
+    <!-- ── Ghost Button (window controls, etc.) ── -->
+    <Style Selector="Button.ghost">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextSecondaryBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#1E1E1E" />
+    </Style>
+
+    <!-- ── Window Close Button ── -->
+    <Style Selector="Button.window-close:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#C42B1C" />
+    </Style>
+
+    <!-- ── Run Full Script Button ── -->
+    <Style Selector="Button.run-full">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource PtwAccentBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{StaticResource PtwAccentBrush}" />
+    </Style>
+    <Style Selector="Button.run-full:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource PtwAccentSubtleBrush}" />
+    </Style>
+
+    <!-- ── Category Card ── -->
+    <Style Selector="Border.category-card">
+        <Setter Property="Background" Value="{StaticResource PtwSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource PtwBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <!-- ── Category Header ── -->
+    <Style Selector="Border.category-header">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="14,14,0,0" />
+        <Setter Property="Padding" Value="14,12" />
+    </Style>
+    <Style Selector="Border.category-header:pointerover">
+        <Setter Property="Background" Value="{StaticResource PtwSurfaceHoverBrush}" />
+    </Style>
+
+    <!-- ── Sub-Tweak Item ── -->
+    <Style Selector="Border.sub-tweak-item">
+        <Setter Property="Background" Value="#141414" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0,2" />
+    </Style>
+    <Style Selector="Border.sub-tweak-item:pointerover">
+        <Setter Property="Background" Value="#1E1E1E" />
+    </Style>
+
+    <!-- ── Search Field ── -->
+    <Style Selector="TextBox.search">
+        <Setter Property="Background" Value="#141414" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource PtwBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="TextBox.search:focus">
+        <Setter Property="BorderBrush" Value="{StaticResource PtwAccentBrush}" />
+    </Style>
+
+    <!-- ── Log Area ── -->
+    <Style Selector="TextBox.log-area">
+        <Setter Property="Background" Value="{StaticResource PtwLogBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="Cascadia Code, Consolas, monospace" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="BorderBrush" Value="{StaticResource PtwBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- ── Scrollbar ── -->
+    <Style Selector="ScrollViewer">
+        <Setter Property="AllowAutoHide" Value="True" />
+    </Style>
+
+    <!-- ── Update Banner ── -->
+    <Style Selector="Border.update-banner">
+        <Setter Property="Background" Value="{StaticResource PtwUpdateBarBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource PtwUpdateBorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="CornerRadius" Value="12" />
+    </Style>
+
+    <!-- ── ToolTip ── -->
+    <Style Selector="ToolTip">
+        <Setter Property="Background" Value="{StaticResource PtwSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource PtwTextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource PtwBorderBrush}" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="10,6" />
+    </Style>
+
+    <!-- ── Progress ring for running state ── -->
+    <Style Selector="ProgressBar.spinner">
+        <Setter Property="IsIndeterminate" Value="True" />
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="Foreground" Value="{StaticResource PtwAccentBrush}" />
+    </Style>
+
+</Styles>

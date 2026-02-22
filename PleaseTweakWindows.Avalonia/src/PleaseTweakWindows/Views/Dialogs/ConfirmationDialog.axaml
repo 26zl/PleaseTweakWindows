@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PleaseTweakWindows.Views.Dialogs.ConfirmationDialog"
+        Title="Confirm"
+        Width="460" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#0D0D0D"
+        ExtendClientAreaToDecorationsHint="False">
+
+    <Border Background="#0D0D0D" Padding="24" CornerRadius="14">
+        <StackPanel Spacing="16">
+            <!-- Header -->
+            <TextBlock x:Name="HeaderText"
+                       FontSize="18" FontWeight="Bold"
+                       Foreground="#F0F0F0"
+                       TextWrapping="Wrap" />
+
+            <!-- Content -->
+            <TextBlock x:Name="ContentText"
+                       FontSize="13"
+                       Foreground="#8A8A8A"
+                       TextWrapping="Wrap"
+                       LineHeight="20" />
+
+            <!-- Buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="10"
+                        HorizontalAlignment="Right"
+                        Margin="0,8,0,0">
+                <Button x:Name="SkipButton"
+                        Classes="ghost"
+                        IsVisible="False"
+                        Click="OnSkipClick"
+                        FontSize="13" Padding="14,8" />
+                <Button x:Name="CancelButton"
+                        Classes="ghost"
+                        Click="OnCancelClick"
+                        FontSize="13" Padding="14,8" />
+                <Button x:Name="ConfirmButton"
+                        Classes="accent"
+                        Click="OnConfirmClick"
+                        FontSize="13" Padding="14,8" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
