@@ -22,7 +22,7 @@
             BorderBrush="{StaticResource PtwBorderBrush}"
             BorderThickness="1"
             Padding="24"
-            CornerRadius="10">
+            CornerRadius="14">
         <StackPanel>
             <TextBlock x:Name="HeaderText"
                        FontSize="17" FontWeight="SemiBold"
