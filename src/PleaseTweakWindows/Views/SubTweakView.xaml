@@ -16,6 +16,8 @@
                        VerticalAlignment="Center"
                        FontSize="13"
                        Foreground="{StaticResource PtwTextPrimaryBrush}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,8,0"
                        ToolTip="{Binding Description}" />
 
             <Button Grid.Column="1"

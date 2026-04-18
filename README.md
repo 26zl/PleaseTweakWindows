@@ -2,7 +2,7 @@
 
 ![Build](https://github.com/26zl/PleaseTweakWindows/actions/workflows/build.yml/badge.svg)
 
-> **This tool modifies Windows system settings. Always create a restore point before use.**
+> **Under active development** — sub-tweaks, UI, and behavior may change between releases. Pin to a specific tag if you need stability.
 
 Windows optimization tool for performance tuning, gaming, network, privacy, security, and system customization.
 
@@ -10,20 +10,21 @@ Windows optimization tool for performance tuning, gaming, network, privacy, secu
   <img src=".github/logo.png" alt="PleaseTweakWindows Logo" width="200" />
 </p>
 
-## Important
+## Warning
 
-> **CREATE A RESTORE POINT BEFORE USING THIS TOOL!**
->
-> This tool modifies Windows registry settings, services, and system configuration.
-> Some changes may affect system stability. Always backup your system first.
+This tool modifies Windows registry settings, services, and system configuration. Some changes may affect system stability. The app prompts you to create a system restore point on first use; let it.
+
+## VirusTotal
+
+Latest EXE scan: [c4256a0c...7fea56](https://www.virustotal.com/gui/file/c4256a0c990b75482db93bb6f3f16c8da6b6fa8a9a7a2413ccd5be7f947fea56?nocache=1)
 
 ## Quick Start
 
 **Requires Administrator privileges.**
 
 1. Download from [Releases](https://github.com/26zl/PleaseTweakWindows/releases)
-2. **Create a System Restore Point** (Settings > System > About > System Protection)
-3. Run `PleaseTweakWindows.exe` as Administrator
+2. Run `PleaseTweakWindows.exe` as Administrator
+3. Accept the restore-point prompt on first tweak
 
 ## Categories
 
@@ -51,7 +52,6 @@ Revert Scripts    (Restore defaults + repair components)
 
 - Individual sub-tweaks are executed via `-Action` parameter
 - Revert scripts restore defaults and optionally repair affected components
-- A system restore point prompt appears before any changes
 
 ## Requirements
 
@@ -99,7 +99,7 @@ Build.bat
 
 ## Disclaimer
 
-**USE AT YOUR OWN RISK.** Always create a restore point before applying tweaks. Some changes may require manual restoration. This project is provided as-is with no warranty.
+**USE AT YOUR OWN RISK.** Some changes may require manual restoration. This project is provided as-is with no warranty.
 
 ## License
 
