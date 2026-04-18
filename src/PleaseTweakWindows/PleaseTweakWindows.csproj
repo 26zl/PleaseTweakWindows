@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
-    <Version>2.1.1</Version>
+    <Version>2.1.2</Version>
     <AssemblyName>PleaseTweakWindows</AssemblyName>
     <RootNamespace>PleaseTweakWindows</RootNamespace>
   </PropertyGroup>
