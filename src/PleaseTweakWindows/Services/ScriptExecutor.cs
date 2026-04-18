@@ -186,22 +186,29 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                 process = _processRunner.Start(psi);
                 _activeProcesses[processKey] = process;
 
-                var outputTask = ReadStreamAsync(process.StandardOutput, onOutput, linkedCts.Token);
-                var errorTask = ReadStreamAsync(process.StandardError, onOutput, linkedCts.Token);
-
-                await Task.WhenAll(outputTask, errorTask);
-
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                // Apply one shared hard-cap timeout across BOTH the stream reads and the
+                // WaitForExitAsync. Previously the 30s timeout was only attached to the
+                // exit wait, which was unreachable for hung processes because the stream
+                // reads above would block indefinitely (ReadLineAsync returns null only
+                // when the process closes its stdout/stderr — a hung process never does).
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
                 using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token, timeoutCts.Token);
+
+                var outputTask = ReadStreamAsync(process.StandardOutput, onOutput, combinedCts.Token);
+                var errorTask = ReadStreamAsync(process.StandardError, onOutput, combinedCts.Token);
 
                 try
                 {
                     await process.WaitForExitAsync(combinedCts.Token);
+                    // Drain any output buffered after exit. Bounded by the same timeout.
+                    try { await Task.WhenAll(outputTask, errorTask); }
+                    catch (OperationCanceledException) { /* cancellation during drain is fine */ }
                     exitCode = process.ExitCode;
                 }
                 catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Process did not terminate within timeout, forcing: {ScriptPath}", scriptPath);
+                    _logger.LogWarning("Process exceeded 10-minute timeout, forcing: {ScriptPath}", scriptPath);
+                    onOutput?.Invoke("[!] Script exceeded 10-minute timeout — forcing termination.");
                     try { process.Kill(entireProcessTree: true); } catch { }
                     exitCode = -1;
                 }

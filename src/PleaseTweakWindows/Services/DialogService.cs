@@ -251,8 +251,12 @@ public sealed class DialogService : IDialogService
 
     private static Task<T> ShowDialogOnUiAsync<T>(Func<T> show)
     {
-        var app = System.Windows.Application.Current;
-        if (app == null) return Task.FromResult(default(T)!);
+        // Fail fast rather than return default(T). Returning default silently would map
+        // RestorePointDecision to Create (the first enum value) and cause destructive
+        // tweaks to proceed as if the user had approved a restore point.
+        var app = System.Windows.Application.Current
+            ?? throw new InvalidOperationException(
+                "DialogService called with no WPF Application context. This helper requires an active UI dispatcher.");
         if (app.Dispatcher.CheckAccess())
             return Task.FromResult(show());
         return app.Dispatcher.InvokeAsync(show).Task;

@@ -184,12 +184,17 @@ public partial class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            Process.Start(new ProcessStartInfo
+            // Use ArgumentList instead of a single Arguments string so the URL isn't
+            // command-line-parsed by rundll32 — prevents any spaces/quotes in the URL
+            // from splitting into unintended extra arguments.
+            var psi = new ProcessStartInfo
             {
                 FileName = "rundll32",
-                Arguments = $"url.dll,FileProtocolHandler {UpdateUrl}",
                 UseShellExecute = false
-            });
+            };
+            psi.ArgumentList.Add("url.dll,FileProtocolHandler");
+            psi.ArgumentList.Add(UpdateUrl);
+            Process.Start(psi);
         }
         catch (Exception ex)
         {

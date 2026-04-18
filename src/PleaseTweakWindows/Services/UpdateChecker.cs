@@ -159,12 +159,21 @@ public sealed class UpdateChecker : IUpdateChecker
         if (!File.Exists(path)) return false;
         try
         {
-            var content = File.ReadAllText(path);
-            return content.Contains($"dismissed_version={version}");
+            // Exact key=value match. A substring match would incorrectly flag version
+            // "2.1.1" as dismissed when the prefs file holds "dismissed_version=2.1.10".
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var eq = line.IndexOf('=');
+                if (eq <= 0) continue;
+                var key = line.AsSpan(0, eq).Trim();
+                var value = line.AsSpan(eq + 1).Trim();
+                if (key.SequenceEqual("dismissed_version") && value.SequenceEqual(version))
+                    return true;
+            }
         }
         catch
         {
-            return false;
         }
+        return false;
     }
 }
