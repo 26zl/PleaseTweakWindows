@@ -1,0 +1,19 @@
+<Application x:Class="PleaseTweakWindows.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:PleaseTweakWindows.Converters"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/AppTheme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <conv:InverseBoolConverter x:Key="InverseBool" />
+            <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <conv:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVisibility" />
+            <conv:ExpandArrowConverter x:Key="ExpandArrow" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

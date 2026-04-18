@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate-scripts:
     name: Validate PowerShell Scripts
@@ -19,26 +23,31 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Validate PowerShell script syntax
         run: |
           $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1",
-            "src/main/resources/scripts/Privacy Security/revert-privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/revert-security.ps1",
-            "src/main/resources/scripts/Gaming optimizations/revert-gaming.ps1",
-            "src/main/resources/scripts/General Tweaks/revert-general.ps1",
-            "src/main/resources/scripts/Network optimizations/revert-network.ps1",
-            "src/main/resources/scripts/Services management/revert-services.ps1",
-            "src/main/resources/scripts/create_restore_point.ps1",
-            "src/main/resources/scripts/CommonFunctions.ps1"
+            "scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "scripts/Network optimizations/Network-Optimizations.ps1",
+            "scripts/General Tweaks/General-Tweaks.ps1",
+            "scripts/Privacy Security/privacy.ps1",
+            "scripts/Privacy Security/security.ps1",
+            "scripts/Services management/Services-Management.ps1",
+            "scripts/Privacy Security/revert-privacy.ps1",
+            "scripts/Privacy Security/revert-security.ps1",
+            "scripts/Gaming optimizations/revert-gaming.ps1",
+            "scripts/General Tweaks/revert-general.ps1",
+            "scripts/Network optimizations/revert-network.ps1",
+            "scripts/Services management/revert-services.ps1",
+            "scripts/create_restore_point.ps1",
+            "scripts/CommonFunctions.ps1"
           )
 
           $errors = 0
@@ -69,12 +78,12 @@ jobs:
       - name: Verify script parameters and structure
         run: |
           $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
+            "scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "scripts/Network optimizations/Network-Optimizations.ps1",
+            "scripts/General Tweaks/General-Tweaks.ps1",
+            "scripts/Privacy Security/privacy.ps1",
+            "scripts/Privacy Security/security.ps1",
+            "scripts/Services management/Services-Management.ps1"
           )
 
           foreach ($script in $scripts) {
@@ -111,8 +120,8 @@ jobs:
 
       - name: Verify index.txt
         run: |
-          $indexFile = "src/main/resources/scripts/index.txt"
-          $scriptsDir = "src/main/resources/scripts"
+          $indexFile = "scripts/index.txt"
+          $scriptsDir = "scripts"
           if (-not (Test-Path $indexFile)) {
             Write-Error "index.txt not found"
             exit 1
@@ -159,6 +168,11 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -166,7 +180,7 @@ jobs:
         run: |
           Write-Host "Scanning for obfuscated code patterns..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
           $obfuscationPatterns = @(
             'RunAsTI',
@@ -203,7 +217,7 @@ jobs:
         run: |
           Write-Host "Scanning for Windows Update disabling functionality..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
           $updateDisablePatterns = @(
             'WindowsUpdate.*disable|Disable.*WindowsUpdate',
@@ -241,23 +255,26 @@ jobs:
         run: |
           Write-Host "Scanning for security feature disabling..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
+          # Defender cmdlet names are boolean-negated (DisableX = $true disables, $false enables),
+          # so patterns must require the value = $true to avoid flagging legitimate "reset to
+          # Windows default" calls that pass $false (which re-enables the protection).
           $securityDisablePatterns = @(
             'Windows.*Defender.*disable|Disable.*Windows.*Defender',
             'SmartScreen.*disable|Disable.*SmartScreen',
             'Firewall.*disable|Disable.*Firewall',
             'UAC.*disable|Disable.*UAC',
             'SecurityHealthService.*disable',
-            'Set-MpPreference.*DisableRealtimeMonitoring',
-            'Set-MpPreference.*DisableBehaviorMonitoring',
-            'Set-MpPreference.*DisableIOAVProtection',
-            'Set-MpPreference.*DisableScriptScanning',
-            'Set-MpPreference.*DisableBlockAtFirstSeen',
-            'Set-MpPreference.*DisablePrivacyMode',
-            'Set-MpPreference.*DisableArchiveScanning',
-            'Set-MpPreference.*DisableIntrusionPreventionSystem',
-            'Set-MpPreference.*DisableNetworkProtection'
+            'Set-MpPreference.*DisableRealtimeMonitoring.*\$true',
+            'Set-MpPreference.*DisableBehaviorMonitoring.*\$true',
+            'Set-MpPreference.*DisableIOAVProtection.*\$true',
+            'Set-MpPreference.*DisableScriptScanning.*\$true',
+            'Set-MpPreference.*DisableBlockAtFirstSeen.*\$true',
+            'Set-MpPreference.*DisablePrivacyMode.*\$true',
+            'Set-MpPreference.*DisableArchiveScanning.*\$true',
+            'Set-MpPreference.*DisableIntrusionPreventionSystem.*\$true',
+            'Set-MpPreference.*DisableNetworkProtection.*\$true'
           )
 
           $issues = 0
@@ -285,7 +302,7 @@ jobs:
         run: |
           Write-Host "Scanning for suspicious network calls..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
           $allowedDomains = @(
             'github.com',
@@ -348,7 +365,7 @@ jobs:
         run: |
           Write-Host "Scanning for exposed credentials..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
           $credentialPatterns = @(
             'password\s*=\s*["'']',
@@ -386,7 +403,7 @@ jobs:
         run: |
           Write-Host "Scanning for malicious registry modifications..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
           $maliciousPatterns = @(
             'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run.*powershell.*hidden',
@@ -423,8 +440,8 @@ jobs:
 
           $allFiles = Get-ChildItem -Path "." -Recurse -File |
             Where-Object {
-              $_.Extension -in @('.ps1', '.java', '.xml', '.yml', '.yaml', '.json', '.properties', '.conf', '.cfg', '.bat', '.cmd', '.txt', '.md', '.env') -and
-              $_.FullName -notmatch '[\\/](target|\.git|node_modules|\.idea)[\\/]'
+              $_.Extension -in @('.ps1', '.cs', '.xml', '.xaml', '.yml', '.yaml', '.json', '.properties', '.conf', '.cfg', '.bat', '.cmd', '.txt', '.md', '.env') -and
+              $_.FullName -notmatch '[\\/](bin|obj|dist|publish|\.git|node_modules|\.idea)[\\/]'
             }
 
           Write-Host "Scanning $($allFiles.Count) files..."
@@ -462,8 +479,9 @@ jobs:
         run: |
           Write-Host "Scanning for hardcoded user-specific Windows paths..."
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
-          $javaFiles = Get-ChildItem -Path "src/main/java" -Filter "*.java" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
+          $csFiles = Get-ChildItem -Path "src/PleaseTweakWindows" -Filter "*.cs" -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
 
           $pathPatterns = @(
             @{ Name = "Hardcoded user profile path"; Pattern = '[A-Za-z]:\\Users\\[^$\\{][A-Za-z0-9._-]+\\' },
@@ -476,6 +494,11 @@ jobs:
             '\$env:',
             '\$Env:',
             '\[Environment\]',
+            'Environment\.GetEnvironmentVariable',
+            'Environment\.GetFolderPath',
+            'Environment\.SpecialFolder',
+            'AppContext\.BaseDirectory',
+            'Path\.GetTempPath',
             '%USERPROFILE%',
             '%PROGRAMFILES%',
             '%TEMP%',
@@ -483,13 +506,13 @@ jobs:
           )
 
           $issues = 0
-          foreach ($file in ($scripts + $javaFiles)) {
+          foreach ($file in ($scripts + $csFiles)) {
             $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
             if (-not $content) { continue }
 
             foreach ($pp in $pathPatterns) {
-              $matches = [regex]::Matches($content, $pp.Pattern)
-              foreach ($m in $matches) {
+              $pathMatches = [regex]::Matches($content, $pp.Pattern)
+              foreach ($m in $pathMatches) {
                 # Check the line containing the match for allowed env var usage
                 $lineStart = $content.LastIndexOf("`n", [Math]::Max(0, $m.Index - 1)) + 1
                 $lineEnd = $content.IndexOf("`n", $m.Index)
@@ -547,7 +570,7 @@ jobs:
             Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
           }
 
-          $scripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse
+          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
           Write-Host "Analyzing $($scripts.Count) PowerShell scripts..."
 
           $excludeRules = @(
@@ -563,7 +586,7 @@ jobs:
             $results = Invoke-ScriptAnalyzer -Path $script.FullName -ExcludeRule $excludeRules -Severity @('Error', 'Warning')
 
             foreach ($result in $results) {
-              $shortPath = $script.FullName -replace '.*src\\main\\resources\\', ''
+              $shortPath = $script.FullName -replace '.*scripts\\', 'scripts\'
               if ($result.Severity -eq 'Error') {
                 Write-Error "[$($result.Severity)] $shortPath`:$($result.Line) - $($result.RuleName): $($result.Message)"
                 $errors++
@@ -590,12 +613,12 @@ jobs:
           Write-Host "Testing non-interactive action dispatcher architecture..."
 
           $scripts = @(
-            "src/main/resources/scripts/Gaming optimizations/Gaming-Optimizations.ps1",
-            "src/main/resources/scripts/Network optimizations/Network-Optimizations.ps1",
-            "src/main/resources/scripts/General Tweaks/General-Tweaks.ps1",
-            "src/main/resources/scripts/Privacy Security/privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/security.ps1",
-            "src/main/resources/scripts/Services management/Services-Management.ps1"
+            "scripts/Gaming optimizations/Gaming-Optimizations.ps1",
+            "scripts/Network optimizations/Network-Optimizations.ps1",
+            "scripts/General Tweaks/General-Tweaks.ps1",
+            "scripts/Privacy Security/privacy.ps1",
+            "scripts/Privacy Security/security.ps1",
+            "scripts/Services management/Services-Management.ps1"
           )
 
           foreach ($scriptPath in $scripts) {
@@ -638,29 +661,33 @@ jobs:
           Write-Host "[+] All scripts have correct non-interactive architecture"
         shell: pwsh
 
-      - name: Verify Java action IDs match PowerShell cases
+      - name: Verify C# action IDs match PowerShell cases
         run: |
-          Write-Host "Verifying Java action IDs match PowerShell switch cases..."
+          Write-Host "Verifying C# action IDs match PowerShell switch cases..."
 
-          $javaFile = "src/main/java/com/zl/pleasetweakwindows/TweakController.java"
-          $javaContent = Get-Content $javaFile -Raw
+          $csFile = "src/PleaseTweakWindows/Services/TweakRegistry.cs"
+          if (-not (Test-Path $csFile)) {
+            Write-Error "TweakRegistry.cs not found at $csFile"
+            exit 1
+          }
+          $csContent = Get-Content $csFile -Raw
 
-          # Extract action IDs from Java (exclude revert IDs - handled by revert scripts)
-          $javaActions = [regex]::Matches($javaContent, '"([a-z][a-z0-9]+-[a-z0-9-]+)"') |
+          # Extract action IDs from C# string literals (exclude revert IDs - handled by revert scripts)
+          $csActions = [regex]::Matches($csContent, '"([a-z][a-z0-9]+-[a-z0-9-]+)"') |
             ForEach-Object { $_.Groups[1].Value } |
             Where-Object { $_ -notmatch '-revert$' } |
             Sort-Object -Unique
 
-          Write-Host "Found $($javaActions.Count) non-revert action IDs in Java"
+          Write-Host "Found $($csActions.Count) non-revert action IDs in C#"
 
           # Get all PS scripts content (excluding revert scripts, CommonFunctions, restore point)
-          $psScripts = Get-ChildItem -Path "src/main/resources/scripts" -Filter "*.ps1" -Recurse |
+          $psScripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse |
             Where-Object { $_.Name -notlike "revert-*" -and $_.Name -ne "CommonFunctions.ps1" -and $_.Name -ne "create_restore_point.ps1" }
 
           $psContent = $psScripts | ForEach-Object { Get-Content $_.FullName -Raw } | Out-String
 
           $missing = @()
-          foreach ($action in $javaActions) {
+          foreach ($action in $csActions) {
             if ($psContent -notmatch "`"$action`"") {
               $missing += $action
             }
@@ -671,45 +698,42 @@ jobs:
             exit 1
           }
 
-          Write-Host "[+] All $($javaActions.Count) non-revert Java action IDs have PowerShell handlers"
+          Write-Host "[+] All $($csActions.Count) non-revert C# action IDs have PowerShell handlers"
         shell: pwsh
 
       - name: Test create_restore_point script
         run: |
-          $scriptPath = "src/main/resources/scripts/create_restore_point.ps1"
+          $scriptPath = "scripts/create_restore_point.ps1"
           Write-Host "Testing create_restore_point script..."
 
-          $testScript = @"
-          `$ErrorActionPreference = 'Stop'
-          try {
-              if (-not (Test-Path '$scriptPath')) {
-                  throw "Script not found: $scriptPath"
-              }
-
-              `$scriptContent = Get-Content '$scriptPath' -Raw
-
-              # Verify it has param block
-              if (`$scriptContent -notmatch 'param\s*\(') {
-                  throw "Missing param block"
-              }
-
-              # Verify it uses Checkpoint-Computer or similar
-              if (`$scriptContent -notmatch 'Checkpoint-Computer|RestorePoint') {
-                  throw "Missing restore point creation logic"
-              }
-
-              # Syntax validation
-              `$null = [System.Management.Automation.PSParser]::Tokenize(`$scriptContent, [ref]`$null)
-
-              Write-Host "[+] create_restore_point script validated"
-
-          } catch {
-              Write-Error "create_restore_point script test failed: `$(`$_.Exception.Message)"
-              exit 1
+          if (-not (Test-Path $scriptPath)) {
+            Write-Error "Script not found: $scriptPath"
+            exit 1
           }
-          "@
 
-          powershell -NoProfile -Command $testScript
+          $scriptContent = Get-Content $scriptPath -Raw
+
+          # Verify it has param block
+          if ($scriptContent -notmatch 'param\s*\(') {
+            Write-Error "Missing param block"
+            exit 1
+          }
+
+          # Verify it uses Checkpoint-Computer or similar
+          if ($scriptContent -notmatch 'Checkpoint-Computer|RestorePoint') {
+            Write-Error "Missing restore point creation logic"
+            exit 1
+          }
+
+          # Syntax validation
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) {
+            Write-Error "Syntax errors in $scriptPath"
+            exit 1
+          }
+
+          Write-Host "[+] create_restore_point script validated"
         shell: pwsh
 
       - name: Test revert scripts structure
@@ -717,12 +741,12 @@ jobs:
           Write-Host "Testing revert scripts structure..."
 
           $revertScripts = @(
-            "src/main/resources/scripts/Privacy Security/revert-privacy.ps1",
-            "src/main/resources/scripts/Privacy Security/revert-security.ps1",
-            "src/main/resources/scripts/Gaming optimizations/revert-gaming.ps1",
-            "src/main/resources/scripts/General Tweaks/revert-general.ps1",
-            "src/main/resources/scripts/Network optimizations/revert-network.ps1",
-            "src/main/resources/scripts/Services management/revert-services.ps1"
+            "scripts/Privacy Security/revert-privacy.ps1",
+            "scripts/Privacy Security/revert-security.ps1",
+            "scripts/Gaming optimizations/revert-gaming.ps1",
+            "scripts/General Tweaks/revert-general.ps1",
+            "scripts/Network optimizations/revert-network.ps1",
+            "scripts/Services management/revert-services.ps1"
           )
 
           foreach ($scriptPath in $revertScripts) {
@@ -771,7 +795,7 @@ jobs:
     name: Build Windows EXE
     runs-on: windows-latest
     needs: [validate-scripts, security-scan, functional-testing]
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Harden Runner
@@ -782,48 +806,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Set up Liberica NIK
-        uses: graalvm/setup-graalvm@03e8abf916fd0e281b2efe7b2da3378bb0a1d085 # v1
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          distribution: 'liberica'
-          java-version: '21'
-          java-package: 'jdk+fx'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'maven'
+          dotnet-version: '9.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore PleaseTweakWindows.sln
 
       - name: Run tests
-        run: mvn test
+        run: dotnet test PleaseTweakWindows.sln -c Release --no-restore --verbosity normal
 
-      - name: Compile Windows resources (icon + manifest)
+      - name: Publish single-file EXE
         run: |
-          $rcExe = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "rc.exe" |
-            Where-Object { $_.FullName -match 'x64' } |
-            Sort-Object { [version]($_.FullName -replace '.*\\(\d+\.\d+\.\d+\.\d+)\\.*','$1') } -Descending |
-            Select-Object -First 1
-          if (-not $rcExe) {
-            Write-Error "rc.exe not found in Windows SDK"
-            exit 1
-          }
-          Write-Host "Using: $($rcExe.FullName)"
-          Push-Location src/main/resources/native
-          & $rcExe.FullName /nologo app.rc
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          Pop-Location
-          Write-Host "[+] app.res compiled successfully"
+          dotnet publish src/PleaseTweakWindows/PleaseTweakWindows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o publish
         shell: pwsh
-
-      - name: Build EXE
-        run: mvn -Pnative package
 
       - name: Verify EXE exists
         run: |
-          if (Test-Path "target/PleaseTweakWindows.exe") {
-            Write-Host "[+] EXE file found at target/PleaseTweakWindows.exe"
-            $fileInfo = Get-Item "target/PleaseTweakWindows.exe"
+          $exe = "publish/PleaseTweakWindows.exe"
+          if (Test-Path $exe) {
+            Write-Host "[+] EXE file found at $exe"
+            $fileInfo = Get-Item $exe
             Write-Host "File size: $([math]::Round($fileInfo.Length / 1MB, 1)) MB ($($fileInfo.Length) bytes)"
           } else {
-            Write-Error "[-] EXE file not found at target/PleaseTweakWindows.exe"
-            Write-Host "Build may have failed or the output path is different."
+            Write-Error "[-] EXE file not found at $exe"
             exit 1
           }
         shell: pwsh
@@ -846,7 +866,7 @@ jobs:
             "General Tweaks/regs/Registry-Defaults.reg"
           )
 
-          $scriptsDir = "src/main/resources/scripts"
+          $scriptsDir = "scripts"
           foreach ($script in $requiredScripts) {
             $fullPath = Join-Path $scriptsDir $script
             if (-not (Test-Path $fullPath)) {
@@ -866,11 +886,37 @@ jobs:
           Write-Host "All required scripts and reg files are present"
         shell: pwsh
 
+      - name: Verify scripts embedded in assembly
+        run: |
+          # Load the main DLL (not the single-file wrapper) to inspect embedded resources.
+          # The main assembly lives in the Release output next to the publish build.
+          $dll = Get-ChildItem -Path "src/PleaseTweakWindows/bin/Release" -Filter "PleaseTweakWindows.dll" -Recurse |
+            Where-Object { $_.FullName -notmatch 'publish' } |
+            Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "PleaseTweakWindows.dll not found for resource inspection"
+            exit 1
+          }
+
+          $bytes = [IO.File]::ReadAllBytes($dll.FullName)
+          $asm = [Reflection.Assembly]::Load($bytes)
+          $scriptResources = $asm.GetManifestResourceNames() | Where-Object { $_ -like '*Scripts*' }
+
+          Write-Host "Embedded script resources: $($scriptResources.Count)"
+          # Current inventory: 14 .ps1 + index.txt + file-checksums.json + 4 .reg + nvidia_profile.xml + ooshutup10.cfg = 22.
+          # Tightening the threshold means a silently removed script file fails CI instead of sliding in.
+          if ($scriptResources.Count -lt 22) {
+            Write-Error "Expected at least 22 embedded script resources, found $($scriptResources.Count)"
+            exit 1
+          }
+          Write-Host "[+] Scripts are embedded in the assembly"
+        shell: pwsh
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: please-tweak-windows-exe
-          path: target/PleaseTweakWindows.exe
+          path: publish/PleaseTweakWindows.exe
 
   create-release:
     name: Create Release
@@ -891,35 +937,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine next version
+      - name: Determine release version
         id: version
         run: |
-          $tags = git tag -l "v*" --sort=-v:refname 2>$null
-          if ($tags) {
-            $latest = ($tags | Select-Object -First 1)
-            Write-Host "Latest tag: $latest"
-            if ($latest -match '^v(\d+)\.(\d+)\.(\d+)$') {
-              $major = [int]$Matches[1]
-              $minor = [int]$Matches[2]
-              $patch = [int]$Matches[3] + 1
-              $next = "v$major.$minor.$patch"
-            } else {
-              $next = "v1.0.0"
-            }
-          } else {
-            $next = "v1.0.0"
+          # Source of truth is <Version> in the main csproj. The release tag must match
+          # the assembly version that actually ships, otherwise the release name drifts
+          # from PleaseTweakWindows.exe's reported version.
+          $csprojPath = 'src/PleaseTweakWindows/PleaseTweakWindows.csproj'
+          $xml = [xml](Get-Content $csprojPath)
+          $version = $xml.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) {
+            Write-Error "No <Version> element found in $csprojPath — cannot determine release tag."
+            exit 1
           }
-          Write-Host "Next version: $next"
-          "version=$next" | Out-File -Append $env:GITHUB_OUTPUT
+          $tag = "v$version"
+          Write-Host "csproj <Version>: $version → tag: $tag"
+
+          # If this tag already exists, skip the release. Bump <Version> in csproj to publish
+          # a new release. Prevents duplicate v2.1.1 releases from re-pushes.
+          $existing = git tag -l $tag
+          if ([string]::IsNullOrWhiteSpace($existing)) {
+            Write-Host "Tag $tag is new — release will be created."
+            "release=true" | Out-File -Append $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Tag $tag already exists — skipping release. Bump <Version> in csproj to publish."
+            "release=false" | Out-File -Append $env:GITHUB_OUTPUT
+          }
+          "version=$tag" | Out-File -Append $env:GITHUB_OUTPUT
         shell: pwsh
 
       - name: Download EXE artifact
+        if: steps.version.outputs.release == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: please-tweak-windows-exe
           path: ./artifacts
 
       - name: Create distribution package
+        if: steps.version.outputs.release == 'true'
         run: |
           if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
           New-Item -ItemType Directory -Path "dist" | Out-Null
@@ -930,38 +985,7 @@ jobs:
           } else {
             Write-Warning "LICENSE file not found — release will ship without it"
           }
-          Copy-Item -Recurse "src/main/resources/scripts" "dist/"
-          New-Item -ItemType Directory -Path "dist/logs" | Out-Null
-          Copy-Item "logs/README.txt" "dist/logs/" -ErrorAction SilentlyContinue
-
-          # Remove unused revert scripts from distribution
-          Remove-Item "dist/scripts/Gaming optimizations/revert-gaming.ps1" -ErrorAction SilentlyContinue
-          Remove-Item "dist/scripts/General Tweaks/revert-general.ps1" -ErrorAction SilentlyContinue
-          Remove-Item "dist/scripts/Network optimizations/revert-network.ps1" -ErrorAction SilentlyContinue
-          Remove-Item "dist/scripts/Services management/revert-services.ps1" -ErrorAction SilentlyContinue
-
-          # Verify all scripts are included
-          $scriptCount = (Get-ChildItem -Path "dist/scripts" -Recurse -Filter "*.ps1" -File).Count
-          Write-Host "Included PowerShell scripts: $scriptCount"
-
-          if ($scriptCount -lt 5) {
-            Write-Error "Expected at least 5 PowerShell scripts, found $scriptCount"
-            exit 1
-          }
-
-          # Verify required reg files are included
-          $requiredRegFiles = @(
-            "General Tweaks/regs/Registry-Optimize.reg",
-            "General Tweaks/regs/Registry-Defaults.reg"
-          )
-          foreach ($regFile in $requiredRegFiles) {
-            $fullPath = Join-Path "dist/scripts" $regFile
-            if (-not (Test-Path $fullPath)) {
-              Write-Error "Required reg file missing from dist: $fullPath"
-              exit 1
-            }
-            Write-Host "Verified reg file in dist: $regFile"
-          }
+          # The EXE embeds all scripts; no loose scripts folder is shipped.
 
           # Create ZIP file using PowerShell
           Compress-Archive -Path "dist/*" -DestinationPath "PleaseTweakWindows.zip" -Force
@@ -977,6 +1001,7 @@ jobs:
         shell: pwsh
 
       - name: Create Release
+        if: steps.version.outputs.release == 'true'
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           tag_name: ${{ steps.version.outputs.version }}

@@ -1,0 +1,25 @@
+<UserControl x:Class="PleaseTweakWindows.Views.LogPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,8">
+            <TextBlock Text="Verbose Output"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PtwTextPrimaryBrush}"
+                       VerticalAlignment="Center" />
+            <Button Content="Clear"
+                    Style="{StaticResource GhostButton}"
+                    Command="{Binding ClearCommand}"
+                    Margin="12,0,0,0"
+                    FontSize="12" />
+        </StackPanel>
+
+        <TextBox x:Name="LogTextBox"
+                 Style="{StaticResource LogAreaTextBox}"
+                 Text="{Binding LogText, Mode=OneWay}" />
+    </DockPanel>
+</UserControl>
