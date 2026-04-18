@@ -257,21 +257,24 @@ jobs:
 
           $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
 
+          # Defender cmdlet names are boolean-negated (DisableX = $true disables, $false enables),
+          # so patterns must require the value = $true to avoid flagging legitimate "reset to
+          # Windows default" calls that pass $false (which re-enables the protection).
           $securityDisablePatterns = @(
             'Windows.*Defender.*disable|Disable.*Windows.*Defender',
             'SmartScreen.*disable|Disable.*SmartScreen',
             'Firewall.*disable|Disable.*Firewall',
             'UAC.*disable|Disable.*UAC',
             'SecurityHealthService.*disable',
-            'Set-MpPreference.*DisableRealtimeMonitoring',
-            'Set-MpPreference.*DisableBehaviorMonitoring',
-            'Set-MpPreference.*DisableIOAVProtection',
-            'Set-MpPreference.*DisableScriptScanning',
-            'Set-MpPreference.*DisableBlockAtFirstSeen',
-            'Set-MpPreference.*DisablePrivacyMode',
-            'Set-MpPreference.*DisableArchiveScanning',
-            'Set-MpPreference.*DisableIntrusionPreventionSystem',
-            'Set-MpPreference.*DisableNetworkProtection'
+            'Set-MpPreference.*DisableRealtimeMonitoring.*\$true',
+            'Set-MpPreference.*DisableBehaviorMonitoring.*\$true',
+            'Set-MpPreference.*DisableIOAVProtection.*\$true',
+            'Set-MpPreference.*DisableScriptScanning.*\$true',
+            'Set-MpPreference.*DisableBlockAtFirstSeen.*\$true',
+            'Set-MpPreference.*DisablePrivacyMode.*\$true',
+            'Set-MpPreference.*DisableArchiveScanning.*\$true',
+            'Set-MpPreference.*DisableIntrusionPreventionSystem.*\$true',
+            'Set-MpPreference.*DisableNetworkProtection.*\$true'
           )
 
           $issues = 0
