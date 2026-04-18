@@ -32,6 +32,17 @@ public sealed class UpdateChecker : IUpdateChecker
         try
         {
             var assembly = Assembly.GetExecutingAssembly();
+            // Prefer AssemblyInformationalVersion — matches <Version> in the csproj
+            // directly (e.g. "2.1.1"), unlike AssemblyName.Version which can be pinned
+            // to Major.Minor.0.0 if someone ever sets <AssemblyVersion> separately.
+            var info = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(info))
+            {
+                // Strip SourceLink metadata (e.g. "2.1.1+abc123") if present.
+                var plus = info.IndexOf('+');
+                return plus > 0 ? info[..plus] : info;
+            }
+
             var version = assembly.GetName().Version;
             if (version != null)
                 return $"{version.Major}.{version.Minor}.{version.Build}";
@@ -44,7 +55,7 @@ public sealed class UpdateChecker : IUpdateChecker
     {
         try
         {
-            var response = await HttpClient.GetAsync(ReleasesApi);
+            using var response = await HttpClient.GetAsync(ReleasesApi);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogDebug("Update check returned status {StatusCode}", response.StatusCode);

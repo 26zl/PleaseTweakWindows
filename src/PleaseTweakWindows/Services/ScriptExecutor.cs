@@ -200,9 +200,6 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                 try
                 {
                     await process.WaitForExitAsync(combinedCts.Token);
-                    // Drain any output buffered after exit. Bounded by the same timeout.
-                    try { await Task.WhenAll(outputTask, errorTask); }
-                    catch (OperationCanceledException) { /* cancellation during drain is fine */ }
                     exitCode = process.ExitCode;
                 }
                 catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
@@ -217,6 +214,15 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                     onOutput?.Invoke("[!] Operation cancelled by user");
                     try { process.Kill(entireProcessTree: true); } catch { }
                     exitCode = -1;
+                }
+                finally
+                {
+                    // Always drain the read tasks, even on timeout/cancel. After Kill or
+                    // a token trip these complete quickly — usually with OperationCanceledException.
+                    // Leaving them unawaited causes unobserved task exceptions later.
+                    try { await Task.WhenAll(outputTask, errorTask); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { _logger.LogDebug(ex, "Drain of read tasks threw"); }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

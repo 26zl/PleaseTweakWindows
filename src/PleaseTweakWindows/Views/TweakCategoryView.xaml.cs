@@ -15,15 +15,31 @@ public partial class TweakCategoryView : UserControl
 
     private void OnHeaderPressed(object sender, MouseButtonEventArgs e)
     {
-        if (DataContext is TweakCategoryViewModel vm)
-        {
-            vm.ToggleExpandCommand.Execute(null);
+        ToggleExpand(sender as IInputElement);
+        e.Handled = true;
+    }
 
-            if (vm.IsExpanded)
-            {
-                var mainVm = FindMainWindowViewModel();
-                mainVm?.OnCategoryExpanded(vm);
-            }
+    private void OnHeaderKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter && e.Key != Key.Space) return;
+        ToggleExpand(sender as IInputElement);
+        e.Handled = true;
+    }
+
+    private void ToggleExpand(IInputElement? focusTarget)
+    {
+        if (DataContext is not TweakCategoryViewModel vm) return;
+
+        // Give the header keyboard focus when first activated so subsequent
+        // Tab navigation continues from here.
+        focusTarget?.Focus();
+
+        vm.ToggleExpandCommand.Execute(null);
+
+        if (vm.IsExpanded)
+        {
+            var mainVm = FindMainWindowViewModel();
+            mainVm?.OnCategoryExpanded(vm);
         }
     }
 

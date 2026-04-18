@@ -42,11 +42,11 @@ public partial class TweakCategoryViewModel : ViewModelBase
         _isGloballyRunning = isGloballyRunning;
         _setGloballyRunning = setGloballyRunning;
 
+        var applyPath = Path.Combine(scriptDirectory, model.ApplyScript);
+        var revertPath = Path.Combine(scriptDirectory, model.RevertScript);
+
         foreach (var sub in model.SubTweaks)
         {
-            var applyPath = Path.Combine(scriptDirectory, model.ApplyScript);
-            var revertPath = Path.Combine(scriptDirectory, model.RevertScript);
-
             SubTweaks.Add(new SubTweakViewModel(
                 sub, applyPath, revertPath, scriptDirectory,
                 executor, dialogService, restorePointGuard, logPanel,
