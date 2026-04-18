@@ -2,29 +2,20 @@
 **/bin/
 **/obj/
 **/dist/
+**/publish/
+TestResults/
 *.dll
 *.exe
 *.pdb
+*.cache
+
+# NuGet
 *.nupkg
 *.snupkg
 *.nuget.props
 *.nuget.targets
-*.cache
-
-# .NET publish output
-**/publish/
-
-# NuGet
-*.nupkg
 nuget.exe
 **/packages/*
-*.nuget.props
-*.nuget.targets
-
-# VS Code
-.vscode/
-.vscode-oss/
-*.code-workspace
 
 # Visual Studio
 .vs/
@@ -35,19 +26,24 @@ nuget.exe
 *.userprefs
 *.DotSettings.user
 
+# VS Code
+.vscode/
+.vscode-oss/
+*.code-workspace
+
 # JetBrains IDEs (Rider, etc.)
 .idea/
 *.iml
 *.ipr
 *.iws
 
-# Cursor
+# AI assistants
 .cursor/
 .cursorrules
-
-# Claude
 .claude/
 CLAUDE.md
+AGENTS.md
+.github/instructions/
 
 # Log files
 /logs/
@@ -62,7 +58,6 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
-nul
 
 # Linux
 *~
@@ -76,18 +71,3 @@ nul
 
 # Archives
 *.zip
-
-# GitHub Actions
-.github/workflows/release.yml.disabled
-
-# Snyk Security Extension
-.github/instructions/snyk_rules.instructions.md
-*instructions
-
-bin/
-obj/
-dist/
-*.user
-*.suo
-.vs/
-*.DotSettings.user

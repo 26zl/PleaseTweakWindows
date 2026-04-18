@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo  PleaseTweakWindows - Avalonia Build Script
+echo  PleaseTweakWindows - WPF Build Script
 echo ============================================
 echo.
 
@@ -21,8 +21,8 @@ if !DOTNET_MAJOR! LSS 9 (
     exit /b 1
 )
 
-set PROJECT=PleaseTweakWindows.Avalonia\src\PleaseTweakWindows\PleaseTweakWindows.csproj
-set TESTS=PleaseTweakWindows.Avalonia\src\PleaseTweakWindows.Tests\PleaseTweakWindows.Tests.csproj
+set PROJECT=src\PleaseTweakWindows\PleaseTweakWindows.csproj
+set TESTS=src\PleaseTweakWindows.Tests\PleaseTweakWindows.Tests.csproj
 
 echo [1/4] Running tests...
 dotnet test %TESTS% -c Release --verbosity quiet
@@ -60,13 +60,9 @@ echo.
 echo [4/4] Creating distribution package...
 if exist dist\PleaseTweakWindows rd /s /q dist\PleaseTweakWindows
 mkdir dist\PleaseTweakWindows
-mkdir dist\PleaseTweakWindows\scripts
 
-:: Copy EXE
+:: Copy EXE (scripts are embedded; the EXE is self-contained)
 copy dist\publish\PleaseTweakWindows.exe dist\PleaseTweakWindows\ >nul
-
-:: Copy shared PowerShell scripts
-xcopy /s /e /q src\main\resources\scripts\* dist\PleaseTweakWindows\scripts\ >nul
 
 :: Copy docs if present
 if exist README.md copy README.md dist\PleaseTweakWindows\ >nul

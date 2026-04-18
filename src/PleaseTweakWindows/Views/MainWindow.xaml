@@ -1,0 +1,207 @@
+<Window x:Class="PleaseTweakWindows.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:vm="clr-namespace:PleaseTweakWindows.ViewModels"
+        xmlns:views="clr-namespace:PleaseTweakWindows.Views"
+        Title="PleaseTweakWindows"
+        Width="1200" Height="850"
+        MinWidth="900" MinHeight="600"
+        Background="{StaticResource PtwBackgroundBrush}"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48"
+                            ResizeBorderThickness="6"
+                            CornerRadius="0"
+                            GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar -->
+        <Border Grid.Row="0"
+                Background="{StaticResource PtwBackgroundBrush}"
+                Padding="16,6,8,6"
+                Height="48">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="PleaseTweakWindows"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PtwTextPrimaryBrush}"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+
+                <Grid Grid.Column="1"
+                      Margin="20,0,0,0"
+                      Width="220"
+                      VerticalAlignment="Center"
+                      shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <TextBox x:Name="SearchBox"
+                             Style="{StaticResource SearchTextBox}"
+                             Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock IsHitTestVisible="False"
+                               Text="Search tweaks..."
+                               Foreground="{StaticResource PtwTextSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="14,0,0,0"
+                               FontSize="13">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+
+                <StackPanel Grid.Column="3"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Content="&#x2014;"
+                            Style="{StaticResource GhostButton}"
+                            Click="OnMinimizeClick"
+                            FontSize="12"
+                            Padding="12,6"
+                            ToolTip="Minimize"
+                            AutomationProperties.Name="Minimize" />
+                    <Button Content="&#x25A1;"
+                            Style="{StaticResource GhostButton}"
+                            Click="OnMaximizeClick"
+                            FontSize="12"
+                            Padding="12,6"
+                            Margin="2,0,0,0"
+                            ToolTip="Maximize / restore"
+                            AutomationProperties.Name="Maximize or restore" />
+                    <Button Content="&#x2715;"
+                            Style="{StaticResource WindowCloseButton}"
+                            Click="OnCloseClick"
+                            FontSize="12"
+                            Padding="12,6"
+                            Margin="2,0,0,0"
+                            ToolTip="Close"
+                            AutomationProperties.Name="Close" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Error overlay -->
+        <Border Grid.Row="1"
+                Background="{StaticResource PtwAccentSubtleBrush}"
+                BorderBrush="{StaticResource PtwDangerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,10"
+                Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVisibility}}">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="{StaticResource PtwDangerBrush}"
+                       FontSize="13"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Update Banner -->
+        <Border Grid.Row="2"
+                Style="{StaticResource UpdateBannerBorder}"
+                Visibility="{Binding ShowUpdateBanner, Converter={StaticResource BoolToVisibility}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="&#x2B06;"
+                           Foreground="{StaticResource PtwSuccessBrush}"
+                           FontSize="14"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource PtwTextPrimaryBrush}"
+                           FontSize="13">
+                    <Run Text="Version " />
+                    <Run Text="{Binding UpdateVersion}" />
+                    <Run Text=" is available" />
+                </TextBlock>
+                <Button Grid.Column="3"
+                        Content="Download"
+                        Style="{StaticResource GhostButton}"
+                        Foreground="{StaticResource PtwSuccessBrush}"
+                        Command="{Binding OpenUpdateUrlCommand}"
+                        FontSize="13"
+                        Margin="0,0,8,0" />
+                <Button Grid.Column="4"
+                        Content="&#x2715;"
+                        Style="{StaticResource GhostButton}"
+                        Command="{Binding DismissUpdateCommand}"
+                        FontSize="12"
+                        Padding="6,2" />
+            </Grid>
+        </Border>
+
+        <!-- Main content -->
+        <Grid Grid.Row="3"
+              Visibility="{Binding IsInitialized, Converter={StaticResource BoolToVisibility}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="420" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource PtwBackgroundBrush}"
+                    Padding="16,8,8,16">
+                <DockPanel>
+                    <Button DockPanel.Dock="Top"
+                            Content="Create Restore Point"
+                            Style="{StaticResource AccentButton}"
+                            Command="{Binding CreateRestorePointCommand}"
+                            IsEnabled="{Binding IsScriptsRunning, Converter={StaticResource InverseBool}}"
+                            HorizontalAlignment="Stretch"
+                            Margin="0,0,0,12" />
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding FilteredCategories}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:TweakCategoryViewModel}">
+                                    <views:TweakCategoryView />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Right Panel -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource PtwBackgroundBrush}"
+                    Padding="8,8,16,16">
+                <views:LogPanelView DataContext="{Binding LogPanel}" />
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
