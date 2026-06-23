@@ -96,11 +96,43 @@ if ($doRevert) {
     }
     Write-PTWSuccess "Adapter bindings restored"
 
-    # Manual steps reminder
+    # Adapter driver settings (restore from snapshot saved by smart-optimize)
     $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Checking for manual steps..."
-    Write-PTWWarning "Network adapter driver settings require manual reset"
-    Write-Output "        To restore: Device Manager > Network Adapter > Advanced"
+    Write-Output "  [$currentStep/$totalSteps] Restoring network adapter driver settings..."
+    $nicLogDir = if ($env:PTW_LOG_DIR) { $env:PTW_LOG_DIR } else { Join-Path $env:TEMP 'PleaseTweakWindows' }
+    $nicBackupDir = Join-Path $nicLogDir 'nic-backups'
+    $snapshotFile = $null
+    if (Test-Path $nicBackupDir) {
+        $snapshotFile = Get-ChildItem -Path $nicBackupDir -Filter 'smart-optimize_*.json' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    }
+    if ($snapshotFile) {
+        $restored = 0
+        $pmRestored = 0
+        try {
+            $entries = Get-Content -Path $snapshotFile.FullName -Raw | ConvertFrom-Json
+        } catch {
+            $entries = $null
+            Write-PTWWarning "Could not read adapter snapshot: $($_.Exception.Message)"
+        }
+        foreach ($entry in $entries) {
+            if ($entry.Type -eq 'PowerManagement') {
+                try {
+                    Enable-NetAdapterPowerManagement -Name $entry.Adapter -ErrorAction Stop
+                    $pmRestored++
+                } catch { Write-Verbose "Could not re-enable power management on $($entry.Adapter): $($_.Exception.Message)" }
+            } elseif ($entry.Type -eq 'AdvancedProperty') {
+                try {
+                    Set-NetAdapterAdvancedProperty -Name $entry.Adapter -DisplayName $entry.DisplayName -DisplayValue $entry.DisplayValue -ErrorAction Stop
+                    $restored++
+                } catch { Write-Verbose "Could not restore '$($entry.DisplayName)' on $($entry.Adapter): $($_.Exception.Message)" }
+            }
+        }
+        Write-PTWSuccess "Restored $restored adapter property value(s) and re-enabled power management on $pmRestored adapter(s)"
+    } else {
+        Write-PTWWarning "No adapter snapshot found - driver settings may require manual reset"
+        Write-Output "        To restore manually: Device Manager > Network Adapter > Advanced"
+    }
 
     Write-Output ""
     Write-PTWSuccess "All revert operations completed"

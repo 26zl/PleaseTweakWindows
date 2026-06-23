@@ -37,6 +37,7 @@
                             Content="Run All"
                             Style="{StaticResource RunFullButton}"
                             Command="{Binding RunFullScriptCommand}"
+                            IsEnabled="{Binding IsGloballyRunning, Converter={StaticResource InverseBool}}"
                             VerticalAlignment="Center" />
                 </Grid>
             </Border>

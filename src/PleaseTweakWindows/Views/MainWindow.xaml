@@ -81,6 +81,15 @@
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Content="Stop"
+                            Style="{StaticResource DangerButton}"
+                            Command="{Binding CancelRunningCommand}"
+                            Visibility="{Binding IsScriptsRunning, Converter={StaticResource BoolToVisibility}}"
+                            FontSize="12"
+                            Padding="14,6"
+                            Margin="0,0,12,0"
+                            ToolTip="Cancel the running operation"
+                            AutomationProperties.Name="Stop running operation" />
                     <Button Content="&#x2014;"
                             Style="{StaticResource GhostButton}"
                             Click="OnMinimizeClick"
@@ -184,15 +193,25 @@
                             HorizontalAlignment="Stretch"
                             Margin="0,0,0,12" />
 
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding FilteredCategories}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:TweakCategoryViewModel}">
-                                    <views:TweakCategoryView />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                    <Grid>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding FilteredCategories}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:TweakCategoryViewModel}">
+                                        <views:TweakCategoryView />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <TextBlock Text="No matches"
+                                   Foreground="{StaticResource PtwTextSecondaryBrush}"
+                                   FontSize="14"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Top"
+                                   Margin="0,24,0,0"
+                                   Visibility="{Binding HasNoResults, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
                 </DockPanel>
             </Border>
 

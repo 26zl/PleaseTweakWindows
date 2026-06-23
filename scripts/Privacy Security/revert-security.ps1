@@ -495,13 +495,15 @@ function Restore-DefenderNetworkProtection {
 function Restore-DefenderPua {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
-    if (-not $PSCmdlet.ShouldProcess("Defender", "Disable PUA protection")) { return }
+    if (-not $PSCmdlet.ShouldProcess("Defender", "Restore PUA protection to Windows default")) { return }
+    # PUA protection is Enabled by default on modern Windows 11. Revert to the OEM default
+    # (Enabled) rather than blindly Disabled so we do not leave the machine below its default.
     try {
-        Set-MpPreference -PUAProtection Disabled -ErrorAction Stop
+        Set-MpPreference -PUAProtection Enabled -ErrorAction Stop
     } catch {
-        Write-PTWLog "PUA disable failed: $($_.Exception.Message)" "WARNING"
+        Write-PTWLog "PUA restore-to-default failed: $($_.Exception.Message)" "WARNING"
     }
-    Write-PTWLog "PUA protection disabled" "SUCCESS"
+    Write-PTWLog "PUA protection restored to Windows default (Enabled)" "SUCCESS"
 }
 
 function Restore-DefenderCloudTune {
@@ -610,6 +612,21 @@ $actionMap = @{
     'security-block-ntlm-incoming'          = @{ Revert = { Restore-BlockNtlmIncoming } ; Repair = { } }
     'security-block-ntlm-outgoing'          = @{ Revert = { Restore-BlockNtlmOutgoing } ; Repair = { } }
     'security-aslr-exclude-dev-tools'       = @{ Revert = { Restore-AslrDevToolExclusions } ; Repair = { } }
+
+    # Alias keys: the GUI (TweakRegistry.cs) sends revert IDs for these 10 toggles WITHOUT
+    # the apply verb (e.g. 'security-clipboard-data-revert'), which strip to the base ID below.
+    # Map each base ID to the SAME scriptblocks as its '-disable'/'-enable' counterpart so the
+    # revert resolves instead of hitting the unknown-action branch.
+    'security-clipboard-data'               = @{ Revert = { Restore-ClipboardDataDisable } ; Repair = { Repair-ClipboardDataDisable } }
+    'security-spectre-meltdown'             = @{ Revert = { Restore-SpectreMeltdownEnable } ; Repair = { } }
+    'security-dep'                          = @{ Revert = { Restore-DepEnable } ; Repair = { } }
+    'security-autorun'                      = @{ Revert = { Restore-AutorunDisable } ; Repair = { } }
+    'security-lock-screen-camera'           = @{ Revert = { Restore-LockScreenCameraDisable } ; Repair = { } }
+    'security-lm-hash'                      = @{ Revert = { Restore-LmHashDisable } ; Repair = { } }
+    'security-always-install-elevated'      = @{ Revert = { Restore-AlwaysInstallElevatedDisable } ; Repair = { } }
+    'security-sehop'                        = @{ Revert = { Restore-SehopEnable } ; Repair = { } }
+    'security-ps2-downgrade-protection'     = @{ Revert = { } ; Repair = { Repair-PowerShellV2Disable } }
+    'security-wcn'                          = @{ Revert = { Restore-WcnDisable } ; Repair = { } }
 }
 
 function Invoke-Mode {
@@ -623,6 +640,8 @@ function Invoke-Mode {
         if ($RepairBlock) { & $RepairBlock }
     }
 }
+
+Write-PTWLog "Note: revert restores Windows DEFAULTS, not any prior custom/hardened values you may have had on shared SYSTEM keys (e.g. LmCompatibilityLevel, restrictanonymous, AutoShareWks, NetbiosOptions). Original values are captured in the registry-backup .reg files under the registry-backups folder of PTW_LOG_DIR if you need to restore them manually." "INFO"
 
 if ([string]::IsNullOrWhiteSpace($Action)) {
     Write-PTWLog "No -Action provided; running Mode=$Mode for all security revert actions." "INFO"
@@ -658,7 +677,7 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
     Invoke-Mode -RevertBlock { Restore-AslrDevToolExclusions } -RepairBlock { }
 
     Write-PTWLog "Done. A restart may be required for some changes to fully take effect." "SUCCESS"
-    exit 0
+    Exit-PTW
 }
 
 # Strip -revert suffix: Java sends revert action IDs like 'security-improve-network-revert'
@@ -673,4 +692,4 @@ if (-not $actionMap.ContainsKey($k)) {
 Write-PTWLog "Running Mode=$Mode for Action=$k" "INFO"
 Invoke-Mode -RevertBlock $actionMap[$k].Revert -RepairBlock $actionMap[$k].Repair
 Write-PTWLog "Done." "SUCCESS"
-exit 0
+Exit-PTW

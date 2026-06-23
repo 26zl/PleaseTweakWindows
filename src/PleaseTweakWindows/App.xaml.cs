@@ -20,6 +20,28 @@ public partial class App : Application
 
         ConfigureLogging();
 
+        DispatcherUnhandledException += (s, ex) =>
+        {
+            Log.Fatal(ex.Exception, "Unhandled UI exception");
+            ex.Handled = true;
+            try
+            {
+                MessageBox.Show(
+                    "An unexpected error occurred. The action may not have completed. See the log for details.",
+                    "PleaseTweakWindows",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            catch { }
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
+            Log.Fatal(ex.ExceptionObject as Exception, "Unhandled domain exception");
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, ex) =>
+        {
+            Log.Error(ex.Exception, "Unobserved task exception");
+            ex.SetObserved();
+        };
+
         var services = new ServiceCollection();
         ConfigureServices(services);
         _serviceProvider = services.BuildServiceProvider();
@@ -45,7 +67,7 @@ public partial class App : Application
                 var extractor = _serviceProvider.GetRequiredService<IResourceExtractor>();
                 extractor.Cleanup();
             }
-            catch { }
+            catch (Exception ex) { Log.Warning(ex, "Shutdown cleanup failed"); }
             Log.CloseAndFlush();
             _serviceProvider.Dispose();
         }
@@ -54,9 +76,7 @@ public partial class App : Application
 
     private static void ConfigureLogging()
     {
-        var exeDir = AppContext.BaseDirectory;
-        var logDir = Path.Combine(exeDir, "logs");
-        Directory.CreateDirectory(logDir);
+        var logDir = AppPaths.GetLogsDirectory();
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -65,14 +85,14 @@ public partial class App : Application
                 Path.Combine(logDir, "PleaseTweakWindows.log"),
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
-                fileSizeLimitBytes: 500 * 1024 * 1024,
+                fileSizeLimitBytes: 20 * 1024 * 1024,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
             .WriteTo.File(
                 Path.Combine(logDir, "PleaseTweakWindows-error.log"),
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 90,
-                fileSizeLimitBytes: 200 * 1024 * 1024,
+                fileSizeLimitBytes: 10 * 1024 * 1024,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
             .WriteTo.Logger(lc => lc
                 .Filter.ByIncludingOnly(ev => ev.Properties.ContainsKey("Telemetry"))
@@ -80,11 +100,11 @@ public partial class App : Application
                     Path.Combine(logDir, "PleaseTweakWindows-telemetry.log"),
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: 30,
-                    fileSizeLimitBytes: 200 * 1024 * 1024,
+                    fileSizeLimitBytes: 5 * 1024 * 1024,
                     outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}"))
             .CreateLogger();
 
-        Log.Information("Starting PleaseTweakWindows UI.");
+        Log.Information("Starting PleaseTweakWindows UI. Logs: {LogDir}", logDir);
     }
 
     private static void ConfigureServices(IServiceCollection services)
@@ -101,6 +121,5 @@ public partial class App : Application
         services.AddSingleton<AdminChecker>();
 
         services.AddTransient<MainWindowViewModel>();
-        services.AddTransient<LogPanelViewModel>();
     }
 }

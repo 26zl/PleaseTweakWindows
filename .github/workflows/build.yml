@@ -127,25 +127,20 @@ jobs:
             exit 1
           }
 
-          $indexContent = Get-Content $indexFile
-          $requiredFiles = @(
-            "Gaming optimizations/Gaming-Optimizations.ps1",
-            "Network optimizations/Network-Optimizations.ps1",
-            "General Tweaks/General-Tweaks.ps1",
-            "Privacy Security/privacy.ps1",
-            "Privacy Security/security.ps1",
-            "Services management/Services-Management.ps1",
-            "Privacy Security/revert-privacy.ps1",
-            "Privacy Security/revert-security.ps1",
-            "create_restore_point.ps1",
-            "CommonFunctions.ps1"
-          )
+          $indexContent = Get-Content $indexFile | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 
-          foreach ($required in $requiredFiles) {
-            if ($indexContent -notcontains $required) {
-              Write-Error "Missing entry in index.txt: $required"
-              exit 1
-            }
+          # Forward check (derived, not hand-maintained): every file shipped under scripts/
+          # — every .ps1, .reg, .cfg, .xml, etc. except index.txt itself — must be listed in
+          # index.txt, or ResourceExtractor fails to extract it at runtime (hard crash).
+          $scriptsRoot = (Resolve-Path "scripts").Path
+          $actual = Get-ChildItem -Path "scripts" -Recurse -File |
+            Where-Object { $_.Name -ne 'index.txt' } |
+            ForEach-Object { $_.FullName.Substring($scriptsRoot.Length + 1) -replace '\\','/' }
+
+          $missing = $actual | Where-Object { $indexContent -notcontains $_ }
+          if ($missing) {
+            Write-Error "Files missing from index.txt: $($missing -join ', ')"
+            exit 1
           }
 
           # Reverse check: every entry in index.txt must correspond to a real file
@@ -160,6 +155,33 @@ jobs:
           }
 
           Write-Host "index.txt validation passed"
+        shell: pwsh
+
+      - name: Verify script checksums are current
+        run: |
+          # Catch scripts edited without updating scripts/file-checksums.json. The "scripts"
+          # section must match the shipped files; a stale entry means the manifest no longer
+          # attests to what actually ships. Regenerate with the command in the manifest notes.
+          $manifest = Get-Content "scripts/file-checksums.json" -Raw | ConvertFrom-Json
+          $bad = 0
+          foreach ($prop in $manifest.scripts.PSObject.Properties) {
+            $path = Join-Path "scripts" $prop.Name
+            if (-not (Test-Path $path)) {
+              Write-Error "Checksummed file missing: $($prop.Name)"
+              $bad++
+              continue
+            }
+            $actual = (Get-FileHash -Algorithm SHA256 -Path $path).Hash
+            if ($actual -ne $prop.Value) {
+              Write-Error "Checksum mismatch for $($prop.Name): expected $($prop.Value), actual $actual. Update scripts/file-checksums.json."
+              $bad++
+            }
+          }
+          if ($bad -gt 0) {
+            Write-Error "$bad script checksum(s) stale or missing. Regenerate file-checksums.json."
+            exit 1
+          }
+          Write-Host "[+] All script checksums current"
         shell: pwsh
 
   security-scan:
@@ -249,6 +271,59 @@ jobs:
           } else {
             Write-Host "[+] No Windows Update disabling patterns detected"
           }
+        shell: pwsh
+
+      - name: Verify OOSU profile keeps core protections enabled
+        run: |
+          $cfg = "scripts/Privacy Security/regs/ooshutup10.cfg"
+          if (-not (Test-Path $cfg)) {
+            Write-Error "OOSU profile not found: $cfg"
+            exit 1
+          }
+
+          # O&O ShutUp10++ profile semantics:
+          #   + = apply the listed "Disable ..." setting
+          #   - = do not apply it / leave Windows default protection in place
+          #
+          # These settings must stay '-' so the privacy profile does not weaken
+          # phishing/malware protection or Windows Update safety.
+          $mustStayDisabled = @(
+            @{ Id = 'E106'; Name = 'Edge SmartScreen filter (machine)' },
+            @{ Id = 'E206'; Name = 'Edge SmartScreen filter (user)' },
+            @{ Id = 'E006'; Name = 'Legacy Edge SmartScreen filter' },
+            @{ Id = 'E127'; Name = 'Edge typosquatting checker (machine)' },
+            @{ Id = 'E227'; Name = 'Edge typosquatting checker (user)' },
+            @{ Id = 'E126'; Name = 'Edge site safety services (machine)' },
+            @{ Id = 'E226'; Name = 'Edge site safety services (user)' },
+            @{ Id = 'S012'; Name = 'Microsoft Defender SpyNet/MAPS membership' },
+            @{ Id = 'S013'; Name = 'Microsoft Defender sample submission' },
+            @{ Id = 'S014'; Name = 'Microsoft Defender malware reporting' },
+            @{ Id = 'W006'; Name = 'Automatic Windows Updates' },
+            @{ Id = 'W010'; Name = 'Driver updates through Windows Update' }
+          )
+
+          $lines = Get-Content $cfg
+          $bad = 0
+          foreach ($entry in $mustStayDisabled) {
+            $match = $lines | Where-Object { $_ -match "^$($entry.Id)\s+([+-])\s+" } | Select-Object -First 1
+            if (-not $match) {
+              Write-Error "Missing OOSU safety entry $($entry.Id): $($entry.Name)"
+              $bad++
+              continue
+            }
+
+            if ($match -notmatch "^$($entry.Id)\s+-\s+") {
+              Write-Error "Unsafe OOSU setting $($entry.Id) is enabled (+): $($entry.Name). Keep it '-' so core protection remains enabled."
+              $bad++
+            }
+          }
+
+          if ($bad -gt 0) {
+            Write-Error "$bad unsafe OOSU profile setting(s)."
+            exit 1
+          }
+
+          Write-Host "[+] OOSU profile keeps SmartScreen, Defender reporting, and Windows Update protections enabled"
         shell: pwsh
 
       - name: Check for security feature disabling
@@ -1000,13 +1075,25 @@ jobs:
           }
         shell: pwsh
 
+      - name: Generate SHA256SUMS
+        if: steps.version.outputs.release == 'true'
+        run: |
+          # The EXE is not Authenticode-signed, so publish a checksum users can verify
+          # the download against (Get-FileHash on the .zip should match this value).
+          $h = (Get-FileHash -Algorithm SHA256 -Path "PleaseTweakWindows.zip").Hash
+          "$h  PleaseTweakWindows.zip" | Out-File -Encoding ascii -FilePath "SHA256SUMS.txt"
+          Get-Content "SHA256SUMS.txt"
+        shell: pwsh
+
       - name: Create Release
         if: steps.version.outputs.release == 'true'
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: PleaseTweakWindows ${{ steps.version.outputs.version }}
-          files: PleaseTweakWindows.zip
+          files: |
+            PleaseTweakWindows.zip
+            SHA256SUMS.txt
           draft: false
           prerelease: false
           generate_release_notes: true

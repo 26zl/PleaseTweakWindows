@@ -25,6 +25,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FilteredCategories))]
+    [NotifyPropertyChangedFor(nameof(HasNoResults))]
     private string _searchText = string.Empty;
 
     [ObservableProperty]
@@ -49,6 +50,19 @@ public partial class MainWindowViewModel : ViewModelBase
         string.IsNullOrWhiteSpace(SearchText)
             ? Categories
             : Categories.Where(c => c.MatchesFilter(SearchText));
+
+    public bool HasNoResults => IsInitialized && !FilteredCategories.Any();
+
+    // When the global running flag flips, push change notifications down to every
+    // category/sub-tweak so their Apply/Revert/Run All IsEnabled bindings update.
+    partial void OnIsScriptsRunningChanged(bool value)
+    {
+        foreach (var cat in Categories)
+            cat.OnGlobalRunningChanged();
+    }
+
+    // Keep the empty-state ("No matches") visibility in sync with both inputs.
+    partial void OnIsInitializedChanged(bool value) => OnPropertyChanged(nameof(HasNoResults));
 
     public MainWindowViewModel(
         ITweakRegistry tweakRegistry,
@@ -107,7 +121,8 @@ public partial class MainWindowViewModel : ViewModelBase
                     tweak, _scriptDirectory, _executor, _dialogService,
                     _restorePointGuard, LogPanel,
                     () => IsScriptsRunning,
-                    running => IsScriptsRunning = running));
+                    running => IsScriptsRunning = running,
+                    message => UiDispatcher.Post(() => ErrorMessage = message)));
             }
 
             IsInitialized = true;
@@ -164,6 +179,18 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task CancelRunningAsync()
+    {
+        if (!_executor.HasActiveOperations) return;
+
+        var cancel = await _dialogService.ShowCancelConfirmationAsync();
+        if (cancel)
+        {
+            _executor.CancelAllOperations();
+        }
+    }
+
+    [RelayCommand]
     private void DismissUpdate()
     {
         ShowUpdateBanner = false;
@@ -178,9 +205,9 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             var uri = new Uri(UpdateUrl);
-            if (uri.Scheme is not ("https" or "http"))
+            if (uri.Scheme != "https")
             {
-                _logger.LogWarning("Refused to open non-HTTP URL: {Url}", UpdateUrl);
+                _logger.LogWarning("Refused to open non-HTTPS URL: {Url}", UpdateUrl);
                 return;
             }
 

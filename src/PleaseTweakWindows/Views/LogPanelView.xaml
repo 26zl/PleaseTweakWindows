@@ -18,8 +18,26 @@
                     FontSize="12" />
         </StackPanel>
 
-        <TextBox x:Name="LogTextBox"
-                 Style="{StaticResource LogAreaTextBox}"
-                 Text="{Binding LogText, Mode=OneWay}" />
+        <Border Background="{StaticResource PtwLogBackgroundBrush}"
+                BorderBrush="{StaticResource PtwBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="14">
+            <ScrollViewer x:Name="LogScrollViewer"
+                          Padding="14"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Lines}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Text}"
+                                       Foreground="{Binding Foreground}"
+                                       FontFamily="Cascadia Mono, Cascadia Code, Consolas"
+                                       FontSize="12"
+                                       TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
     </DockPanel>
 </UserControl>

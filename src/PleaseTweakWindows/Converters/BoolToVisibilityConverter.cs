@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Data;
 
@@ -45,6 +46,22 @@ public sealed class StringNotEmptyToVisibilityConverter : IValueConverter
         => string.IsNullOrEmpty(value as string) ? Visibility.Collapsed : Visibility.Visible;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// MultiBinding converter that returns <c>false</c> when ANY bound bool is true,
+/// otherwise <c>true</c>. Used to disable a control while either the local run flag
+/// or the global run flag is set: IsEnabled = !(IsRunning || IsGloballyRunning).
+/// </summary>
+public sealed class NotAnyTrueConverter : IMultiValueConverter
+{
+    public static readonly NotAnyTrueConverter Instance = new();
+
+    public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
+        => !values.Any(v => v is true);
+
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
 

@@ -48,7 +48,16 @@ if ($doRevert -or $doRepair) {
         $global:LASTEXITCODE = 1
         return
     } else {
-        Import-RegistryFile -RegFile $regPath | Out-Null
+        $imported = Import-RegistryFile -RegFile $regPath
+        # regedit.exe /s can report success even on a partial/blocked import, so
+        # re-validate a couple of key services returned to their defaults (Start=2).
+        $spoolerStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Spooler" -Name "Start" -ErrorAction SilentlyContinue).Start
+        $themesStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Themes" -Name "Start" -ErrorAction SilentlyContinue).Start
+        if ((-not $imported) -or ($spoolerStart -ne 2) -or ($themesStart -ne 2)) {
+            Write-PTWError "Services restore did not fully apply (Spooler Start='$spoolerStart', Themes Start='$themesStart', expected 2). Some services may still be disabled - try running this again as Administrator."
+            $global:LASTEXITCODE = 1
+            return
+        }
         Write-PTWSuccess "Services restored to Windows defaults"
     }
 }

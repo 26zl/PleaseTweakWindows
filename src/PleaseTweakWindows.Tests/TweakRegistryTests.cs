@@ -36,7 +36,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var gaming = tweaks.First(t => t.Title == "Gaming Optimizations");
-        gaming.SubTweaks.Should().HaveCount(10);
+        gaming.SubTweaks.Should().HaveCount(12);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var privacy = tweaks.First(t => t.Title == "Privacy");
-        privacy.SubTweaks.Should().HaveCount(14);
+        privacy.SubTweaks.Should().HaveCount(15);
     }
 
     [Fact]
@@ -182,4 +182,61 @@ public class TweakRegistryTests
         allActions.Should().Contain("driver-clean");
         allActions.Should().Contain("bloatware-remove");
     }
+
+    [Fact]
+    public void AllActionIds_HavePowerShellRoutes()
+    {
+        var scriptsRoot = FindRepositoryScriptsRoot();
+
+        foreach (var tweak in _registry.GetTweaks())
+        {
+            var applyScript = File.ReadAllText(Path.Combine(scriptsRoot, tweak.ApplyScript));
+            var revertScript = File.ReadAllText(Path.Combine(scriptsRoot, tweak.RevertScript));
+
+            foreach (var sub in tweak.SubTweaks)
+            {
+                ScriptHandlesAction(applyScript, sub.ApplyAction).Should().BeTrue(
+                    $"Apply action '{sub.ApplyAction}' for '{sub.Name}' must be routed by {tweak.ApplyScript}");
+
+                if (sub.RevertAction != null)
+                {
+                    ScriptHandlesAction(revertScript, sub.RevertAction).Should().BeTrue(
+                        $"Revert action '{sub.RevertAction}' for '{sub.Name}' must be routed by {tweak.RevertScript}");
+                }
+            }
+        }
+    }
+
+    private static string FindRepositoryScriptsRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            var scripts = Path.Combine(dir.FullName, "scripts");
+            if (Directory.Exists(scripts))
+                return scripts;
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository scripts directory.");
+    }
+
+    private static bool ScriptHandlesAction(string scriptContent, string action)
+    {
+        if (ContainsQuotedAction(scriptContent, action))
+            return true;
+
+        if (action.EndsWith("-revert", StringComparison.OrdinalIgnoreCase))
+        {
+            var baseAction = action[..^"-revert".Length];
+            if (ContainsQuotedAction(scriptContent, baseAction))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsQuotedAction(string scriptContent, string action) =>
+        scriptContent.Contains($"\"{action}\"", StringComparison.OrdinalIgnoreCase) ||
+        scriptContent.Contains($"'{action}'", StringComparison.OrdinalIgnoreCase);
 }

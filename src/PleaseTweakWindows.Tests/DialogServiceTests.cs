@@ -20,9 +20,12 @@ public class DialogServiceTests
     [InlineData("driver-clean", true)]
     [InlineData("tls-hardening", true)]
     [InlineData("firewall-hardening", true)]
+    [InlineData("smart-optimize-aggressive", true)]
     [InlineData("security-improve-network", true)]
+    [InlineData("security-smb-modern-enforce", true)]
     [InlineData("copilot-disable", true)]
     [InlineData("amd-driver-install", true)]
+    [InlineData("network-all-private", true)]
     [InlineData("nvidia-settings-on", false)]
     [InlineData("store-install", false)]
     [InlineData("power-plan-on", false)]
@@ -37,8 +40,12 @@ public class DialogServiceTests
     [InlineData("driver-clean", true)]
     [InlineData("tls-hardening", true)]
     [InlineData("firewall-hardening", true)]
+    [InlineData("smart-optimize-aggressive", true)]
     [InlineData("security-spectre-meltdown-enable", true)]
     [InlineData("security-improve-network", true)]
+    [InlineData("security-smb-modern-enforce", true)]
+    [InlineData("security-defender-cfa-enable", true)]
+    [InlineData("run-all-batch-high-risk", true)]
     [InlineData("bloatware-remove", false)]
     [InlineData("copilot-disable", false)]
     [InlineData("nvidia-settings-on", false)]
@@ -70,7 +77,8 @@ public class DialogServiceTests
         {
             "bloatware-remove", "services-disable", "driver-clean",
             "tls-hardening", "firewall-hardening", "security-improve-network",
-            "security-spectre-meltdown-enable"
+            "security-spectre-meltdown-enable", "smart-optimize-aggressive",
+            "security-smb-modern-enforce", "run-all-batch-high-risk"
         };
 
         foreach (var action in actionsWithSpecificWarnings)
