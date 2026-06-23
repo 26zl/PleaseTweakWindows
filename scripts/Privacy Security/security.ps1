@@ -76,6 +76,17 @@ function Get-OsBuildNumber {
     }
 }
 
+function Test-DefenderTamperProtected {
+    # Returns $true if Microsoft Defender Tamper Protection is ON. When it is on,
+    # Set-MpPreference changes to protection state are silently ignored/reverted by
+    # the Defender service, so the GUI must NOT report success.
+    try {
+        return [bool](Get-MpComputerStatus -ErrorAction Stop).IsTamperProtected
+    } catch {
+        return $false
+    }
+}
+
 function Disable-ClipboardService {
     foreach ($svcName in @('cbdhsvc')) {
         try {
@@ -296,7 +307,8 @@ function Set-SpectreMeltdownProtection {
     # Mitigate Spectre/Meltdown in Hyper-V.
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization' -Name 'MinVmVersionForCpuBasedMitigations' -Type 'String' -Value '1.0'
 
-    Write-Output "[+] SUCCESS: Spectre/Meltdown protection enabled"
+    Write-Output "[!] WARNING: This only forces the default mitigations on; it is largely redundant on modern (microcode-patched) CPUs which already enable them, and some override bits are ignored on AMD - so this may be a partial no-op. It can also add a small CPU latency/performance cost, which matters for gaming."
+    Write-Output "[+] SUCCESS: Spectre/Meltdown default mitigations enabled (only matters on unpatched/older CPUs)"
 }
 
 function Set-DepProtection {
@@ -476,8 +488,10 @@ function Set-TlsHardening {
             Set-RegValueSafeTx -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers\$cipher" -Name 'Enabled' -Type 'DWord' -Value 0
         }
 
-        # Disable insecure hashes.
-        $hashes = @('MD5','SHA')
+        # Disable insecure hashes. Note: 'SHA' (SHA-1) is intentionally NOT disabled here
+        # because killing the Schannel SHA-1 provider can break TLS 1.2 CBC-SHA handshakes
+        # to legacy servers/appliances; only MD5 is disabled.
+        $hashes = @('MD5')
         foreach ($hash in $hashes) {
             Set-RegValueSafeTx -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes\$hash" -Name 'Enabled' -Type 'DWord' -Value 0
         }
@@ -564,6 +578,8 @@ function Set-SmbModernEnforced {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enforce SMB 3.1.1 minimum + encryption")) { return }
     Write-Output "[*] Enforcing SMB 3.1.1 minimum + encryption..."
+    Write-Output "[!] WARNING: Setting the SMB CLIENT minimum dialect to 3.1.1 will block this PC from connecting to any share that only speaks SMB 2.x/3.0 - this includes many NAS units (older Synology/QNAP firmware), network printers/scanners, Samba < 4.11, and Windows 7/8/Server 2012 shares. You may lose access to those devices until you revert."
+    Write-Output "[!] WARNING: Requiring SMB server-side encryption (EncryptData) will block non-SMB3 clients (Windows 7, scan-to-folder printers, older media players/TVs) from reaching shares hosted on THIS machine."
     # Dialect values: 0x0202=2.0.2, 0x0210=2.1, 0x0300=3.0, 0x0302=3.0.2, 0x0311=3.1.1
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name 'Smb2DialectMin' -Type 'DWord' -Value 0x0311
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters' -Name 'Smb2DialectMin' -Type 'DWord' -Value 0x0311
@@ -617,6 +633,10 @@ function Set-DefenderControlledFolderAccessEnabled {
     param()
     if (-not $PSCmdlet.ShouldProcess("Defender", "Enable Controlled Folder Access")) { return }
     Write-Output "[*] Enabling Controlled Folder Access (ransomware protection)..."
+    if (Test-DefenderTamperProtected) {
+        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
+        exit 1
+    }
     try {
         Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
         Write-Output "[+] SUCCESS: Controlled Folder Access enabled"
@@ -631,6 +651,10 @@ function Set-DefenderNetworkProtectionEnabled {
     param()
     if (-not $PSCmdlet.ShouldProcess("Defender", "Enable Network Protection")) { return }
     Write-Output "[*] Enabling Defender Network Protection..."
+    if (Test-DefenderTamperProtected) {
+        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
+        exit 1
+    }
     try {
         Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction Stop
         Write-Output "[+] SUCCESS: Network Protection enabled"
@@ -645,6 +669,10 @@ function Set-DefenderPuaEnabled {
     param()
     if (-not $PSCmdlet.ShouldProcess("Defender", "Enable PUA Protection")) { return }
     Write-Output "[*] Enabling Potentially Unwanted App (PUA) protection..."
+    if (Test-DefenderTamperProtected) {
+        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
+        exit 1
+    }
     try {
         Set-MpPreference -PUAProtection Enabled -ErrorAction Stop
         Write-Output "[+] SUCCESS: PUA protection enabled"
@@ -659,15 +687,25 @@ function Set-DefenderCloudTuned {
     param()
     if (-not $PSCmdlet.ShouldProcess("Defender", "Tune Defender cloud protection")) { return }
     Write-Output "[*] Tuning Defender cloud protection..."
+    if (Test-DefenderTamperProtected) {
+        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
+        exit 1
+    }
     try {
-        Set-MpPreference -MAPSReporting Advanced -ErrorAction SilentlyContinue
-        Set-MpPreference -SubmitSamplesConsent SendSafeSamples -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction SilentlyContinue
-        Set-MpPreference -CloudBlockLevel High -ErrorAction SilentlyContinue
-        Set-MpPreference -CloudExtendedTimeout 50 -ErrorAction SilentlyContinue
+        Set-MpPreference -MAPSReporting Advanced -ErrorAction Stop
+        Set-MpPreference -SubmitSamplesConsent SendSafeSamples -ErrorAction Stop
+        Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction Stop
+        Set-MpPreference -CloudBlockLevel High -ErrorAction Stop
+        Set-MpPreference -CloudExtendedTimeout 50 -ErrorAction Stop
+        # Read back one value to confirm the change actually stuck before reporting success.
+        if ((Get-MpPreference -ErrorAction Stop).CloudBlockLevel -ne 'High') {
+            Write-Warning "[WARN] Defender cloud tuning did not persist (CloudBlockLevel not High)"
+            exit 1
+        }
         Write-Output "[+] SUCCESS: Defender cloud protection tuned (MAPS Advanced, BAFS on, Cloud Block High)"
     } catch {
         Write-Warning "[WARN] Set-MpPreference failed: $($_.Exception.Message)"
+        exit 1
     }
 }
 
@@ -688,6 +726,7 @@ function Set-AslrSystemWideEnabled {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enable system-wide mandatory ASLR")) { return }
     Write-Output "[*] Enabling system-wide mandatory ASLR (ForceRelocateImages)..."
+    Write-Output "[!] WARNING: System-wide mandatory ASLR can crash or prevent launch of games' anti-cheat drivers, older 32-bit apps, and binaries built without /DYNAMICBASE. After enabling this, TEST your game launches; if something breaks, run the 'Exclude dev tools' tweak or revert this. This is especially relevant on a gaming PC."
     try {
         Set-ProcessMitigation -System -Enable ForceRelocateImages -ErrorAction Stop
         Write-Output "[+] SUCCESS: System-wide mandatory ASLR enabled (complement to DEP)"
@@ -727,6 +766,7 @@ function Set-BlockNtlmIncoming {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Block incoming NTLM authentication")) { return }
     Write-Output "[*] Blocking INCOMING NTLM authentication (2 = Deny all)..."
+    Write-Output "[!] WARNING: Deny-all NTLM is intended for domain (Kerberos) environments. On a workgroup/home PC this can break SMB file-share auth, mapped network drives, RDP, and many network printers that authenticate via NTLM. Only enable this on a domain-joined machine."
     # RestrictReceivingNTLMTraffic: 0=Allow, 1=Audit, 2=Deny all
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0' -Name 'RestrictReceivingNTLMTraffic' -Type 'DWord' -Value 2
     Write-Output "[+] SUCCESS: Incoming NTLM blocked (may break SMB file shares, RDP, Hyper-V)"
@@ -737,6 +777,7 @@ function Set-BlockNtlmOutgoing {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Block outgoing NTLM authentication")) { return }
     Write-Output "[*] Blocking OUTGOING NTLM authentication (2 = Deny all)..."
+    Write-Output "[!] WARNING: Deny-all NTLM is intended for domain (Kerberos) environments. On a workgroup/home PC this can break SMB file-share auth, mapped network drives, RDP, and many network printers that authenticate via NTLM. Only enable this on a domain-joined machine."
     # RestrictSendingNTLMTraffic: 0=Allow, 1=Audit, 2=Deny all
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0' -Name 'RestrictSendingNTLMTraffic' -Type 'DWord' -Value 2
     Write-Output "[+] SUCCESS: Outgoing NTLM blocked (may break legacy authentication to servers)"
@@ -775,7 +816,7 @@ switch ($Action.ToLowerInvariant()) {
         )
         Set-FirewallBaseline
         Write-Output "[+] SUCCESS: Firewall baseline applied"
-        exit 0
+        Exit-PTW
     }
 
     "tls-hardening" {
@@ -785,7 +826,7 @@ switch ($Action.ToLowerInvariant()) {
         )
         Set-TlsHardening
         Write-Output "[+] SUCCESS: TLS hardening applied"
-        exit 0
+        Exit-PTW
     }
 
     "security-improve-network" {
@@ -797,7 +838,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
         )
         Set-ImproveNetworkSecurity
-        exit 0
+        Exit-PTW
     }
 
     "security-clipboard-data-disable" {
@@ -806,7 +847,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKCU:\Software\Microsoft\Clipboard'
         )
         Set-ClipboardDataCollectionDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-spectre-meltdown-enable" {
@@ -815,7 +856,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization'
         )
         Set-SpectreMeltdownProtection
-        exit 0
+        Exit-PTW
     }
 
     "security-dep-enable" {
@@ -824,7 +865,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
         )
         Set-DepProtection
-        exit 0
+        Exit-PTW
     }
 
     "security-autorun-disable" {
@@ -833,49 +874,49 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer'
         )
         Set-AutoPlayAutoRunDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-lock-screen-camera-disable" {
         Set-LockScreenCameraDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-lm-hash-disable" {
         Set-LmHashStorageDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-always-install-elevated-disable" {
         Set-AlwaysInstallElevatedDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-sehop-enable" {
         Set-SehopEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-ps2-downgrade-protection-enable" {
         Set-PowerShellV2DowngradeProtection
-        exit 0
+        Exit-PTW
     }
 
     "security-wcn-disable" {
         Set-WindowsConnectNowDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-llmnr-disable" {
         Backup-RegistryPath -Action $Action -Paths @('HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient')
         Set-LlmnrDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-smart-name-resolution-disable" {
         Backup-RegistryPath -Action $Action -Paths @('HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient')
         Set-SmartNameResolutionDisabled
-        exit 0
+        Exit-PTW
     }
 
     "security-smb-modern-enforce" {
@@ -884,7 +925,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters'
         )
         Set-SmbModernEnforced
-        exit 0
+        Exit-PTW
     }
 
     "security-smb-cipher-suite-order" {
@@ -893,43 +934,43 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters'
         )
         Set-SmbCipherSuiteOrder
-        exit 0
+        Exit-PTW
     }
 
     "security-firewall-logging-enable" {
         # Firewall logging applied via cmdlet, not registry — no backup needed.
         Set-FirewallLoggingEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-defender-cfa-enable" {
         Set-DefenderControlledFolderAccessEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-defender-network-protection-enable" {
         Set-DefenderNetworkProtectionEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-defender-pua-enable" {
         Set-DefenderPuaEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-defender-cloud-tune" {
         Set-DefenderCloudTuned
-        exit 0
+        Exit-PTW
     }
 
     "security-defender-sandbox-enable" {
         Set-DefenderSandboxEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-aslr-system-enable" {
         Set-AslrSystemWideEnabled
-        exit 0
+        Exit-PTW
     }
 
     "security-tls-cipher-order" {
@@ -937,7 +978,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL'
         )
         Set-TlsCipherOrder
-        exit 0
+        Exit-PTW
     }
 
     "security-block-ntlm-incoming" {
@@ -945,7 +986,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0'
         )
         Set-BlockNtlmIncoming
-        exit 0
+        Exit-PTW
     }
 
     "security-block-ntlm-outgoing" {
@@ -953,17 +994,17 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0'
         )
         Set-BlockNtlmOutgoing
-        exit 0
+        Exit-PTW
     }
 
     "security-aslr-exclude-dev-tools" {
         Set-AslrDevToolExclusions
-        exit 0
+        Exit-PTW
     }
 
     "menu" {
         Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
-        exit 0
+        Exit-PTW
     }
 
     default {

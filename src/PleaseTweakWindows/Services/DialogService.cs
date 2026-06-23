@@ -16,6 +16,7 @@ public sealed class DialogService : IDialogService
         "tls-hardening",
         "firewall-hardening",
         "smart-optimize-aggressive",
+        "network-all-private",
         "ui-online-content-disable",
         "ui-secure-recent-docs",
         "ui-remove-this-pc-folders",
@@ -53,15 +54,20 @@ public sealed class DialogService : IDialogService
 
     private static readonly HashSet<string> HighRiskActions = new(StringComparer.Ordinal)
     {
+        "run-all-batch-high-risk",
         "services-disable",
         "driver-clean",
         "tls-hardening",
         "firewall-hardening",
+        "smart-optimize-aggressive",
         "security-spectre-meltdown-enable",
         "security-improve-network",
+        "security-smb-modern-enforce",
+        "security-defender-cfa-enable",
         "security-block-ntlm-incoming",
         "security-block-ntlm-outgoing",
         "network-all-public",
+        "network-all-private",
         "security-aslr-system-enable",
     };
 
@@ -192,6 +198,12 @@ public sealed class DialogService : IDialogService
             $"'{actionName}' applies aggressive network adapter changes.\n\n" +
             "It may disable Flow Control/Jumbo Frames and force Interrupt Moderation.\n" +
             "This can reduce throughput on some LANs or increase latency.",
+        "run-all-batch" =>
+            $"'{actionName}' will apply multiple tweaks in sequence.\n\n" +
+            "The app stops on the first failed tweak so you can inspect the output before continuing.",
+        "run-all-batch-high-risk" =>
+            $"'{actionName}' will apply multiple tweaks in sequence and includes high-risk changes.\n\n" +
+            "Review the category contents first. These changes can affect services, networking, drivers, security policy, or app compatibility.",
         "copilot-disable" =>
             $"'{actionName}' will disable Windows Copilot.\n\n" +
             "This removes the Copilot app and sets group policy to prevent it from running.",
@@ -244,6 +256,9 @@ public sealed class DialogService : IDialogService
             $"'{actionName}' will set every connected network profile to Public.\n\n" +
             "WARNING: Breaks local file sharing, printer discovery, mDNS/Bonjour, network discovery, and Cast-to-Device on your LAN. " +
             "Only appropriate for coffee-shop / untrusted networks.",
+        "network-all-private" =>
+            $"'{actionName}' will set every connected network profile to Private.\n\n" +
+            "WARNING: This increases trust for LAN discovery and sharing. Only use on trusted home/work networks.",
         _ =>
             $"'{actionName}' will make changes to your system.\n\n" +
             "Are you sure you want to proceed?"

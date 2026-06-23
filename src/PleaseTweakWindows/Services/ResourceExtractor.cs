@@ -80,16 +80,32 @@ public sealed class ResourceExtractor : IResourceExtractor
 
             var currentUser = WindowsIdentity.GetCurrent().User
                 ?? throw new InvalidOperationException("Could not resolve current user SID");
+            var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+            var localSystem = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+
+            security.SetOwner(administrators);
 
             security.AddAccessRule(new FileSystemAccessRule(
-                currentUser,
+                administrators,
                 FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(
+                localSystem,
+                FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(
+                currentUser,
+                FileSystemRights.ReadAndExecute | FileSystemRights.ListDirectory | FileSystemRights.Read,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
                 PropagationFlags.None,
                 AccessControlType.Allow));
 
             dirInfo.SetAccessControl(security);
-            _logger.LogDebug("Restricted temp directory permissions to owner only: {Dir}", directory);
+            _logger.LogDebug("Restricted temp directory permissions to elevated administrators + read-only current user: {Dir}", directory);
         }
         catch (Exception ex)
         {

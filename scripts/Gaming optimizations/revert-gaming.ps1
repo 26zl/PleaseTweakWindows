@@ -39,7 +39,10 @@ function Set-ServiceStartIfPresent {
 function Confirm-Inspector {
     param([Parameter(Mandatory=$true)][string]$InspectorPath)
 
-    if (Test-Path $InspectorPath) { return $true }
+    # Security: never trust a pre-existing (possibly planted) EXE in this predictable
+    # temp path. Delete the extracted dir first so the verified-download path always runs.
+    $inspectorDir = Split-Path $InspectorPath
+    Remove-Item -Recurse -Force $inspectorDir -ErrorAction SilentlyContinue
 
     $drsPath = "$env:ProgramData\NVIDIA Corporation\Drs"
     if (Test-Path $drsPath) {
@@ -183,7 +186,7 @@ Windows Registry Editor Version 5.00
 @="URL:ms-gamingoverlay"
 "@
         Set-Content -Path "$env:TEMP\MsGamebarNotiOn.reg" -Value $gamebarReg -Force -Encoding ASCII
-        & regedit.exe /S "$env:TEMP\MsGamebarNotiOn.reg" 2>$null
+        & reg.exe import "$env:TEMP\MsGamebarNotiOn.reg" 2>$null | Out-Null
     } catch { Write-Verbose "Failed to restore protocol handlers: $($_.Exception.Message)" }
     Write-PTWSuccess "Protocol handlers restored"
 
@@ -196,7 +199,9 @@ Windows Registry Editor Version 5.00
             $instanceID = $gpu.InstanceId
             if (-not $instanceID) { continue }
             $msiPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"
-            Set-RegDword -Path $msiPath -Name "MSISupported" -Value 0
+            # Remove the value (not set 0) so the driver/factory default (MSI enabled on
+            # modern GPUs) is restored rather than pinning interrupts to line-based off.
+            Remove-RegValue -Path $msiPath -Name "MSISupported"
         }
         Write-PTWSuccess "MSI mode restored"
     } catch {

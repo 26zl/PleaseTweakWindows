@@ -17,6 +17,7 @@ public partial class SubTweakViewModel : ViewModelBase
     private readonly LogPanelViewModel _logPanel;
     private readonly Func<bool> _isGloballyRunning;
     private readonly Action<bool> _setGloballyRunning;
+    private readonly Action<string?> _setError;
 
     [ObservableProperty]
     private bool _isRunning;
@@ -24,6 +25,13 @@ public partial class SubTweakViewModel : ViewModelBase
     public string Name => _model.Name;
     public string? Description => _model.Description;
     public bool HasRevert => _model.Type == SubTweakType.Toggle && _model.RevertAction != null;
+
+    /// <summary>
+    /// True while ANY operation (this one or another tweak) is running. Bound to
+    /// button IsEnabled so Apply/Revert are disabled during other runs. Change
+    /// notifications are pushed via <see cref="OnGlobalRunningChanged"/>.
+    /// </summary>
+    public bool IsGloballyRunning => _isGloballyRunning();
 
     public SubTweakViewModel(
         SubTweak model,
@@ -35,7 +43,8 @@ public partial class SubTweakViewModel : ViewModelBase
         IRestorePointGuard restorePointGuard,
         LogPanelViewModel logPanel,
         Func<bool> isGloballyRunning,
-        Action<bool> setGloballyRunning)
+        Action<bool> setGloballyRunning,
+        Action<string?> setError)
     {
         _model = model;
         _applyScriptPath = applyScriptPath;
@@ -47,7 +56,11 @@ public partial class SubTweakViewModel : ViewModelBase
         _logPanel = logPanel;
         _isGloballyRunning = isGloballyRunning;
         _setGloballyRunning = setGloballyRunning;
+        _setError = setError;
     }
+
+    /// <summary>Raises a change notification for <see cref="IsGloballyRunning"/>.</summary>
+    public void OnGlobalRunningChanged() => OnPropertyChanged(nameof(IsGloballyRunning));
 
     [RelayCommand]
     private async Task ApplyAsync()
@@ -67,14 +80,24 @@ public partial class SubTweakViewModel : ViewModelBase
     {
         if (_isGloballyRunning()) return;
 
+        // Clear any stale error from a previous run before starting a new one.
+        _setError(null);
+
         IsRunning = true;
         _setGloballyRunning(true);
 
         try
         {
-            _ = await ScriptRunner.RunAsync(
+            var result = await ScriptRunner.RunAsync(
                 scriptPath, action, Name, _scriptDirectory,
                 _executor, _dialogService, _restorePointGuard, _logPanel);
+
+            // Surface a non-zero exit visibly instead of letting it disappear into
+            // a grey log line the user may never scroll to.
+            if (result.Outcome == ScriptRunOutcome.Applied && result.ExitCode != 0)
+            {
+                _setError($"'{Name}' failed (exit {result.ExitCode}) — check the output panel.");
+            }
         }
         finally
         {

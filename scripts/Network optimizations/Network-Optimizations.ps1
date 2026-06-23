@@ -50,6 +50,16 @@ if (Test-Path $commonFunctionsPath) {
 
 #region Helper Functions
 
+function Get-PTWNicBackupDir {
+    $logDir = if ($env:PTW_LOG_DIR) { $env:PTW_LOG_DIR } else { Join-Path $env:TEMP 'PleaseTweakWindows' }
+    $backupDir = Join-Path $logDir 'nic-backups'
+    if (-not (Test-Path $backupDir)) {
+        try { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
+        catch { Write-Output "[!] Could not create NIC backup dir ${backupDir}: $($_.Exception.Message)"; return $null }
+    }
+    return $backupDir
+}
+
 function Set-AdapterBinding {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -93,6 +103,9 @@ function Invoke-SmartNetworkOptimization {
     $aggressiveEnabled = $Aggressive -or ($env:PTW_NET_AGGRESSIVE -eq '1')
     if ($aggressiveEnabled) {
         Write-Output "[!] Aggressive adapter tweaks enabled (Flow Control, Jumbo Frames, Interrupt Moderation)"
+        Write-Output "[!] WARNING: Disabling Flow Control can cause packet loss/throughput drops on some NICs and"
+        Write-Output "    switches, and forcing Interrupt Moderation changes latency behaviour. Original adapter"
+        Write-Output "    values are snapshotted and can be restored with the network revert action."
     } else {
         Write-Output "[i] Aggressive adapter tweaks disabled by default."
         Write-Output "    Set PTW_NET_AGGRESSIVE=1 or use smart-optimize-aggressive to enable them."
@@ -105,9 +118,17 @@ function Invoke-SmartNetworkOptimization {
         Set-RegDword -Path $RegKey -Name "NetworkThrottlingIndex" -Value 0xFFFFFFFF
         Set-RegDword -Path $RegKey -Name "SystemResponsiveness" -Value 0
         Write-Output "[+] Network Throttling Removed"
+        Write-Output "[!] NOTE: NetworkThrottlingIndex is fully disabled and SystemResponsiveness is set to 0."
+        Write-Output "    This favours raw network throughput over multimedia and removes the MMCSS CPU reserve"
+        Write-Output "    that protects audio/video; some systems may see audio glitches/stutter under heavy"
+        Write-Output "    network load. Revert restores the Windows defaults (NetworkThrottlingIndex=10,"
+        Write-Output "    SystemResponsiveness=20)."
     } catch {
         Write-Output "[-] Could not remove throttling: $($_.Exception.Message)"
     }
+
+    # Snapshot adapter state so revert-network.ps1 can restore it (reversibility).
+    $nicSnapshot = @()
 
     # Driver Tweaks
     Write-Output "[*] Scanning Network Adapters for Power Saving features..."
@@ -119,6 +140,14 @@ function Invoke-SmartNetworkOptimization {
         foreach ($Adapter in $Adapters) {
             Write-Output "  Processing: $($Adapter.InterfaceDescription)"
 
+            # Record that we are disabling power management so revert can re-enable it.
+            $nicSnapshot += [PSCustomObject]@{
+                Adapter         = $Adapter.Name
+                Type            = "PowerManagement"
+                RegistryKeyword = ""
+                DisplayName     = ""
+                DisplayValue    = "Enabled"
+            }
             try {
                 $Adapter | Disable-NetAdapterPowerManagement -ErrorAction Stop
                 Write-Output "    - Windows Power Saving: Disabled"
@@ -147,6 +176,13 @@ function Invoke-SmartNetworkOptimization {
 
                     if ($null -ne $TargetValue -and $Prop.DisplayValue -ne $TargetValue) {
                         try {
+                            $nicSnapshot += [PSCustomObject]@{
+                                Adapter         = $Adapter.Name
+                                Type            = "AdvancedProperty"
+                                RegistryKeyword = $Prop.RegistryKeyword
+                                DisplayName     = $Prop.DisplayName
+                                DisplayValue    = $Prop.DisplayValue
+                            }
                             Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName $Prop.DisplayName -DisplayValue $TargetValue -ErrorAction Stop
                             Write-Output "    - Optimized: '$($Prop.DisplayName)' -> $TargetValue"
                         } catch { Write-Verbose "Could not set $($Prop.DisplayName): $($_.Exception.Message)" }
@@ -154,6 +190,13 @@ function Invoke-SmartNetworkOptimization {
                 }
 
                 if ($aggressiveEnabled -and $Prop.DisplayName -match "Interrupt Moderation" -and $Prop.DisplayValue -ne "Enabled") {
+                    $nicSnapshot += [PSCustomObject]@{
+                        Adapter         = $Adapter.Name
+                        Type            = "AdvancedProperty"
+                        RegistryKeyword = $Prop.RegistryKeyword
+                        DisplayName     = $Prop.DisplayName
+                        DisplayValue    = $Prop.DisplayValue
+                    }
                     Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName $Prop.DisplayName -DisplayValue "Enabled" -ErrorAction SilentlyContinue
                     Write-Output "    - Aggressive: Interrupt Moderation -> Enabled"
                 }
@@ -167,6 +210,22 @@ function Invoke-SmartNetworkOptimization {
             }
         }
     }
+
+    # Persist the snapshot so revert-network.ps1 can fully undo the adapter changes.
+    if ($nicSnapshot.Count -gt 0) {
+        $backupDir = Get-PTWNicBackupDir
+        if ($backupDir) {
+            $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            $snapshotFile = Join-Path $backupDir "smart-optimize_${stamp}.json"
+            try {
+                $nicSnapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath $snapshotFile -Encoding UTF8 -Force
+                Write-Output "[+] Adapter settings snapshot saved for revert: $snapshotFile"
+            } catch {
+                Write-Output "[!] Could not save adapter snapshot (revert may need manual reset): $($_.Exception.Message)"
+            }
+        }
+    }
+
     Write-Output "[+] Smart Optimization Complete!"
 }
 
@@ -177,26 +236,29 @@ switch ($Action.ToLowerInvariant()) {
 
     "adapter-ipv4only" {
         Write-Output "[*] Setting IPv4 Only mode..."
+        Write-Output "[!] NOTE: This also disables file & printer sharing and QoS on all active adapters"
+        Write-Output "    (ms_server, ms_msclient and ms_pacer are unbound). SMB file/printer sharing will not"
+        Write-Output "    work while IPv4-Only is active. Use 'adapter-default' to restore all bindings."
         Set-AdapterBinding -Mode "IPv4Only"
         Write-Output "[+] SUCCESS: IPv4 Only mode applied"
-        exit 0
+        Exit-PTW
     }
 
     "adapter-default" {
         Write-Output "[*] Restoring default bindings..."
         Set-AdapterBinding -Mode "Default"
         Write-Output "[+] SUCCESS: Default bindings restored"
-        exit 0
+        Exit-PTW
     }
 
     "smart-optimize" {
         Invoke-SmartNetworkOptimization
-        exit 0
+        Exit-PTW
     }
 
     "smart-optimize-aggressive" {
         Invoke-SmartNetworkOptimization -Aggressive
-        exit 0
+        Exit-PTW
     }
 
     "network-all-public" {
@@ -215,7 +277,7 @@ switch ($Action.ToLowerInvariant()) {
             Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
             exit 1
         }
-        exit 0
+        Exit-PTW
     }
 
     "network-all-private" {
@@ -234,12 +296,12 @@ switch ($Action.ToLowerInvariant()) {
             Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
             exit 1
         }
-        exit 0
+        Exit-PTW
     }
 
     "menu" {
         Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
-        exit 0
+        Exit-PTW
     }
 
     default {

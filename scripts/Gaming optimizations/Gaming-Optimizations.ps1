@@ -25,6 +25,10 @@ param(
         "directx-install",
         "mpo-on",
         "mpo-default",
+        "hags-on",
+        "hags-off",
+        "game-mode-on",
+        "game-mode-off",
         "menu"
     )]
     [string]$Action = "Menu"
@@ -77,6 +81,10 @@ switch ($Action.ToLowerInvariant()) {
         $drsPath = "$env:ProgramData\NVIDIA Corporation\Drs"
         if (Test-Path $drsPath) { Get-ChildItem -Path $drsPath -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue }
         $inspectorDir = "$env:TEMP\nvidiaProfileInspector"
+        # Security: always delete any pre-existing extracted dir so a planted EXE in this
+        # predictable temp path can never be reused. This forces the verified-download
+        # (pinned-hash via Get-FileFromWeb) path to always run.
+        Remove-Item -Recurse -Force $inspectorDir -ErrorAction SilentlyContinue
         if (-not (Test-Path "$inspectorDir\nvidiaProfileInspector.exe")) {
             Get-FileFromWeb -URL "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip" -File "$env:TEMP\nvidiaProfileInspector.zip"
             Expand-Archive "$env:TEMP\nvidiaProfileInspector.zip" -DestinationPath $inspectorDir -Force
@@ -92,7 +100,7 @@ switch ($Action.ToLowerInvariant()) {
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\FTS" -Name "EnableGR535" -Value 0
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535" -Value 0
         Write-Output "[+] SUCCESS: NVIDIA Profile applied"
-        exit 0
+        Exit-PTW
     }
 
     "nvidia-settings-default" {
@@ -100,7 +108,7 @@ switch ($Action.ToLowerInvariant()) {
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\FTS" -Name "EnableGR535"
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535"
         Write-Output "[+] SUCCESS: NVIDIA settings reset (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "nvidia-driver-install" {
@@ -138,9 +146,13 @@ switch ($Action.ToLowerInvariant()) {
         if (Test-Path "$env:TEMP\NvidiaDriver\setup.exe") {
             Test-SignedFile -Path "$env:TEMP\NvidiaDriver\setup.exe" -PublisherPatterns @('NVIDIA Corporation')
         }
+        if (-not (Test-Path "$env:TEMP\NvidiaDriver\setup.exe")) {
+            Write-Output "[-] ERROR: NVIDIA driver package did not extract correctly (setup.exe missing). Driver not installed."
+            exit 1
+        }
         Start-Process "$env:TEMP\NvidiaDriver\setup.exe"
-        Write-Output "[+] SUCCESS: NVIDIA Driver installer launched"
-        exit 0
+        Write-Output "[+] SUCCESS: NVIDIA Driver installer started - follow its prompts to complete installation"
+        Exit-PTW
     }
 
     "amd-driver-install" {
@@ -154,7 +166,7 @@ switch ($Action.ToLowerInvariant()) {
         # which always offers the latest Auto-Detect installer.
         Start-Process "https://www.amd.com/en/support/download/drivers.html"
         Write-Output "[+] SUCCESS: AMD driver download page opened - click 'Download Windows Drivers' to get the latest installer"
-        exit 0
+        Exit-PTW
     }
 
     "p0-state-on" {
@@ -162,15 +174,17 @@ switch ($Action.ToLowerInvariant()) {
         $subkeys = Get-GpuClassKeysByVendor -Vendor "NVIDIA"
         if (-not $subkeys -or $subkeys.Count -eq 0) {
             Write-Output "[!] No NVIDIA GPU detected; skipping P0 State change."
-            exit 0
+            Exit-PTW
         }
+        $backupKeys = @($subkeys | Where-Object { $_ -notlike '*Configuration' } | ForEach-Object { "Registry::$_" })
+        if ($backupKeys.Count -gt 0) { Backup-RegistryPath -Action $Action -Paths $backupKeys }
         foreach ($key in $subkeys) {
             if ($key -notlike '*Configuration') {
                 Set-RegDword -Path "$key" -Name "DisableDynamicPstate" -Value 1
             }
         }
         Write-Output "[+] SUCCESS: P0 State enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "p0-state-default" {
@@ -178,7 +192,7 @@ switch ($Action.ToLowerInvariant()) {
         $subkeys = Get-GpuClassKeysByVendor -Vendor "NVIDIA"
         if (-not $subkeys -or $subkeys.Count -eq 0) {
             Write-Output "[!] No NVIDIA GPU detected; skipping P-State restore."
-            exit 0
+            Exit-PTW
         }
         foreach ($key in $subkeys) {
             if ($key -notlike '*Configuration') {
@@ -186,7 +200,7 @@ switch ($Action.ToLowerInvariant()) {
             }
         }
         Write-Output "[+] SUCCESS: P-State restored to default (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "ulps-disable" {
@@ -194,15 +208,17 @@ switch ($Action.ToLowerInvariant()) {
         $subkeys = Get-GpuClassKeysByVendor -Vendor "AMD"
         if (-not $subkeys -or $subkeys.Count -eq 0) {
             Write-Output "[!] No AMD GPU detected; skipping ULPS change."
-            exit 0
+            Exit-PTW
         }
+        $backupKeys = @($subkeys | Where-Object { $_ -notlike '*Configuration' } | ForEach-Object { "Registry::$_" })
+        if ($backupKeys.Count -gt 0) { Backup-RegistryPath -Action $Action -Paths $backupKeys }
         foreach ($key in $subkeys) {
             if ($key -notlike '*Configuration') {
                 Set-RegDword -Path "$key" -Name "EnableUlps" -Value 0
             }
         }
         Write-Output "[+] SUCCESS: ULPS disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "ulps-enable" {
@@ -210,7 +226,7 @@ switch ($Action.ToLowerInvariant()) {
         $subkeys = Get-GpuClassKeysByVendor -Vendor "AMD"
         if (-not $subkeys -or $subkeys.Count -eq 0) {
             Write-Output "[!] No AMD GPU detected; skipping ULPS restore."
-            exit 0
+            Exit-PTW
         }
         foreach ($key in $subkeys) {
             if ($key -notlike '*Configuration') {
@@ -218,7 +234,7 @@ switch ($Action.ToLowerInvariant()) {
             }
         }
         Write-Output "[+] SUCCESS: ULPS enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "gamebar-off" {
@@ -227,10 +243,22 @@ switch ($Action.ToLowerInvariant()) {
         $marker = Get-ItemProperty -Path $markerPath -Name "GameBarDisabled" -ErrorAction SilentlyContinue
         if ($marker.GameBarDisabled -eq 1) {
             Write-Output "[i] Game Bar already disabled (marker present)."
-            exit 0
+            Exit-PTW
         }
 
         $ProgressPreference = 'SilentlyContinue'
+        # Snapshot original service Start values + GameDVR keys so a true restore is possible.
+        Backup-RegistryPath -Action $Action -Paths @(
+            "Registry::HKCU\System\GameConfigStore",
+            "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR",
+            "Registry::HKCU\Software\Microsoft\GameBar",
+            "Registry::HKLM\SYSTEM\CurrentControlSet\Services\GameInputSvc",
+            "Registry::HKLM\SYSTEM\CurrentControlSet\Services\BcastDVRUserService",
+            "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxGipSvc",
+            "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XblAuthManager",
+            "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XblGameSave",
+            "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxNetApiSvc"
+        )
         Set-RegDword -Path "Registry::HKCU\System\GameConfigStore" -Name "GameDVR_Enabled" -Value 0
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 0
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "UseNexusForGameBarEnabled" -Value 0
@@ -244,7 +272,7 @@ switch ($Action.ToLowerInvariant()) {
         if (!(Test-Path $markerPath)) { New-Item -Path $markerPath -Force | Out-Null }
         Set-ItemProperty -Path $markerPath -Name "GameBarDisabled" -Value 1
         Write-Output "[+] SUCCESS: Game Bar disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "gamebar-on" {
@@ -260,43 +288,55 @@ switch ($Action.ToLowerInvariant()) {
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\XboxNetApiSvc" -Name "Start" -Value 3
         Remove-ItemProperty -Path "HKCU:\Software\PleaseTweakWindows" -Name "GameBarDisabled" -ErrorAction SilentlyContinue
         Write-Output "[+] SUCCESS: Game Bar enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "msi-mode-on" {
         Write-Output "[*] Enabling MSI Mode for GPUs..."
-        $gpuDevices = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue
+        # Target only real, present discrete GPUs (NVIDIA VEN_10DE / AMD VEN_1002).
+        # Excludes Microsoft Basic Display Adapter, virtual/RDP adapters, iGPUs and
+        # disabled/ghost devices, which can black-screen on boot if forced to MSI.
+        $gpuDevices = Get-PnpDevice -Class Display -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match "VEN_10DE|VEN_1002" }
+        $msiPaths = @()
         foreach ($gpu in $gpuDevices) {
             $instanceID = $gpu.InstanceId
-            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 1
+            if (-not $instanceID) { continue }
+            $msiPaths += "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"
+        }
+        if ($msiPaths.Count -gt 0) {
+            Backup-RegistryPath -Action $Action -Paths $msiPaths
+        }
+        foreach ($p in $msiPaths) {
+            Set-RegDword -Path $p -Name "MSISupported" -Value 1
         }
         Write-Output "[+] SUCCESS: MSI Mode enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "msi-mode-off" {
         Write-Output "[*] Disabling MSI Mode for GPUs..."
-        $gpuDevices = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue
+        $gpuDevices = Get-PnpDevice -Class Display -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match "VEN_10DE|VEN_1002" }
         foreach ($gpu in $gpuDevices) {
             $instanceID = $gpu.InstanceId
+            if (-not $instanceID) { continue }
             Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 0
         }
         Write-Output "[+] SUCCESS: MSI Mode disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "polling-unlock" {
         Write-Output "[*] Unlocking background polling rate cap..."
         Set-RegDword -Path "Registry::HKCU\Control Panel\Mouse" -Name "RawMouseThrottleEnabled" -Value 0
         Write-Output "[+] SUCCESS: Polling rate cap unlocked (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "polling-default" {
         Write-Output "[*] Restoring default polling rate cap..."
         Remove-RegValue -Path "Registry::HKCU\Control Panel\Mouse" -Name "RawMouseThrottleEnabled"
         Write-Output "[+] SUCCESS: Polling rate cap restored (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "directx-install" {
@@ -310,28 +350,88 @@ switch ($Action.ToLowerInvariant()) {
         cmd /c "`"$sevenZip`" x `"$env:TEMP\DirectX.exe`" -o`"$env:TEMP\DirectX`" -y" | Out-Null
         Start-Process "$env:TEMP\DirectX\DXSETUP.exe"
         Write-Output "[+] SUCCESS: DirectX installer launched"
-        exit 0
+        Exit-PTW
     }
 
     "mpo-on" {
-        Write-Output "[*] Enabling MPO and Windowed Optimizations..."
-        Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode"
+        Write-Output "[*] Disabling Multi-Plane Overlay and enabling Windowed Optimizations..."
+        Backup-RegistryPath -Action $Action -Paths @(
+            "Registry::HKLM\SOFTWARE\Microsoft\Windows\Dwm",
+            "Registry::HKCU\Software\Microsoft\DirectX\UserGpuPreferences"
+        )
+        # Disable MPO (OverlayTestMode=5) to reduce flicker/stutter on VRR/multi-monitor setups.
+        Set-RegDword -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -Value 5
         Set-RegSz -Path "Registry::HKCU\Software\Microsoft\DirectX\UserGpuPreferences" -Name "DirectXUserGlobalSettings" -Value "VRROptimizeEnable=1;SwapEffectUpgradeEnable=1;"
-        Write-Output "[+] SUCCESS: MPO enabled (restart required)"
-        exit 0
+        Write-Output "[+] SUCCESS: MPO disabled (restart required)"
+        Exit-PTW
     }
 
     "mpo-default" {
-        Write-Output "[*] Disabling MPO..."
-        Set-RegDword -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -Value 5
+        Write-Output "[*] Restoring Multi-Plane Overlay to Windows default..."
+        # Remove the OverlayTestMode value so the Windows default (MPO enabled) is restored.
+        Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode"
         Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\DirectX\UserGpuPreferences" -Name "DirectXUserGlobalSettings"
-        Write-Output "[+] SUCCESS: MPO disabled (restart required)"
-        exit 0
+        Write-Output "[+] SUCCESS: MPO restored to default (restart required)"
+        Exit-PTW
+    }
+
+    "hags-on" {
+        Write-Output "[*] Enabling Hardware-Accelerated GPU Scheduling..."
+        try {
+            Backup-RegistryPath -Action $Action -Paths @("Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers")
+            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 2
+            Write-Output "[+] SUCCESS: Hardware-Accelerated GPU Scheduling enabled (restart required)"
+            Exit-PTW
+        } catch {
+            Write-Output "[-] ERROR: Could not enable Hardware-Accelerated GPU Scheduling: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+
+    "hags-off" {
+        Write-Output "[*] Disabling Hardware-Accelerated GPU Scheduling..."
+        try {
+            Backup-RegistryPath -Action $Action -Paths @("Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers")
+            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 1
+            Write-Output "[+] SUCCESS: Hardware-Accelerated GPU Scheduling disabled (restart required)"
+            Exit-PTW
+        } catch {
+            Write-Output "[-] ERROR: Could not disable Hardware-Accelerated GPU Scheduling: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+
+    "game-mode-on" {
+        Write-Output "[*] Enabling Windows Game Mode..."
+        try {
+            Backup-RegistryPath -Action $Action -Paths @("Registry::HKCU\Software\Microsoft\GameBar")
+            Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value 1
+            Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -Value 1
+            Write-Output "[+] SUCCESS: Windows Game Mode enabled"
+            Exit-PTW
+        } catch {
+            Write-Output "[-] ERROR: Could not enable Windows Game Mode: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+
+    "game-mode-off" {
+        Write-Output "[*] Disabling Windows Game Mode..."
+        try {
+            Backup-RegistryPath -Action $Action -Paths @("Registry::HKCU\Software\Microsoft\GameBar")
+            Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value 0
+            Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -Value 0
+            Write-Output "[+] SUCCESS: Windows Game Mode disabled"
+            Exit-PTW
+        } catch {
+            Write-Output "[-] ERROR: Could not disable Windows Game Mode: $($_.Exception.Message)"
+            exit 1
+        }
     }
 
     "menu" {
         Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
-        exit 0
+        Exit-PTW
     }
 
     default {

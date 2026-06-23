@@ -34,7 +34,8 @@ internal static class ScriptRunner
         IDialogService dialogService,
         IRestorePointGuard restorePointGuard,
         LogPanelViewModel logPanel,
-        bool ensureRestorePoint = true)
+        bool ensureRestorePoint = true,
+        bool skipConfirmation = false)
     {
         Action<string> onOutput = line => UiDispatcher.Post(() => logPanel.AppendLine(line));
 
@@ -45,7 +46,9 @@ internal static class ScriptRunner
                 return new ScriptRunResult(ScriptRunOutcome.RestorePointCancelled, -1);
         }
 
-        if (dialogService.RequiresConfirmation(action))
+        // When the caller already confirmed the whole batch (Run All), skip the
+        // per-action confirmation dialog so the user isn't prompted N times.
+        if (!skipConfirmation && dialogService.RequiresConfirmation(action))
         {
             var confirmed = await dialogService.ShowConfirmationAsync(action, actionName);
             if (!confirmed)

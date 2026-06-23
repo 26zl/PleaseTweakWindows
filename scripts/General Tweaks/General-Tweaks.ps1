@@ -68,9 +68,9 @@ function Import-LocalRegistryFile {
     param([string]$FileName)
     $regPath = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath "regs") -ChildPath $FileName
     if (Test-Path $regPath) {
-        $p = Start-Process -FilePath "regedit.exe" -ArgumentList "/s `"$regPath`"" -Wait -PassThru
-        if ($p.ExitCode -ne 0) {
-            Write-Output "[-] WARNING: Registry import returned exit code $($p.ExitCode) for $FileName"
+        # reg.exe import (via Import-RegistryFile) returns a real failure code; regedit /s does not.
+        if (-not (Import-RegistryFile -RegFile $regPath)) {
+            Write-Output "[-] WARNING: Registry import failed for $FileName"
         }
     }
 }
@@ -104,15 +104,16 @@ switch ($Action.ToLowerInvariant()) {
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" -Name "ValueMax" -Value 0
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value 1
         Write-Output "[+] SUCCESS: Ultimate Power Plan applied (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "power-plan-default" {
         Write-Output "[*] Restoring default power plan..."
         cmd /c "powercfg /restoredefaultschemes >nul 2>&1"
+        cmd /c "powercfg /delete 99999999-9999-9999-9999-999999999999 >nul 2>&1"
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff"
         Write-Output "[+] SUCCESS: Default power plan restored (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "bloatware-remove" {
@@ -249,7 +250,7 @@ foreach (`$app in `$apps) {
         Write-Output "[+] SUCCESS: Removed $removed apps (restart required)"
         Write-Output "[i] Backup list: $backupPath"
         Write-Output "[i] Restore script: $restoreScriptPath"
-        exit 0
+        Exit-PTW
     }
 
     "store-install" {
@@ -260,7 +261,7 @@ foreach (`$app in `$apps) {
             }
         }
         Write-Output "[+] SUCCESS: Microsoft Store reinstalled"
-        exit 0
+        Exit-PTW
     }
 
     "widgets-disable" {
@@ -269,7 +270,7 @@ foreach (`$app in `$apps) {
         Set-RegDword -Path "Registry::HKLM\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0
         Stop-Process -Force -Name Widgets -ErrorAction SilentlyContinue
         Write-Output "[+] SUCCESS: Widgets disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "widgets-enable" {
@@ -277,21 +278,21 @@ foreach (`$app in `$apps) {
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value"
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests"
         Write-Output "[+] SUCCESS: Widgets enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "background-apps-disable" {
         Write-Output "[*] Disabling Background Apps..."
         Set-RegDword -Path "Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsRunInBackground" -Value 2
         Write-Output "[+] SUCCESS: Background Apps disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "background-apps-enable" {
         Write-Output "[*] Enabling Background Apps..."
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsRunInBackground"
         Write-Output "[+] SUCCESS: Background Apps enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "cpp-install" {
@@ -308,14 +309,14 @@ foreach (`$app in `$apps) {
             Start-Process -Wait $destPath -ArgumentList $item.args
         }
         Write-Output "[+] SUCCESS: C++ Redistributables installed"
-        exit 0
+        Exit-PTW
     }
 
     "registry-apply" {
         $markerPath = "HKCU:\Software\PleaseTweakWindows"
         if (Get-ItemProperty -Path $markerPath -Name "RegistryOptimized" -ErrorAction SilentlyContinue) {
             Write-Output "[!] Registry tweaks already applied. Skipping to prevent corruption."
-            exit 0
+            Exit-PTW
         }
 
         Write-Output "[*] Applying Registry Tweaks..."
@@ -342,7 +343,7 @@ foreach (`$app in `$apps) {
             Write-Output "[+] Rollback applied. Restart to restore defaults."
             exit 1
         }
-        exit 0
+        Exit-PTW
     }
 
     "scaling-fix" {
@@ -355,7 +356,7 @@ foreach (`$app in `$apps) {
         Set-RegDword -Path "Registry::HKCU\Control Panel\Desktop" -Name "LogPixels" -Value 96
         Set-RegDword -Path "Registry::HKCU\Control Panel\Desktop" -Name "EnablePerProcessSystemDPI" -Value 0
         Write-Output "[+] SUCCESS: Scaling fix applied (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "scaling-default" {
@@ -368,7 +369,7 @@ foreach (`$app in `$apps) {
         Remove-RegValue -Path "Registry::HKCU\Control Panel\Desktop" -Name "LogPixels"
         Remove-RegValue -Path "Registry::HKCU\Control Panel\Desktop" -Name "EnablePerProcessSystemDPI"
         Write-Output "[+] SUCCESS: Default scaling restored (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "lockscreen-disable" {
@@ -387,7 +388,7 @@ foreach (`$app in `$apps) {
         Set-RegSz -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath" -Value $blackJpgPath
         Set-RegDword -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImageStatus" -Value 1
         Write-Output "[+] SUCCESS: Lock Screen disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "lockscreen-enable" {
@@ -398,7 +399,7 @@ foreach (`$app in `$apps) {
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath"
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImageStatus"
         Write-Output "[+] SUCCESS: Lock Screen enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "startmenu-clean" {
@@ -410,7 +411,7 @@ foreach (`$app in `$apps) {
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
         Stop-Process -Force -Name explorer -ErrorAction SilentlyContinue
         Write-Output "[+] SUCCESS: Start Menu cleaned (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "shortcuts-add" {
@@ -428,7 +429,7 @@ foreach (`$app in `$apps) {
             $s.Save()
         }
         Write-Output "[+] SUCCESS: Start Menu shortcuts added"
-        exit 0
+        Exit-PTW
     }
 
     "keyboard-disable" {
@@ -439,7 +440,7 @@ foreach (`$app in `$apps) {
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoWinKeys" -Value 1
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys" -Value 1
         Write-Output "[+] SUCCESS: Keyboard shortcuts disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "keyboard-enable" {
@@ -448,7 +449,7 @@ foreach (`$app in `$apps) {
         Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys"
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map"
         Write-Output "[+] SUCCESS: Keyboard shortcuts enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "driver-clean" {
@@ -470,7 +471,7 @@ foreach (`$app in `$apps) {
         $s.TargetPath = "$dduDir\Display Driver Uninstaller.exe"
         $s.Save()
         Write-Output "[+] SUCCESS: DDU installed to Desktop"
-        exit 0
+        Exit-PTW
     }
 
     "hdcp-disable" {
@@ -482,7 +483,7 @@ foreach (`$app in `$apps) {
             }
         }
         Write-Output "[+] SUCCESS: HDCP disabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "hdcp-enable" {
@@ -494,7 +495,7 @@ foreach (`$app in `$apps) {
             }
         }
         Write-Output "[+] SUCCESS: HDCP enabled (restart required)"
-        exit 0
+        Exit-PTW
     }
 
     "cleanup-run" {
@@ -503,7 +504,7 @@ foreach (`$app in `$apps) {
         foreach ($p in $paths) { Remove-Item -Path "$p\*" -Recurse -Force -ErrorAction SilentlyContinue }
         try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Could not clear recycle bin: $($_.Exception.Message)" }
         Write-Output "[+] SUCCESS: System cleanup complete"
-        exit 0
+        Exit-PTW
     }
 
     "autoruns-open" {
@@ -530,12 +531,12 @@ foreach (`$app in `$apps) {
         Test-SignedFile -Path $autorunsExe -PublisherPatterns @('Microsoft Corporation')
         Start-Process -FilePath $autorunsExe
         Write-Output "[+] SUCCESS: Autoruns launched"
-        exit 0
+        Exit-PTW
     }
 
     "menu" {
         Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
-        exit 0
+        Exit-PTW
     }
 
     default {

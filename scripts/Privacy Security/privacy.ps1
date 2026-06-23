@@ -21,6 +21,7 @@ param(
         "copilot-disable",
         "dns-cloudflare",
         "dns-google",
+        "dns-reset",
         "doh-enable",
         "menu"
     )]
@@ -82,9 +83,14 @@ function Enable-AllDoh {
         @{ Server = '9.9.9.9'; Template = 'https://dns.quad9.net/dns-query' }
     )
     foreach ($dns in $dnsServers) {
-        Start-Process -FilePath 'netsh' -ArgumentList "dns add encryption server=$($dns.Server) dohtemplate=$($dns.Template) autoupgrade=yes udpfallback=no" -WindowStyle Hidden -Wait
+        Start-Process -FilePath 'netsh' -ArgumentList "dns add encryption server=$($dns.Server) dohtemplate=$($dns.Template) autoupgrade=yes udpfallback=yes" -WindowStyle Hidden -Wait
         Write-Output "Enabled DoH for $($dns.Server)"
     }
+    # Registering DoH templates alone does nothing unless an adapter actually
+    # uses one of these resolver IPs. Point active adapters at Cloudflare (a
+    # registered DoH-capable resolver) so DoH truly engages instead of being an
+    # inert no-op on machines using router/DHCP DNS.
+    Set-DnsAddress -Addresses '1.1.1.1','1.0.0.1' -Label 'Cloudflare DoH'
     ipconfig /flushdns | Out-Null
 }
 
@@ -275,101 +281,127 @@ switch ($Action.ToLowerInvariant()) {
             exit 1
         }
 
-        $oosuExe = Join-Path $env:TEMP "OOSU10.exe"
-        if (-not (Test-Path $oosuExe)) {
-            Write-Output "[*] Downloading OOSU10.exe..."
-            Get-FileFromWeb -URL "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe" -File $oosuExe
-        }
+        # Download to the ACL-restricted per-user script dir (not world-writable
+        # $env:TEMP) and always fetch a fresh copy so a pre-placed binary cannot
+        # be reused. Authenticode is still re-verified below before execution.
+        $oosuExe = Join-Path $PSScriptRoot "OOSU10.exe"
+        Remove-Item -Path $oosuExe -Force -ErrorAction SilentlyContinue
+        Write-Output "[*] Downloading OOSU10.exe..."
+        Get-FileFromWeb -URL "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe" -File $oosuExe
 
         # Dynamic-hash download — verify Authenticode before executing as admin
         Test-SignedFile -Path $oosuExe -PublisherPatterns @('O&O Software', 'OO Software')
 
         & $oosuExe $configPath /quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "[-] ERROR: OOSU10 returned $LASTEXITCODE"
+            exit 1
+        }
         Write-Output "[+] SUCCESS: OOSU10 profile applied"
-        exit 0
+        Exit-PTW
     }
 
     "ui-online-content-disable" {
         Invoke-UiOnlineContentDisable
-        exit 0
+        Exit-PTW
     }
 
     "ui-secure-recent-docs" {
         Invoke-UiSecureRecentDocList
-        exit 0
+        Exit-PTW
     }
 
     "ui-remove-this-pc-folders" {
         Invoke-UiRemoveThisPcFolderList
-        exit 0
+        Exit-PTW
     }
 
     "ui-lock-screen-notifications-disable" {
         Invoke-UiLockScreenNotificationsDisable
-        exit 0
+        Exit-PTW
     }
 
     "ui-store-open-with-disable" {
         Invoke-UiStoreOpenWithDisable
-        exit 0
+        Exit-PTW
     }
 
     "ui-quick-access-recent-disable" {
         Invoke-UiQuickAccessRecentDisable
-        exit 0
+        Exit-PTW
     }
 
     "ui-sync-provider-notifications-disable" {
         Invoke-UiSyncProviderNotificationsDisable
-        exit 0
+        Exit-PTW
     }
 
     "ui-hibernation-disable" {
         Invoke-UiHibernationDisable
-        exit 0
+        Exit-PTW
     }
 
     "ui-camera-osd-enable" {
         Invoke-UiCameraOsdEnable
-        exit 0
+        Exit-PTW
     }
 
     "copilot-disable" {
         Write-Output "[*] Disabling Copilot..."
         $ProgressPreference = 'SilentlyContinue'
-        Stop-Process -Name "OneDrive","WidgetService","Widgets" -Force -ErrorAction SilentlyContinue
-        Get-AppxPackage -AllUsers *Microsoft.Windows.Ai.Copilot.Provider* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
-        Get-AppxPackage -AllUsers *Microsoft.Copilot* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+        # Policy-only disable so the toggle is genuinely reversible. We do NOT
+        # uninstall the Copilot Appx packages (Remove-AppxPackage deletes the
+        # install location and cannot be undone by the revert), and we no longer
+        # kill the unrelated OneDrive/Widgets processes.
         Set-RegDword -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1
         Set-RegDword -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1
         Write-Output "[+] SUCCESS: Copilot disabled (restart recommended)"
-        exit 0
+        Exit-PTW
     }
 
     "dns-cloudflare" {
         Write-Output "[*] Setting Cloudflare DNS..."
         Set-DnsAddress -Addresses "1.1.1.1","1.0.0.1" -Label "Cloudflare DNS"
         Write-Output "[+] SUCCESS: Cloudflare DNS applied"
-        exit 0
+        Exit-PTW
     }
 
     "dns-google" {
         Write-Output "[*] Setting Google DNS..."
         Set-DnsAddress -Addresses "8.8.8.8","8.8.4.4" -Label "Google DNS"
         Write-Output "[+] SUCCESS: Google DNS applied"
-        exit 0
+        Exit-PTW
+    }
+
+    "dns-reset" {
+        Write-Output "[*] Resetting DNS to automatic (DHCP)..."
+        $adapters = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Virtual*' -and $_.Name -notlike '*vEthernet*' }
+        if (-not $adapters) {
+            Write-Output "[!] No active adapters found."
+        }
+        foreach ($adapter in $adapters) {
+            try {
+                Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ResetServerAddresses -ErrorAction Stop
+                Write-Output " [OK] DNS reset to automatic on: $($adapter.Name)"
+            } catch {
+                Write-Output " [WARN] Could not reset DNS on: $($adapter.Name)"
+            }
+        }
+        ipconfig /flushdns | Out-Null
+        Write-Output "[+] SUCCESS: DNS reset to automatic"
+        Exit-PTW
     }
 
     "doh-enable" {
         Write-Output "[*] Enabling DNS over HTTPS..."
         Enable-AllDoh
         Write-Output "[+] SUCCESS: DoH enabled"
-        exit 0
+        Exit-PTW
     }
 
     "menu" {
         Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
-        exit 0
+        Exit-PTW
     }
 
     default {

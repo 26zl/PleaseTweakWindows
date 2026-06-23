@@ -51,6 +51,7 @@ if ($doRevert) {
     Write-Output "  [$currentStep/$totalSteps] Restoring power settings..."
     try {
         powercfg -restoredefaultschemes 2>$null | Out-Null
+        cmd /c "powercfg /delete 99999999-9999-9999-9999-999999999999 >nul 2>&1"
         Write-PTWSuccess "Power plans restored to defaults"
     } catch {
         Write-PTWWarning "Could not fully restore power settings"
@@ -114,14 +115,16 @@ if ($doRevert) {
     )
     if ($fallback) {
         powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 1 2>$null | Out-Null
-        Import-RegistryFile -RegFile $fallback | Out-Null
-        $regSuccess = $true
+        # Reflect the real import result instead of assuming success.
+        $regSuccess = Import-RegistryFile -RegFile $fallback
     }
     if ($regSuccess) {
         Write-PTWSuccess "Registry defaults restored"
     } else {
         Write-PTWWarning "Registry defaults not found (skipped)"
     }
+    # Clear the registry-apply guard marker so registry-apply can run again after revert
+    Remove-RegValue -Path "HKCU:\Software\PleaseTweakWindows" -Name "RegistryOptimized"
 
     # Shell & Search restore
     $currentStep++

@@ -13,6 +13,7 @@
             <conv:InverseBoolConverter x:Key="InverseBool" />
             <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
             <conv:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVisibility" />
+            <conv:NotAnyTrueConverter x:Key="NotAnyTrue" />
             <conv:ExpandArrowConverter x:Key="ExpandArrow" />
         </ResourceDictionary>
     </Application.Resources>

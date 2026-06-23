@@ -170,4 +170,89 @@ public class ScriptExecutorTests
         path.Should().EndWith("powershell.exe");
         path.Should().Contain("WindowsPowerShell");
     }
+
+    [Fact]
+    public async Task RunScriptAsync_AbortsOnHashMismatch_TOCTOU()
+    {
+        // RunScriptAsync hashes the file once up front, then ExecuteScriptAsync
+        // re-hashes it and aborts if the file changed. The onOutput callback for
+        // "> Starting:" fires AFTER the first hash and BEFORE the re-hash, giving us
+        // a deterministic seam to mutate the file mid-flight and trigger the TOCTOU
+        // abort branch without ever reaching the process-launch code.
+        var tempFile = Path.Combine(Path.GetTempPath(), $"toctou-{Guid.NewGuid():N}.ps1");
+        await File.WriteAllTextAsync(tempFile, "# original content");
+
+        try
+        {
+            var output = new List<string>();
+            var mutated = false;
+
+            void OnOutput(string line)
+            {
+                output.Add(line);
+                // Mutate the file exactly once, on the first callback (the "> Starting:"
+                // line), which lands between the two hash computations.
+                if (!mutated)
+                {
+                    mutated = true;
+                    File.WriteAllText(tempFile, "# TAMPERED content - injected after validation");
+                }
+            }
+
+            var result = await _executor.RunScriptAsync(tempFile, null, OnOutput);
+
+            result.Should().Be(-1, "a hash mismatch between validation and execution must abort the script");
+            output.Should().Contain(s => s.Contains("integrity check failed"));
+            // The process must never be launched once integrity fails.
+            _mockRunner.Verify(r => r.Start(It.IsAny<System.Diagnostics.ProcessStartInfo>()), Times.Never);
+            _executor.HasActiveOperations.Should().BeFalse();
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task RunScriptAsync_HonorsAlreadyCancelledToken()
+    {
+        // A token cancelled before the semaphore is acquired must short-circuit:
+        // _semaphore.WaitAsync(cancellationToken) throws OperationCanceledException
+        // and the process is never started.
+        var tempFile = Path.Combine(Path.GetTempPath(), $"cancel-{Guid.NewGuid():N}.ps1");
+        await File.WriteAllTextAsync(tempFile, "# test");
+
+        try
+        {
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            var act = async () => await _executor.RunScriptAsync(tempFile, null, null, cts.Token);
+
+            await act.Should().ThrowAsync<OperationCanceledException>();
+            _mockRunner.Verify(r => r.Start(It.IsAny<System.Diagnostics.ProcessStartInfo>()), Times.Never);
+            _executor.HasActiveOperations.Should().BeFalse();
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void CancelAllOperations_ClearsActiveStateAndRotatesToken()
+    {
+        // With no active processes, CancelAllOperations must still be safe to call,
+        // leave HasActiveOperations false, and not throw. This guards the global-CTS
+        // swap + _activeProcesses.Clear() path used by "Cancel All".
+        _executor.HasActiveOperations.Should().BeFalse();
+
+        var act = () => _executor.CancelAllOperations();
+
+        act.Should().NotThrow();
+        _executor.HasActiveOperations.Should().BeFalse();
+        // Idempotent: a second call is still safe.
+        _executor.CancelAllOperations();
+        _executor.HasActiveOperations.Should().BeFalse();
+    }
 }

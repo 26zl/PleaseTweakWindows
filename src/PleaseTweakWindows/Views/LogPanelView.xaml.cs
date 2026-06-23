@@ -23,8 +23,7 @@ public partial class LogPanelView : UserControl
     {
         if (e.PropertyName == nameof(LogPanelViewModel.LogText))
         {
-            LogTextBox.CaretIndex = LogTextBox.Text?.Length ?? 0;
-            LogTextBox.ScrollToEnd();
+            LogScrollViewer.ScrollToEnd();
         }
     }
 }

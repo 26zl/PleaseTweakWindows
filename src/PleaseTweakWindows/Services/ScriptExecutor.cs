@@ -77,12 +77,9 @@ public sealed partial class ScriptExecutor : IScriptExecutor
 
         foreach (var (key, process) in _activeProcesses)
         {
-            if (!process.HasExited)
-            {
-                _logger.LogInformation("Terminating process: {Key}", key);
-                try { process.Kill(entireProcessTree: true); }
-                catch (Exception ex) { _logger.LogDebug(ex, "Kill failed for {Key}", key); }
-            }
+            _logger.LogInformation("Terminating process: {Key}", key);
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Kill failed for {Key}", key); }
         }
         _activeProcesses.Clear();
         oldCts.Dispose();
@@ -153,6 +150,8 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                 FileName = PowerShellPath,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -173,7 +172,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             }
 
             psi.Environment["PTW_EMBEDDED"] = "1";
-            var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+            var logDir = AppPaths.GetLogsDirectory();
             psi.Environment["PTW_LOG_DIR"] = logDir;
 
             var processKey = $"{scriptPath}_{Interlocked.Increment(ref _keyCounter)}";
@@ -235,6 +234,18 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             finally
             {
                 _activeProcesses.TryRemove(processKey, out _);
+                // If we fell through to the outer catch after Start already succeeded, the
+                // powershell child may still be running. Don't orphan a privileged process:
+                // kill the tree before disposing the handle (Dispose alone does not kill it).
+                if (exitCode != 0 && process != null)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                            process.Kill(entireProcessTree: true);
+                    }
+                    catch { }
+                }
                 process?.Dispose();
             }
 
@@ -245,7 +256,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             }
             else
             {
-                onOutput?.Invoke($"[!] Finished with warnings (code: {exitCode})");
+                onOutput?.Invoke($"[X] FAILED (exit code {exitCode}) — this tweak did NOT apply correctly. See output above.");
                 _logger.LogWarning("Script finished with exit code {ExitCode}: {ScriptPath}", exitCode, scriptPath);
             }
             onOutput?.Invoke("");
@@ -344,19 +355,18 @@ public sealed partial class ScriptExecutor : IScriptExecutor
     {
         foreach (var (_, process) in _activeProcesses)
         {
-            if (!process.HasExited)
-            {
-                try { process.Kill(entireProcessTree: true); }
-                catch (Exception ex) { _logger.LogDebug(ex, "Shutdown kill failed"); }
-            }
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Shutdown kill failed"); }
         }
         _activeProcesses.Clear();
+        // Do NOT dispose _globalCts or _semaphore: they are process-lifetime singletons.
+        // An in-flight tweak task can still touch them after shutdown (semaphore Release,
+        // GetGlobalToken), and disposing here races those awaits into ObjectDisposedException.
+        // The OS reclaims them on process exit. Cancel is enough to unblock waiters.
         lock (_ctsLock)
         {
             _globalCts.Cancel();
-            _globalCts.Dispose();
         }
-        _semaphore.Dispose();
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9_-]{2,64}$")]

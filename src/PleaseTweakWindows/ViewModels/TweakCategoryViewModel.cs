@@ -16,12 +16,19 @@ public partial class TweakCategoryViewModel : ViewModelBase
     private readonly LogPanelViewModel _logPanel;
     private readonly Func<bool> _isGloballyRunning;
     private readonly Action<bool> _setGloballyRunning;
+    private readonly Action<string?> _setError;
 
     [ObservableProperty]
     private bool _isExpanded;
 
     public string Title => _model.Title;
     public ObservableCollection<SubTweakViewModel> SubTweaks { get; } = new();
+
+    /// <summary>
+    /// True while ANY operation is running. Bound to the "Run All" button's
+    /// IsEnabled so it is disabled during other runs.
+    /// </summary>
+    public bool IsGloballyRunning => _isGloballyRunning();
 
     public TweakCategoryViewModel(
         Tweak model,
@@ -31,7 +38,8 @@ public partial class TweakCategoryViewModel : ViewModelBase
         IRestorePointGuard restorePointGuard,
         LogPanelViewModel logPanel,
         Func<bool> isGloballyRunning,
-        Action<bool> setGloballyRunning)
+        Action<bool> setGloballyRunning,
+        Action<string?> setError)
     {
         _model = model;
         _scriptDirectory = scriptDirectory;
@@ -41,6 +49,7 @@ public partial class TweakCategoryViewModel : ViewModelBase
         _logPanel = logPanel;
         _isGloballyRunning = isGloballyRunning;
         _setGloballyRunning = setGloballyRunning;
+        _setError = setError;
 
         var applyPath = Path.Combine(scriptDirectory, model.ApplyScript);
         var revertPath = Path.Combine(scriptDirectory, model.RevertScript);
@@ -50,8 +59,19 @@ public partial class TweakCategoryViewModel : ViewModelBase
             SubTweaks.Add(new SubTweakViewModel(
                 sub, applyPath, revertPath, scriptDirectory,
                 executor, dialogService, restorePointGuard, logPanel,
-                isGloballyRunning, setGloballyRunning));
+                isGloballyRunning, setGloballyRunning, setError));
         }
+    }
+
+    /// <summary>
+    /// Pushes a change notification for <see cref="IsGloballyRunning"/> to this
+    /// category and all of its sub-tweaks so their button IsEnabled bindings update.
+    /// </summary>
+    public void OnGlobalRunningChanged()
+    {
+        OnPropertyChanged(nameof(IsGloballyRunning));
+        foreach (var sub in SubTweaks)
+            sub.OnGlobalRunningChanged();
     }
 
     [RelayCommand]
@@ -64,6 +84,24 @@ public partial class TweakCategoryViewModel : ViewModelBase
     private async Task RunFullScriptAsync()
     {
         if (_isGloballyRunning()) return;
+
+        // Clear any stale error before starting a new sweep.
+        _setError(null);
+
+        // One batch confirmation up front instead of up to N per-action dialogs.
+        // Decline = do nothing.
+        var actionableCount = _model.SubTweaks.Count(s => !string.IsNullOrEmpty(s.ApplyAction));
+        var highRiskCount = _model.SubTweaks.Count(s =>
+            !string.IsNullOrEmpty(s.ApplyAction) && _dialogService.IsHighRisk(s.ApplyAction));
+        if (actionableCount == 0) return;
+
+        var batchAction = highRiskCount > 0 ? "run-all-batch-high-risk" : "run-all-batch";
+        var batchConfirmed = await _dialogService.ShowConfirmationAsync(
+            batchAction,
+            highRiskCount > 0
+                ? $"{Title}: {actionableCount} tweaks ({highRiskCount} high-risk)"
+                : $"{Title}: {actionableCount} tweaks");
+        if (!batchConfirmed) return;
 
         // Ensure a restore point once for the whole sweep, then skip it inside the loop.
         var proceed = await _restorePointGuard.EnsureRestorePointAsync(
@@ -86,7 +124,8 @@ public partial class TweakCategoryViewModel : ViewModelBase
                 var result = await ScriptRunner.RunAsync(
                     scriptPath, action, sub.Name, _scriptDirectory,
                     _executor, _dialogService, _restorePointGuard, _logPanel,
-                    ensureRestorePoint: false);
+                    ensureRestorePoint: false,
+                    skipConfirmation: true);
 
                 // User cancelled a confirmation dialog — stop the whole batch rather
                 // than silently skipping into the next destructive tweak and leaving
@@ -102,6 +141,7 @@ public partial class TweakCategoryViewModel : ViewModelBase
                 if (result.Outcome == ScriptRunOutcome.Applied && result.ExitCode != 0)
                 {
                     onOutput($"[!] '{sub.Name}' exited with code {result.ExitCode} — stopping batch.");
+                    _setError($"'{sub.Name}' failed (exit {result.ExitCode}) — check the output panel.");
                     break;
                 }
             }

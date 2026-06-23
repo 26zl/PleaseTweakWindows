@@ -82,6 +82,10 @@
                                           RecognizesAccessKey="True" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PtwAccentHoverBrush}" />
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
@@ -286,9 +290,14 @@
         <Setter Property="CornerRadius" Value="14,14,0,0" />
         <Setter Property="Padding" Value="14,12" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="2" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{StaticResource PtwSurfaceHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource PtwAccentHoverBrush}" />
             </Trigger>
         </Style.Triggers>
     </Style>

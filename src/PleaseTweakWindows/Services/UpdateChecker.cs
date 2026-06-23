@@ -162,7 +162,7 @@ public sealed class UpdateChecker : IUpdateChecker
     }
 
     private static string GetPrefsPath() =>
-        Path.Combine(AppContext.BaseDirectory, "logs", "ptw-update-prefs.properties");
+        Path.Combine(AppPaths.GetLogsDirectory(), "ptw-update-prefs.properties");
 
     private static bool IsDismissed(string version)
     {

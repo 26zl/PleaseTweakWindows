@@ -4,6 +4,15 @@
 # Version: 2.1.0
 # Last Updated: 2026-01-18
 
+# Force UTF-8 console output so non-ASCII text (adapter/driver names, accented vendor
+# strings) is not mangled when the GUI reads stdout. Windows PowerShell 5.1 otherwise
+# emits the OEM code page. Guarded because this can throw if no console host is attached.
+try {
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+} catch {
+    # No console host attached (or redirected handles) - safe to ignore.
+}
+
 #region Wait-ForUser (PTW_EMBEDDED aware)
 function Wait-ForUser {
     param([string]$Prompt = 'Press any key to continue...')
@@ -85,9 +94,11 @@ function Import-RegistryFile {
     param([Parameter(Mandatory=$true)][string]$RegFile)
     Write-PTWDetail "IMPORT registry file: $RegFile"
     if (Test-Path $RegFile) {
-        $p = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$RegFile`"" -Wait -PassThru -NoNewWindow
-        $success = ($p.ExitCode -eq 0)
-        Write-PTWDetail "  $(if ($success) { 'OK' } else { "FAILED (exit code $($p.ExitCode))" })"
+        # Use reg.exe (not regedit.exe /s): reg.exe returns a real non-zero exit code and
+        # writes to stderr on import failure, whereas regedit /s returns 0 even on failure.
+        & reg.exe import "$RegFile" 2>&1 | Out-Null
+        $success = ($LASTEXITCODE -eq 0)
+        Write-PTWDetail "  $(if ($success) { 'OK' } else { "FAILED (exit code $LASTEXITCODE)" })"
         return $success
     }
     Write-PTWDetail "  SKIP (file not found)"
@@ -96,6 +107,15 @@ function Import-RegistryFile {
 #endregion
 
 #region Registry Helpers (Safe)
+# Tracks how many registry mutations failed so dispatchers can exit non-zero instead of
+# falsely reporting success. Incremented in each helper's catch block.
+$script:PTWErrorCount = 0
+
+# Dispatchers can call this in place of `exit 0` to signal failure when any helper failed.
+function Exit-PTW {
+    if ($script:PTWErrorCount -gt 0) { exit 1 } else { exit 0 }
+}
+
 function ConvertTo-PSDrivePath {
     param([string]$Path)
     if ($Path -match '^Registry::(.+)$') {
@@ -131,6 +151,7 @@ function Set-RegValueSafe {
             Write-PTWDetail "  OK"
         }
     } catch {
+        $script:PTWErrorCount++
         Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to set ${Path}\\${Name}: $($_.Exception.Message)"
     }
@@ -179,6 +200,7 @@ function Remove-RegValueSafe {
             Write-PTWDetail "  SKIP (key not found)"
         }
     } catch {
+        $script:PTWErrorCount++
         Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to remove ${Path}\\${Name}: $($_.Exception.Message)"
     }
@@ -208,6 +230,7 @@ function Remove-RegKeySafe {
             Write-PTWDetail "  SKIP (key not found)"
         }
     } catch {
+        $script:PTWErrorCount++
         Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to remove key ${Path}: $($_.Exception.Message)"
     }
@@ -237,6 +260,7 @@ function Set-RegistryDefaultValueSafe {
             Write-PTWDetail "  OK"
         }
     } catch {
+        $script:PTWErrorCount++
         Write-PTWDetail "  FAILED: $($_.Exception.Message)" "ERROR"
         Write-Warning "Failed to set default value for ${Path}: $($_.Exception.Message)"
     }
@@ -297,7 +321,7 @@ function Undo-PTWTransaction {
     foreach ($entry in $reversed) {
         try {
             if ($entry.Existed) {
-                $type = if ($entry.PreviousType -eq 'DWord') { 'DWord' } else { 'String' }
+                $type = if ($entry.PreviousType) { $entry.PreviousType } else { 'String' }
                 Set-RegValueSafe -Path $entry.Path -Name $entry.Name -Type $type -Value $entry.PreviousValue
                 Write-Verbose "Restored: $($entry.Path)\$($entry.Name)"
             } else {
@@ -498,7 +522,7 @@ function Get-FileFromWeb {
 
     # For security-critical downloads from third-party sources (e.g., GitHub user repos),
     # require explicit hash verification to prevent supply-chain attacks
-    $isThirdParty = $hostname -like "*.githubusercontent.com" -or $hostname -like "*.github.com"
+    $isThirdParty = $hostname -like "*.githubusercontent.com" -or $hostname -eq 'github.com' -or $hostname -like "*.github.com"
     if ($isThirdParty -and -not $ExpectedHash) {
         throw "SECURITY: Unverified third-party download blocked. Add SHA256 hash to file-checksums.json for: $URL"
     }
@@ -529,6 +553,10 @@ function Get-FileFromWeb {
         [long]$fullSize = $response.ContentLength
         [byte[]]$buffer = new-object byte[] 1048576
         [long]$total = [long]$count = 0
+        # Delete any pre-existing file at the destination so a locally-planted file cannot be
+        # reused across the verify-then-execute window (TOCTOU hardening). The fresh download is
+        # then hash/signature-verified below before the caller executes it.
+        if (Test-Path -LiteralPath $File) { Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue }
         $reader = $response.GetResponseStream()
         $writer = new-object System.IO.FileStream $File, 'Create'
         do {
