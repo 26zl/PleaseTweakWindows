@@ -23,7 +23,7 @@ public sealed class UpdateChecker : IUpdateChecker
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         client.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
-        client.DefaultRequestHeaders.Add("User-Agent", "PleaseTweakWindows");
+        client.DefaultRequestHeaders.Add("User-Agent", AppPaths.ProductName);
         return client;
     }
 

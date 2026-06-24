@@ -13,6 +13,18 @@ try {
     # No console host attached (or redirected handles) - safe to ignore.
 }
 
+#region Pinned download URLs
+# Version-pinned third-party downloads. Each URL has a matching SHA256 in
+# file-checksums.json, so bumping a version means updating BOTH the URL here AND
+# its checksum entry there. Defined once and shared via dot-sourcing so the same
+# URL is never copy-pasted across scripts (was duplicated 6x before).
+$script:PTWDownloadUrls = @{
+    SevenZip                 = 'https://www.7-zip.org/a/7z2501-x64.exe'
+    NvidiaProfileInspector   = 'https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip'
+    DisplayDriverUninstaller = 'https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.0.exe'
+}
+#endregion
+
 #region Wait-ForUser (PTW_EMBEDDED aware)
 function Wait-ForUser {
     param([string]$Prompt = 'Press any key to continue...')

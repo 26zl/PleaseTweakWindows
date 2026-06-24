@@ -11,7 +11,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor
     private const int MaxConcurrency = 4;
     private static readonly string PowerShellPath = GetPowerShellPath();
 
-    private static readonly HashSet<string> ConsolidatedScripts = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ConsolidatedScripts = new(StringComparer.OrdinalIgnoreCase)
     {
         "gaming-optimizations.ps1",
         "network-optimizations.ps1",

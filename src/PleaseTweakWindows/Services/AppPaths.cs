@@ -2,15 +2,19 @@ namespace PleaseTweakWindows.Services;
 
 internal static class AppPaths
 {
+    // Canonical app identifier: AppData/Temp subfolder, log filename prefix, dialog
+    // title and HTTP User-Agent. One source so they can never drift apart.
+    public const string ProductName = "PleaseTweakWindows";
+
     public static string GetLogsDirectory()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var candidates = string.IsNullOrWhiteSpace(localAppData)
-            ? [Path.Combine(Path.GetTempPath(), "PleaseTweakWindows", "logs")]
+            ? [Path.Combine(Path.GetTempPath(), ProductName, "logs")]
             : new[]
             {
-                Path.Combine(localAppData, "PleaseTweakWindows", "logs"),
-                Path.Combine(Path.GetTempPath(), "PleaseTweakWindows", "logs")
+                Path.Combine(localAppData, ProductName, "logs"),
+                Path.Combine(Path.GetTempPath(), ProductName, "logs")
             };
 
         foreach (var candidate in candidates)

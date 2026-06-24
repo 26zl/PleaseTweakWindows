@@ -454,14 +454,14 @@ foreach (`$app in `$apps) {
 
     "driver-clean" {
         Write-Output "[*] Installing DDU..."
-        $dduUrl = "https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.0.exe"
+        $dduUrl = $PTWDownloadUrls.DisplayDriverUninstaller
         $dduExe = "$env:TEMP\DDU-setup.exe"
         $dduDir = "$env:TEMP\DDU"
         Get-FileFromWeb -URL $dduUrl -File $dduExe
         # DDU distributes as a self-extracting 7z archive; extract with 7-Zip
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
-            Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
+            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File "$env:TEMP\7z-setup.exe"
             Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
         }
         Remove-Item -Recurse -Force $dduDir -ErrorAction SilentlyContinue

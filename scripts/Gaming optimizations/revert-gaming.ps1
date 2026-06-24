@@ -51,7 +51,7 @@ function Confirm-Inspector {
 
     if (Get-Command Get-FileFromWeb -ErrorAction SilentlyContinue) {
         try {
-            Get-FileFromWeb -URL "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip" -File "$env:TEMP\nvidiaProfileInspector.zip"
+            Get-FileFromWeb -URL $PTWDownloadUrls.NvidiaProfileInspector -File "$env:TEMP\nvidiaProfileInspector.zip"
             Expand-Archive "$env:TEMP\nvidiaProfileInspector.zip" -DestinationPath (Split-Path $InspectorPath) -Force
         } catch { Write-Verbose "Failed to download Inspector.exe: $($_.Exception.Message)" }
     }
