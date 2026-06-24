@@ -28,7 +28,7 @@ public partial class App : Application
             {
                 MessageBox.Show(
                     "An unexpected error occurred. The action may not have completed. See the log for details.",
-                    "PleaseTweakWindows",
+                    AppPaths.ProductName,
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
@@ -82,13 +82,13 @@ public partial class App : Application
             .MinimumLevel.Information()
             .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss.SSS} [{Level:u5}] {Message:lj}{NewLine}{Exception}")
             .WriteTo.File(
-                Path.Combine(logDir, "PleaseTweakWindows.log"),
+                Path.Combine(logDir, $"{AppPaths.ProductName}.log"),
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
                 fileSizeLimitBytes: 20 * 1024 * 1024,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
             .WriteTo.File(
-                Path.Combine(logDir, "PleaseTweakWindows-error.log"),
+                Path.Combine(logDir, $"{AppPaths.ProductName}-error.log"),
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 90,
@@ -97,7 +97,7 @@ public partial class App : Application
             .WriteTo.Logger(lc => lc
                 .Filter.ByIncludingOnly(ev => ev.Properties.ContainsKey("Telemetry"))
                 .WriteTo.File(
-                    Path.Combine(logDir, "PleaseTweakWindows-telemetry.log"),
+                    Path.Combine(logDir, $"{AppPaths.ProductName}-telemetry.log"),
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: 30,
                     fileSizeLimitBytes: 5 * 1024 * 1024,

@@ -255,4 +255,23 @@ public class ScriptExecutorTests
         _executor.CancelAllOperations();
         _executor.HasActiveOperations.Should().BeFalse();
     }
+
+    [Fact]
+    public void ConsolidatedScripts_AllExistAsEmbeddedResources()
+    {
+        // ConsolidatedScripts is a hand-maintained list of script filenames that
+        // receive the -Action argument. If a script is renamed and this list isn't
+        // updated, Contains() silently returns false and the script runs without its
+        // action — no error, just wrong behavior. Embedded resource names end with
+        // ".<FileName>" (dirs -> '.', spaces -> '_'), so a leading-dot EndsWith match
+        // ties each entry to a real shipped script.
+        var resources = typeof(ScriptExecutor).Assembly.GetManifestResourceNames();
+
+        foreach (var name in ScriptExecutor.ConsolidatedScripts)
+        {
+            resources.Should().Contain(
+                r => r.EndsWith("." + name, StringComparison.OrdinalIgnoreCase),
+                $"consolidated script '{name}' must exist as an embedded resource (a rename silently drops its -Action argument)");
+        }
+    }
 }

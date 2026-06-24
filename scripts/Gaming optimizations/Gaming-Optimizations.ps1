@@ -86,7 +86,7 @@ switch ($Action.ToLowerInvariant()) {
         # (pinned-hash via Get-FileFromWeb) path to always run.
         Remove-Item -Recurse -Force $inspectorDir -ErrorAction SilentlyContinue
         if (-not (Test-Path "$inspectorDir\nvidiaProfileInspector.exe")) {
-            Get-FileFromWeb -URL "https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip" -File "$env:TEMP\nvidiaProfileInspector.zip"
+            Get-FileFromWeb -URL $PTWDownloadUrls.NvidiaProfileInspector -File "$env:TEMP\nvidiaProfileInspector.zip"
             Expand-Archive "$env:TEMP\nvidiaProfileInspector.zip" -DestinationPath $inspectorDir -Force
         }
         $nvidiaConfigPath = Join-Path $PSScriptRoot "reg\nvidia_profile.xml"
@@ -138,7 +138,7 @@ switch ($Action.ToLowerInvariant()) {
         Test-SignedFile -Path "$env:TEMP\NvidiaDriver.exe" -PublisherPatterns @('NVIDIA Corporation')
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
-            Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
+            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File "$env:TEMP\7z-setup.exe"
             Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
         }
         cmd /c "`"$sevenZip`" x `"$env:TEMP\NvidiaDriver.exe`" -o`"$env:TEMP\NvidiaDriver`" -y" | Out-Null
@@ -344,7 +344,7 @@ switch ($Action.ToLowerInvariant()) {
         Get-FileFromWeb -URL "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe" -File "$env:TEMP\DirectX.exe"
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
-            Get-FileFromWeb -URL "https://www.7-zip.org/a/7z2501-x64.exe" -File "$env:TEMP\7z-setup.exe"
+            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File "$env:TEMP\7z-setup.exe"
             Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
         }
         cmd /c "`"$sevenZip`" x `"$env:TEMP\DirectX.exe`" -o`"$env:TEMP\DirectX`" -y" | Out-Null
