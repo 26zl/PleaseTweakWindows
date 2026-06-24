@@ -34,7 +34,7 @@ Latest EXE scan: [c4256a0c...7fea56](https://www.virustotal.com/gui/file/c4256a0
 | **Network** | 4 | IPv4 adapter bindings, Smart Network Optimization (standard / aggressive), set all networks to Public |
 | **General** | 16 | Power plans, bloatware removal, registry tweaks, scaling fixes |
 | **Services** | 2 | Disable unnecessary Windows services, restore defaults |
-| **Privacy** | 15 | Telemetry, Copilot, DNS-over-HTTPS, tracking, Explorer privacy |
+| **Privacy** | 15 | Telemetry, Copilot, DNS (Cloudflare / Google / DoH / reset to automatic), tracking, Explorer privacy |
 | **Security** | 28 | Firewall hardening, TLS, DEP, SEHOP, Spectre/Meltdown, LLMNR, SMB 3.1.1, Defender tuning, ASLR, NTLM blocking |
 
 Each toggle sub-tweak exposes **Apply** and **Revert** buttons individually. "Run All" applies every toggle in a category sequentially and stops if you cancel a confirmation dialog — it does not bulk-revert.
