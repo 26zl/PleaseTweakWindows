@@ -36,7 +36,8 @@ internal static class ScriptRunner
 
         if (ensureRestorePoint)
         {
-            var proceed = await restorePointGuard.EnsureRestorePointAsync(scriptDirectory, onOutput);
+            var proceed = await restorePointGuard.EnsureRestorePointAsync(
+                scriptDirectory, onOutput, isHighRisk: dialogService.IsHighRisk(action));
             if (!proceed)
                 return new ScriptRunResult(ScriptRunOutcome.RestorePointCancelled, -1);
         }

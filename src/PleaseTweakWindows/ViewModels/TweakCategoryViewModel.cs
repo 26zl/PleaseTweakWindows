@@ -106,7 +106,8 @@ public partial class TweakCategoryViewModel : ViewModelBase
         // Ensure a restore point once for the whole sweep, then skip it inside the loop.
         var proceed = await _restorePointGuard.EnsureRestorePointAsync(
             _scriptDirectory,
-            line => UiDispatcher.Post(() => _logPanel.AppendLine(line)));
+            line => UiDispatcher.Post(() => _logPanel.AppendLine(line)),
+            isHighRisk: highRiskCount > 0);
         if (!proceed) return;
 
         _setGloballyRunning(true);

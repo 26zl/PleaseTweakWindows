@@ -11,6 +11,9 @@ public sealed class RestorePointGuard
     private readonly ILogger<RestorePointGuard> _logger;
     private readonly object _lock = new();
     private Decision _decision = Decision.Unknown;
+    // Set once the user has skipped the prompt in a HIGH-RISK context. Until then, a prior
+    // low-risk skip does not carry over to high-risk tweaks — they re-prompt (see below).
+    private bool _highRiskSkipAcknowledged;
 
     public RestorePointGuard(IDialogService dialogService, IScriptExecutor executor, ILoggerFactory loggerFactory)
     {
@@ -27,11 +30,17 @@ public sealed class RestorePointGuard
         }
     }
 
-    public async Task<bool> EnsureRestorePointAsync(string scriptDirectory, Action<string>? onOutput, CancellationToken cancellationToken = default)
+    public async Task<bool> EnsureRestorePointAsync(string scriptDirectory, Action<string>? onOutput, bool isHighRisk = false, CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            if (_decision != Decision.Unknown)
+            // A successfully created restore point covers the whole session.
+            if (_decision == Decision.Created)
+                return true;
+            // A prior Skip is honoured for low-risk tweaks. For high-risk tweaks it is NOT
+            // honoured until the user has skipped *in a high-risk context* at least once —
+            // so a casual low-risk skip can't silently carry into a boot-affecting change.
+            if (_decision == Decision.Skipped && (!isHighRisk || _highRiskSkipAcknowledged))
                 return true;
         }
 
@@ -54,7 +63,11 @@ public sealed class RestorePointGuard
                 return false;
 
             case RestorePointDecision.Skip:
-                lock (_lock) { _decision = Decision.Skipped; }
+                lock (_lock)
+                {
+                    _decision = Decision.Skipped;
+                    if (isHighRisk) _highRiskSkipAcknowledged = true;
+                }
                 return true;
 
             case RestorePointDecision.Cancel:

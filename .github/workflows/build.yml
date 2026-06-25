@@ -487,17 +487,22 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
           restore-keys: ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        run: dotnet restore PleaseTweakWindows.sln
+        # --locked-mode fails the build if packages.lock.json is out of date, so the
+        # committed lock file is the source of truth for a reproducible restore.
+        run: dotnet restore PleaseTweakWindows.sln --locked-mode
 
       - name: Run tests
         run: dotnet test PleaseTweakWindows.sln -c Release --no-restore --verbosity normal
 
       - name: Publish single-file EXE
         run: |
+          # Not locked: single-file publish adds SDK-version-tied tooling (ILLink.Tasks)
+          # that the committed lock file does not (and should not) pin. Dependency pinning is
+          # enforced by the solution restore step above.
           dotnet publish src/PleaseTweakWindows/PleaseTweakWindows.csproj `
             -c Release `
             -r win-x64 `
@@ -518,6 +523,22 @@ jobs:
             Write-Error "[-] EXE file not found at $exe"
             exit 1
           }
+        shell: pwsh
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          # The release EXE is not Authenticode-signed, so the supply-chain artifacts are the
+          # SHA256SUMS (integrity) and this CycloneDX SBOM (dependency inventory). Written next
+          # to the EXE so it travels in the same build artifact.
+          dotnet tool install --global CycloneDX --version 6.2.0
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          # CycloneDX 6.x: JSON output is --json (the old -j short flag was removed).
+          dotnet CycloneDX src/PleaseTweakWindows/PleaseTweakWindows.csproj -o publish --json
+          if (-not (Test-Path "publish/bom.json")) {
+            Write-Error "SBOM generation did not produce publish/bom.json"
+            exit 1
+          }
+          Write-Host "[+] SBOM generated: publish/bom.json"
         shell: pwsh
 
       - name: Verify scripts are included in resources
@@ -601,7 +622,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: please-tweak-windows-exe
-          path: publish/PleaseTweakWindows.exe
+          # Both paths live under publish/, so the artifact root stays flat
+          # (PleaseTweakWindows.exe + bom.json) and the download path is unchanged.
+          path: |
+            publish/PleaseTweakWindows.exe
+            publish/bom.json
 
   create-release:
     name: Create Release
@@ -670,6 +695,13 @@ jobs:
           } else {
             Write-Warning "LICENSE file not found — release will ship without it"
           }
+          if (Test-Path "./artifacts/bom.json") {
+            Copy-Item "./artifacts/bom.json" "dist/SBOM.json"
+          } else {
+            # The README promises an SBOM with every release, so refuse to publish without one.
+            Write-Error "SBOM (bom.json) not found in build artifact — refusing to publish a release without the promised SBOM"
+            exit 1
+          }
           # The EXE embeds all scripts; no loose scripts folder is shipped.
 
           # Create ZIP file using PowerShell
@@ -704,6 +736,7 @@ jobs:
           files: |
             PleaseTweakWindows.zip
             SHA256SUMS.txt
+            dist/SBOM.json
           draft: false
           prerelease: false
           generate_release_notes: true

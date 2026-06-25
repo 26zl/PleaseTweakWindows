@@ -262,9 +262,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Export tweak profile",
+            Title = "Export all available tweaks (template profile)",
             Filter = "PleaseTweakWindows profile (*.ptw.json)|*.ptw.json",
-            FileName = "ptw-profile.ptw.json"
+            FileName = "ptw-all-tweaks.ptw.json"
         };
         if (dialog.ShowDialog() != true) return;
 
@@ -273,7 +273,7 @@ public partial class MainWindowViewModel : ViewModelBase
             var version = GetType().Assembly.GetName().Version?.ToString() ?? "unknown";
             var json = _configProfileService.Export(catalog.Select(c => c.ActionId), version, DateTimeOffset.UtcNow);
             File.WriteAllText(dialog.FileName, json);
-            LogPanel.AppendLine($"[+] Exported {catalog.Count} tweaks to {dialog.FileName}");
+            LogPanel.AppendLine($"[+] Exported all {catalog.Count} available tweaks (a template — import lets you pick which to apply) to {dialog.FileName}");
         }
         catch (Exception ex)
         {
@@ -338,7 +338,7 @@ public partial class MainWindowViewModel : ViewModelBase
         Action<string> onOutput = line => UiDispatcher.Post(() => LogPanel.AppendLine(line));
 
         // One restore point for the whole import, then skip it inside the loop.
-        var proceed = await _restorePointGuard.EnsureRestorePointAsync(_scriptDirectory, onOutput);
+        var proceed = await _restorePointGuard.EnsureRestorePointAsync(_scriptDirectory, onOutput, isHighRisk: highRisk);
         if (!proceed) return;
 
         IsScriptsRunning = true;
@@ -348,7 +348,7 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 var entry = byId[actionId];
                 // High-risk tweaks still show their specific warning (UAC, wu-disable,
-                // persist, NTLM block, …) so an imported profile can't silently apply a
+                // persist, NTLM block, ...) so an imported profile can't silently apply a
                 // severe change behind one generic batch prompt. Reviewed non-high-risk
                 // tweaks run without an extra prompt.
                 var skipConfirm = !_dialogService.IsHighRisk(actionId);

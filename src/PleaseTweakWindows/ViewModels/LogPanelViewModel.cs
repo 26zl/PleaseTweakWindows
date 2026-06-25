@@ -90,6 +90,22 @@ public partial class LogPanelViewModel : ViewModelBase
         LogText = string.Empty;
     }
 
+    /// <summary>Opens the on-disk logs directory in Explorer so the user can see/delete what is kept.</summary>
+    [RelayCommand]
+    private void OpenLogsFolder()
+    {
+        try
+        {
+            var dir = Services.AppPaths.GetLogsDirectory();
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true,
+            });
+        }
+        catch { /* opening the folder is best-effort; never crash the UI over it */ }
+    }
+
     private static Brush BrushFor(string line)
     {
         var trimmed = line.TrimStart();

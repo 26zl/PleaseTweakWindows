@@ -84,14 +84,14 @@ public partial class App : Application
             .WriteTo.File(
                 Path.Combine(logDir, $"{AppPaths.ProductName}.log"),
                 rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
+                retainedFileCountLimit: 14,
                 fileSizeLimitBytes: 20 * 1024 * 1024,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
             .WriteTo.File(
                 Path.Combine(logDir, $"{AppPaths.ProductName}-error.log"),
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error,
                 rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 90,
+                retainedFileCountLimit: 30,
                 fileSizeLimitBytes: 10 * 1024 * 1024,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
             .WriteTo.Logger(lc => lc
@@ -99,7 +99,7 @@ public partial class App : Application
                 .WriteTo.File(
                     Path.Combine(logDir, $"{AppPaths.ProductName}-telemetry.log"),
                     rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 30,
+                    retainedFileCountLimit: 14,
                     fileSizeLimitBytes: 5 * 1024 * 1024,
                     outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}"))
             .CreateLogger();

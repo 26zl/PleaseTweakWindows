@@ -207,12 +207,12 @@
                                 HorizontalAlignment="Stretch"
                                 ToolTip="Apply a saved tweak profile (.ptw.json)" />
                         <Button Grid.Column="2"
-                                Content="Export Config"
+                                Content="Export All Tweaks"
                                 Style="{StaticResource GhostButton}"
                                 Command="{Binding ExportConfigCommand}"
                                 IsEnabled="{Binding IsScriptsRunning, Converter={StaticResource InverseBool}}"
                                 HorizontalAlignment="Stretch"
-                                ToolTip="Save all tweaks as a portable profile (.ptw.json)" />
+                                ToolTip="Save the full catalog of available tweaks as a portable profile (.ptw.json). This is a template of every tweak, not your current machine state — import lets you pick which to apply." />
                     </Grid>
 
                     <Grid>

@@ -75,14 +75,27 @@ if ($env:PTW_EMBEDDED -eq '1' -and $env:PTW_LOG_DIR) {
     $dateStamp = Get-Date -Format "yyyy-MM-dd"
     $script:PTWDetailLogFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-detail-$dateStamp.log"
 
-    # Start a PowerShell transcript to capture ALL console output (Write-Output, Write-Warning,
-    # Write-Error, exceptions, etc.) to a separate transcript file. This catches every direct
-    # cmdlet output (services, network, apps, powercfg, etc.) that doesn't go through our helpers.
-    $script:PTWTranscriptFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-transcript-$dateStamp.log"
+    # Prune our own daily detail/transcript logs older than 14 days. These can contain adapter
+    # names, file paths, installed-app info, etc., so they should not accumulate indefinitely.
+    # Scoped by name so we never touch the GUI's Serilog-managed *.log files.
     try {
-        Start-Transcript -Path $script:PTWTranscriptFile -Append -Force | Out-Null
-    } catch {
-        # Transcript may already be running (nested dot-source) — safe to ignore
+        $cutoff = (Get-Date).AddDays(-14)
+        Get-ChildItem -LiteralPath $env:PTW_LOG_DIR -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^PleaseTweakWindows-(detail|transcript)-.*\.log$' -and $_.LastWriteTime -lt $cutoff } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    } catch { }
+
+    # A full PowerShell transcript captures ALL console output (Write-Output/Warning/Error,
+    # exceptions, and every direct cmdlet's output). It is useful for debugging but a privacy
+    # concern and redundant with the GUI's own output capture, so it is OFF by default. It is
+    # enabled only when PTW_TRANSCRIPT=1 (DEBUG builds set this; release builds do not).
+    if ($env:PTW_TRANSCRIPT -eq '1') {
+        $script:PTWTranscriptFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-transcript-$dateStamp.log"
+        try {
+            Start-Transcript -Path $script:PTWTranscriptFile -Append -Force | Out-Null
+        } catch {
+            # Transcript may already be running (nested dot-source) — safe to ignore
+        }
     }
 
     # Log session header — the calling script name is derived from the call stack
