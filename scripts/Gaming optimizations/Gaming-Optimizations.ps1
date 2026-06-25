@@ -151,7 +151,8 @@ switch ($Action.ToLowerInvariant()) {
             exit 1
         }
         Start-Process "$env:TEMP\NvidiaDriver\setup.exe"
-        Write-Output "[+] SUCCESS: NVIDIA Driver installer started - follow its prompts to complete installation"
+        Write-Output "[+] NVIDIA Driver installer launched - follow its prompts to complete installation"
+        Write-Output "[!] NOTE: PleaseTweakWindows does NOT wait for or verify the installation. 'Operation completed' below means the installer was started, not that the driver finished installing."
         Exit-PTW
     }
 
@@ -349,7 +350,8 @@ switch ($Action.ToLowerInvariant()) {
         }
         cmd /c "`"$sevenZip`" x `"$env:TEMP\DirectX.exe`" -o`"$env:TEMP\DirectX`" -y" | Out-Null
         Start-Process "$env:TEMP\DirectX\DXSETUP.exe"
-        Write-Output "[+] SUCCESS: DirectX installer launched"
+        Write-Output "[+] DirectX installer launched - follow its prompts to complete installation"
+        Write-Output "[!] NOTE: PleaseTweakWindows does NOT wait for or verify the installation. 'Operation completed' below means the installer was started, not that DirectX finished installing."
         Exit-PTW
     }
 

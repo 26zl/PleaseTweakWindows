@@ -18,6 +18,17 @@ This tool modifies Windows registry settings, services, and system configuration
 
 Latest EXE scan: [c4256a0c...7fea56](https://www.virustotal.com/gui/file/c4256a0c990b75482db93bb6f3f16c8da6b6fa8a9a7a2413ccd5be7f947fea56?nocache=1)
 
+## Verifying your download
+
+The release EXE is **intentionally not Authenticode-signed** — this is an open-source build without a commercial code-signing certificate, an accepted trade-off rather than an oversight. As a result Windows SmartScreen may warn on first run. Instead of relying on a signature, verify the download's integrity yourself:
+
+```powershell
+# Compare against SHA256SUMS.txt from the same release
+(Get-FileHash -Algorithm SHA256 .\PleaseTweakWindows.zip).Hash
+```
+
+Every release also ships a CycloneDX **SBOM** (`SBOM.json`) listing the app's dependencies.
+
 ## Quick Start
 
 **Requires Administrator privileges.**
@@ -106,6 +117,13 @@ Build.bat
 ```
 
 `Build.bat` runs `dotnet test` → `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true` → copies the EXE + README + LICENSE into `dist\PleaseTweakWindows\` → zips it. Scripts are embedded inside the EXE; no loose `scripts\` folder ships with the release.
+
+## Logging & Privacy
+
+PleaseTweakWindows runs entirely on your machine and sends no telemetry off-device. It writes local logs (under the app's `logs/` folder) so failed tweaks are diagnosable — use **Open Logs Folder** in the output panel to review or delete them.
+
+- App logs roll daily and are pruned automatically (≈14 days; error logs ≈30).
+- The full PowerShell **transcript** (which captures every cmdlet's output — adapter names, paths, installed-app info) is **off by default**. It is only written when `PTW_TRANSCRIPT=1` (debug builds), and those files are pruned after 14 days.
 
 ## Disclaimer
 

@@ -103,7 +103,7 @@ public sealed partial class TweakRegistry
             new SubTweak("Set Google DNS", "dns-google",
                 "Set DNS to Google (8.8.8.8, 8.8.4.4)"),
             new SubTweak("Reset DNS to automatic", "dns-reset",
-                "Reset all adapters’ DNS to automatic (DHCP) — undoes Cloudflare/Google DNS"),
+                "Reset all adapters' DNS to automatic (DHCP) - undoes Cloudflare/Google DNS"),
             new SubTweak("Enable DNS over HTTPS (DoH)", SubTweakType.Toggle,
                 "doh-enable", "doh-enable-revert",
                 "Enable encrypted DNS for common DNS providers"),

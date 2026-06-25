@@ -89,6 +89,30 @@ public class RestorePointGuardTests
     }
 
     [Fact]
+    public async Task Skip_LowRisk_DoesNotCarryIntoHighRisk_ThenAcknowledged()
+    {
+        SetupPrompt(RestorePointDecision.Skip);
+        var guard = Build();
+
+        // Low-risk skip is honoured for low-risk work...
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: false)).Should().BeTrue();
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: false)).Should().BeTrue();
+        _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Once,
+            "a low-risk skip should cache for subsequent low-risk tweaks");
+
+        // ...but the FIRST high-risk tweak after a low-risk skip must re-prompt.
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: true)).Should().BeTrue();
+        _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Exactly(2),
+            "a casual low-risk skip must not silently carry into a high-risk change");
+
+        // Once the user has skipped in a high-risk context, further high-risk tweaks
+        // are not re-prompted (no infinite nagging).
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: true)).Should().BeTrue();
+        _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Exactly(2),
+            "after acknowledging a high-risk skip, further high-risk tweaks should not re-prompt");
+    }
+
+    [Fact]
     public async Task Cancel_ReturnsFalseAndDoesNotCache()
     {
         SetupPrompt(RestorePointDecision.Cancel);

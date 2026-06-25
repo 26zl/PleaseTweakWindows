@@ -6,17 +6,22 @@ echo  PleaseTweakWindows - WPF Build Script
 echo ============================================
 echo.
 
-:: Check .NET SDK
+:: Check .NET SDK. SDK selection is pinned by global.json (baseline 9.0.100, rolls
+:: forward to a newer major if 9.x is not installed).
 dotnet --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: .NET SDK not found. Install .NET 9 SDK from https://dotnet.microsoft.com/download
+    echo ERROR: No compatible .NET SDK found. Install the .NET 9 SDK from
+    echo        https://dotnet.microsoft.com/download ^(see global.json^).
     exit /b 1
 )
 
-:: Verify .NET 9
+:: This project targets net9.0-windows. Building/publishing needs the .NET 9 (or newer)
+:: SDK; RUNNING the test step additionally needs the .NET 9 Windows Desktop Runtime
+:: (Microsoft.WindowsDesktop.App 9.x). A newer SDK alone (e.g. .NET 10) can build and
+:: publish, but `dotnet test` will fail if the .NET 9 Desktop Runtime is missing.
 for /f "tokens=1 delims=." %%v in ('dotnet --version') do set DOTNET_MAJOR=%%v
 if !DOTNET_MAJOR! LSS 9 (
-    echo ERROR: .NET 9 or later is required. Found:
+    echo ERROR: .NET 9.x SDK or newer is required. Found:
     dotnet --version
     exit /b 1
 )

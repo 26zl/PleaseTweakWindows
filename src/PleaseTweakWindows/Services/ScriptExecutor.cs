@@ -188,6 +188,13 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             psi.Environment["PTW_EMBEDDED"] = "1";
             var logDir = AppPaths.GetLogsDirectory();
             psi.Environment["PTW_LOG_DIR"] = logDir;
+            // The full PowerShell transcript captures ALL cmdlet output (adapter names, paths,
+            // installed apps, etc.) — useful for debugging but a privacy concern for end users,
+            // and redundant with the GUI's own output capture. Opt-in only: DEBUG builds turn it
+            // on; release builds never do unless the user sets PTW_TRANSCRIPT=1 themselves.
+#if DEBUG
+            psi.Environment["PTW_TRANSCRIPT"] = "1";
+#endif
 
             var processKey = $"{scriptPath}_{Interlocked.Increment(ref _keyCounter)}";
 

@@ -16,6 +16,12 @@
                     Command="{Binding ClearCommand}"
                     Margin="12,0,0,0"
                     FontSize="12" />
+            <Button Content="Open Logs Folder"
+                    Style="{StaticResource GhostButton}"
+                    Command="{Binding OpenLogsFolderCommand}"
+                    Margin="8,0,0,0"
+                    FontSize="12"
+                    ToolTip="Open the folder where logs are stored on disk (so you can review or delete them)" />
         </StackPanel>
 
         <Border Background="{StaticResource PtwLogBackgroundBrush}"

@@ -11,6 +11,14 @@
     <Version>2.1.2</Version>
     <AssemblyName>PleaseTweakWindows</AssemblyName>
     <RootNamespace>PleaseTweakWindows</RootNamespace>
+    <!-- Pin transitive package versions so the dependency graph is reproducible. CI enforces
+         this on the solution restore (build + test). NOTE: the lock file is intentionally NOT
+         enforced on `dotnet publish -r win-x64`, because single-file publish pulls in
+         SDK-version-tied tooling (Microsoft.NET.ILLink.Tasks) that a normal restore never
+         records — locking it would couple the lock file to one SDK patch and break across
+         runners. Locking the dependency restore is the reproducibility win; the publish stays
+         unlocked. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>

@@ -9,7 +9,9 @@ public sealed class ConfigReviewItem
 {
     public string ActionId { get; }
     public string DisplayName { get; }
-    public bool IsSelected { get; set; } = true;
+    // Opt-in by default: a profile lists every tweak it *can* apply, not the user's current
+    // state, so importing must never pre-arm the whole set. The user ticks what they want.
+    public bool IsSelected { get; set; } = false;
 
     public ConfigReviewItem(string actionId, string displayName)
     {
@@ -30,8 +32,8 @@ public partial class ConfigReviewDialog : Window
         InitializeComponent();
         ItemsHost.ItemsSource = _items;
         SubText.Text = droppedCount > 0
-            ? $"{_items.Count} tweak(s) from this profile match this build. {droppedCount} unknown entr(ies) were skipped. Uncheck anything you don't want, then Apply."
-            : $"{_items.Count} tweak(s) found. Uncheck anything you don't want, then Apply.";
+            ? $"{_items.Count} tweak(s) from this profile match this build. {droppedCount} unknown entr(ies) were skipped. Nothing is selected — check the tweaks you want to apply, then Apply."
+            : $"{_items.Count} tweak(s) found. Nothing is selected — check the tweaks you want to apply, then Apply.";
     }
 
     private void OnApplyClick(object sender, RoutedEventArgs e)

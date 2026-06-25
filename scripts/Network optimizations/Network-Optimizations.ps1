@@ -82,17 +82,38 @@ function Set-AdapterBinding {
         }
     }[$Mode]
 
+    $failed = 0
     foreach ($adapter in $adapters) {
         if ($PSCmdlet.ShouldProcess($adapter, "Apply adapter bindings: $Mode")) {
             foreach ($id in $bindingPlan.Enable) {
-                Enable-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction SilentlyContinue
+                try { Enable-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction Stop }
+                catch {
+                    # Count as a real failure only if the component IS present on this adapter
+                    # but did not end up enabled. A component that simply isn't bound to this
+                    # adapter type is N/A, not a failure (avoids false exit-1 reports).
+                    $b = Get-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction SilentlyContinue
+                    if ($null -ne $b -and -not $b.Enabled) {
+                        $failed++; Write-Output "[!] Could not enable binding '$id' on '$adapter': $($_.Exception.Message)"
+                    }
+                }
             }
             foreach ($id in $bindingPlan.Disable) {
-                Disable-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction SilentlyContinue
+                try { Disable-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction Stop }
+                catch {
+                    $b = Get-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction SilentlyContinue
+                    if ($null -ne $b -and $b.Enabled) {
+                        $failed++; Write-Output "[!] Could not disable binding '$id' on '$adapter': $($_.Exception.Message)"
+                    }
+                }
             }
         }
     }
-    Write-Output "Network Adapter bindings set to $Mode on $($adapters.Count) adapter(s)."
+    if ($failed -gt 0) {
+        Write-Output "[!] Network adapter bindings set to $Mode on $($adapters.Count) adapter(s), but $failed change(s) failed."
+        $script:PTWErrorCount++
+    } else {
+        Write-Output "Network Adapter bindings set to $Mode on $($adapters.Count) adapter(s)."
+    }
 }
 
 function Invoke-SmartNetworkOptimization {

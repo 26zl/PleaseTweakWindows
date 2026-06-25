@@ -72,8 +72,21 @@ function Set-DnsAddress {
     }
     foreach ($adapter in $adapters) {
         if ($PSCmdlet.ShouldProcess($adapter, "Set DNS servers ($Label)")) {
-            Set-DnsClientServerAddress -InterfaceAlias $adapter -ServerAddresses $Addresses -ErrorAction SilentlyContinue
-            Write-Output "[$Label] Applied to $adapter"
+            try {
+                Set-DnsClientServerAddress -InterfaceAlias $adapter -ServerAddresses $Addresses -ErrorAction Stop
+                # Readback: confirm the addresses actually took rather than assuming success.
+                $applied = (Get-DnsClientServerAddress -InterfaceAlias $adapter -ErrorAction SilentlyContinue).ServerAddresses
+                $missing = @($Addresses | Where-Object { $_ -notin $applied })
+                if ($missing.Count -gt 0) {
+                    Write-Output "[!] [$Label] ${adapter}: DNS readback mismatch (missing: $($missing -join ', '))"
+                    $script:PTWErrorCount++
+                } else {
+                    Write-Output "[$Label] Applied to $adapter"
+                }
+            } catch {
+                Write-Output "[-] [$Label] Failed to set DNS on ${adapter}: $($_.Exception.Message)"
+                $script:PTWErrorCount++
+            }
         }
     }
 }

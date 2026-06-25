@@ -1,0 +1,29 @@
+<!--
+  Windows Sandbox config for smoke-testing PleaseTweakWindows in a disposable VM.
+
+  Usage:
+    1. Build a release EXE (Build.bat) so dist\ contains PleaseTweakWindows.exe.
+    2. Edit the <HostFolder> path below to your local dist\ folder (absolute path).
+    3. Double-click this .wsb file (Windows Sandbox must be enabled:
+       "Turn Windows features on or off" -> Windows Sandbox).
+
+  The sandbox is ephemeral — everything is discarded on close, so destructive tweaks are safe
+  to try here. The sandbox user is already an Administrator, so the app's UAC manifest is honored.
+
+  LIMITATIONS: Windows Sandbox cannot test reboot-dependent or virtualization-based tweaks
+  (HVCI / Credential Guard / Secure Launch) — use a full throwaway VM with snapshots for those.
+-->
+<Configuration>
+  <VGpu>Enable</VGpu>
+  <Networking>Enable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\path\to\PleaseTweakWindows\dist</HostFolder>
+      <SandboxFolder>C:\PTW</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>explorer.exe C:\PTW</Command>
+  </LogonCommand>
+</Configuration>
