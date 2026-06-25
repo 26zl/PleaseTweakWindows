@@ -162,6 +162,31 @@ function Restore-Copilot {
     Write-Output "[i] Copilot policies cleared. If Copilot was uninstalled, reinstall from the Microsoft Store."
 }
 
+function Restore-Telemetry {
+    # Removes the AllowTelemetry policy override set by the privacy 'telemetry-off' apply.
+    Remove-RegValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry"
+    Remove-RegValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry"
+}
+
+function Restore-TelemetryPolicyEnforce {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableConsumerAccountStateContent'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableTailoredExperiencesWithDiagnosticData'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat' -Name 'AITEnable'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\SQMClient\Windows' -Name 'CEIPEnable'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Assistance\Client\1.0' -Name 'NoImplicitFeedback'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name 'DoNotShowFeedbackNotifications'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name 'AllowDeviceNameInTelemetry'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo' -Name 'DisabledByGroupPolicy'
+}
+
+function Restore-BlockMsAccount {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'NoConnectedUser'
+}
+
+function Restore-OneDrivePolicyDisable {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive' -Name 'DisableFileSyncNGSC'
+}
+
 function Restore-DnsAndDoh {
     $dnsServers = @(
         "1.1.1.1",
@@ -321,6 +346,46 @@ if ($Action) {
                 $global:LASTEXITCODE = 1
             }
         }
+        "telemetry-off-revert" {
+            try {
+                Restore-Telemetry
+                Write-Output " [OK] Telemetry policy override removed (back to Windows default)"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Telemetry revert failed: $($_.Exception.Message)"
+                $global:LASTEXITCODE = 1
+            }
+        }
+        "telemetry-policy-enforce-revert" {
+            try {
+                Restore-TelemetryPolicyEnforce
+                Write-Output " [OK] Telemetry / consumer GPO policies removed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Telemetry policy revert failed: $($_.Exception.Message)"
+                $global:LASTEXITCODE = 1
+            }
+        }
+        "block-ms-account-revert" {
+            try {
+                Restore-BlockMsAccount
+                Write-Output " [OK] Microsoft account sign-in re-allowed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Microsoft account revert failed: $($_.Exception.Message)"
+                $global:LASTEXITCODE = 1
+            }
+        }
+        "onedrive-policy-disable-revert" {
+            try {
+                Restore-OneDrivePolicyDisable
+                Write-Output " [OK] OneDrive sync policy removed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] OneDrive policy revert failed: $($_.Exception.Message)"
+                $global:LASTEXITCODE = 1
+            }
+        }
         default {
             Write-PTWError "Unknown action: $Action"
             $global:LASTEXITCODE = 1
@@ -373,6 +438,10 @@ if ($doRevert) {
         Restore-UiSyncProviderNotification
         Restore-UiHibernation
         Restore-UiCameraOsd
+        Restore-Telemetry
+        Restore-TelemetryPolicyEnforce
+        Restore-BlockMsAccount
+        Restore-OneDrivePolicyDisable
         Write-Output " [OK] UI and Explorer privacy tweaks reverted"
     } catch {
         Write-Output " [WARN] UI/Explorer revert failed: $($_.Exception.Message)"

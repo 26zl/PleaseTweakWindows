@@ -4,7 +4,9 @@ using Microsoft.Extensions.Logging;
 
 namespace PleaseTweakWindows.Services;
 
-public sealed class UpdateChecker : IUpdateChecker
+public sealed record UpdateInfo(string Version, string DownloadUrl);
+
+public sealed class UpdateChecker
 {
     private const string ReleasesApi = "https://api.github.com/repos/26zl/PleaseTweakWindows/releases/latest";
 
@@ -123,18 +125,6 @@ public sealed class UpdateChecker : IUpdateChecker
         {
             return (null, null);
         }
-    }
-
-    internal static string? ExtractJsonField(string json, string field)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty(field, out var prop) && prop.ValueKind == JsonValueKind.String)
-                return prop.GetString();
-        }
-        catch (JsonException) { }
-        return null;
     }
 
     internal static bool IsNewerVersion(string current, string remote)

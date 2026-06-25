@@ -279,6 +279,151 @@ function Set-RegistryDefaultValueSafe {
 }
 #endregion
 
+#region Shared Security Helpers
+# Moved verbatim from the former security.ps1 / revert-security.ps1 so the split
+# Defender / Exploit Protection / Device Guard / Network Security / System Security
+# category scripts can all dot-source them.
+
+function Get-OsBuildNumber {
+    try {
+        return [Environment]::OSVersion.Version.Build
+    } catch {
+        return 0
+    }
+}
+
+function Test-DefenderTamperProtected {
+    # Returns $true if Microsoft Defender Tamper Protection is ON. When it is on,
+    # Set-MpPreference changes to protection state are silently ignored/reverted by
+    # the Defender service, so the GUI must NOT report success.
+    try {
+        return [bool](Get-MpComputerStatus -ErrorAction Stop).IsTamperProtected
+    } catch {
+        return $false
+    }
+}
+
+function Disable-ClipboardService {
+    foreach ($svcName in @('cbdhsvc')) {
+        try {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if ($svc) {
+                if ($svc.Status -ne 'Stopped') {
+                    Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+                }
+                Set-Service -Name $svcName -StartupType Disabled -ErrorAction SilentlyContinue
+            }
+        } catch {
+            Write-Warning "[WARN] Service disable failed for ${svcName}: $($_.Exception.Message)"
+        }
+    }
+
+    try {
+        Get-Service -Name 'cbdhsvc_*' -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                if ($_.Status -ne 'Stopped') {
+                    Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue
+                }
+                Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue
+            } catch { Write-Verbose "Failed to disable service $($_.Name): $($_.Exception.Message)" }
+        }
+    } catch { Write-Verbose "Failed to enumerate cbdhsvc_* services: $($_.Exception.Message)" }
+}
+
+function Disable-OptionalFeaturesSafe {
+    param([string[]]$Names)
+    foreach ($f in $Names) {
+        try {
+            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction SilentlyContinue
+            if ($feat -and $feat.State -ne 'Disabled') {
+                Disable-WindowsOptionalFeature -Online -FeatureName $f -NoRestart -ErrorAction SilentlyContinue | Out-Null
+            }
+        } catch {
+            Write-Warning "[WARN] Optional feature op failed for ${f}: $($_.Exception.Message)"
+        }
+    }
+}
+
+function Remove-WindowsCapabilitiesSafe {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param([string[]]$Patterns)
+    foreach ($capPattern in $Patterns) {
+        try {
+            Get-WindowsCapability -Online -Name $capPattern -ErrorAction SilentlyContinue |
+                Where-Object { $_.State -ne 'NotPresent' } |
+                ForEach-Object {
+                    if ($PSCmdlet.ShouldProcess($_.Name, "Remove Windows capability")) {
+                        Remove-WindowsCapability -Online -Name $_.Name -ErrorAction SilentlyContinue | Out-Null
+                    }
+                }
+        } catch {
+            Write-Warning "[WARN] Capability remove failed for ${capPattern}: $($_.Exception.Message)"
+        }
+    }
+}
+
+# Best-effort Set-MpPreference: a single unsupported parameter on older builds raises a
+# parameter-binding error that -ErrorAction cannot trap, so isolate each setting.
+function Invoke-MpPrefSafe {
+    param([Parameter(Mandatory)][hashtable]$Pref)
+    try {
+        Set-MpPreference @Pref -ErrorAction Stop
+    } catch {
+        Write-PTWLog "Defender setting not applied (may be unsupported on this build): $($Pref.Keys -join ',') -> $($_.Exception.Message)" "WARNING"
+    }
+}
+
+function Enable-ServiceSafe {
+    param([string[]]$Names, [ValidateSet('Automatic','Manual')][string]$StartupType = 'Manual')
+    foreach ($name in $Names) {
+        try {
+            $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+            if ($svc) {
+                Set-Service -Name $name -StartupType $StartupType -ErrorAction SilentlyContinue
+                if ($svc.Status -ne 'Running') {
+                    Start-Service -Name $name -ErrorAction SilentlyContinue
+                }
+            }
+        } catch {
+            Write-PTWLog "Failed to enable/start service ${name}: $($_.Exception.Message)" "WARNING"
+        }
+    }
+}
+
+function Enable-OptionalFeaturesSafe {
+    param([string[]]$Names)
+    foreach ($f in $Names) {
+        try {
+            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction SilentlyContinue
+            if ($feat -and $feat.State -ne 'Enabled') {
+                Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+            }
+        } catch {
+            Write-PTWLog "Optional feature op failed for ${f}: $($_.Exception.Message)" "WARNING"
+        }
+    }
+}
+
+function Add-WindowsCapabilitiesSafe {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param([string[]]$Patterns)
+
+    foreach ($capPattern in $Patterns) {
+        try {
+            Get-WindowsCapability -Online -Name $capPattern -ErrorAction SilentlyContinue |
+                Where-Object { $_.State -eq 'NotPresent' } |
+                ForEach-Object {
+                    if ($PSCmdlet.ShouldProcess($_.Name, "Add Windows capability")) {
+                        Add-WindowsCapability -Online -Name $_.Name -ErrorAction SilentlyContinue | Out-Null
+                    }
+                }
+        } catch {
+            Write-PTWLog "Capability op failed for pattern ${capPattern}: $($_.Exception.Message)" "WARNING"
+        }
+    }
+}
+#endregion
+
 #region Transaction Support
 function Start-PTWTransaction {
     $script:PTWTransactionEntries = @()
@@ -604,6 +749,60 @@ function Get-FileFromWeb {
         if ($reader) { $reader.Close() }
         if ($writer) { $writer.Close() }
     }
+}
+
+# Validated download for PUBLIC IP-range (CIDR) text lists only (used by country-IP firewall
+# blocking). These lists regenerate daily so a pinned SHA256 is impossible; instead the source
+# host + path are constrained and EVERY line is validated as a CIDR before returning. No file is
+# executed — this returns an array of strings.
+function Get-CidrListFromWeb {
+    param([Parameter(Mandatory)][string]$URL)
+
+    try { $uri = [System.Uri]$URL } catch { throw "Invalid URL: $URL" }
+    if ($uri.Scheme -ne 'https') { throw "Only HTTPS is allowed for CIDR lists: $URL" }
+    if ($uri.Host -ne 'raw.githubusercontent.com') { throw "CIDR lists may only be fetched from raw.githubusercontent.com: $URL" }
+    if ($uri.AbsolutePath -notlike '/HotCakeX/Official-IANA-IP-blocks/*') { throw "Unexpected CIDR list path: $($uri.AbsolutePath)" }
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol =
+            [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+    } catch {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
+
+    $resp = Invoke-WebRequest -Uri $URL -UseBasicParsing -UserAgent 'PleaseTweakWindows/1.0' -ErrorAction Stop
+    $lines = ($resp.Content -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($_ -notmatch '^#') }
+
+    # The consuming sink is a block-all-capable firewall rule, so the regex was too weak: validate
+    # each entry as a real IP + in-range prefix, and REJECT catch-all / over-broad ranges
+    # (0.0.0.0/0, ::/0, tiny prefixes) that could sever all connectivity if the list were poisoned.
+    $valid = New-Object System.Collections.Generic.List[string]
+    $skipped = 0
+    foreach ($line in $lines) {
+        $parts = $line -split '/', 2
+        if ($parts.Count -ne 2) { $skipped++; continue }
+        $ipRef = [ref]([System.Net.IPAddress]::None)
+        if (-not [System.Net.IPAddress]::TryParse($parts[0], $ipRef)) { $skipped++; continue }
+        $prefix = 0
+        if (-not [int]::TryParse($parts[1], [ref]$prefix)) { $skipped++; continue }
+        $ip = $ipRef.Value
+        if ($ip.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+            # Reject IPv4 prefixes below /8 (over-broad) and the all-zero base (catch-all).
+            if ($prefix -lt 8 -or $prefix -gt 32) { $skipped++; continue }
+        } else {
+            if ($prefix -lt 16 -or $prefix -gt 128) { $skipped++; continue }
+        }
+        if ($ip.ToString() -eq '0.0.0.0' -or $ip.ToString() -eq '::') { $skipped++; continue }
+        $valid.Add("$($ip.ToString())/$prefix")
+    }
+
+    if ($valid.Count -eq 0) { throw "No valid CIDR entries returned from $URL" }
+    if ($valid.Count -gt 60000) { throw "CIDR list from $URL is unexpectedly large ($($valid.Count) entries); refusing." }
+    # A few benign bad lines are tolerated; a high invalid ratio is the real tampering signal.
+    if ($skipped -gt [Math]::Max(50, [int]($valid.Count * 0.05))) {
+        throw "Refusing CIDR list from ${URL}: $skipped invalid line(s) vs $($valid.Count) valid (possible tampering)."
+    }
+    return $valid.ToArray()
 }
 
 # Verify that a downloaded executable is Authenticode-signed by an expected publisher.

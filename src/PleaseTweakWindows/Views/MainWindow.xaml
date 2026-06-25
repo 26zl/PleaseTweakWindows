@@ -193,6 +193,28 @@
                             HorizontalAlignment="Stretch"
                             Margin="0,0,0,12" />
 
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0"
+                                Content="Import Config"
+                                Style="{StaticResource GhostButton}"
+                                Command="{Binding ImportConfigCommand}"
+                                IsEnabled="{Binding IsScriptsRunning, Converter={StaticResource InverseBool}}"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="Apply a saved tweak profile (.ptw.json)" />
+                        <Button Grid.Column="2"
+                                Content="Export Config"
+                                Style="{StaticResource GhostButton}"
+                                Command="{Binding ExportConfigCommand}"
+                                IsEnabled="{Binding IsScriptsRunning, Converter={StaticResource InverseBool}}"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="Save all tweaks as a portable profile (.ptw.json)" />
+                    </Grid>
+
                     <Grid>
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding FilteredCategories}">

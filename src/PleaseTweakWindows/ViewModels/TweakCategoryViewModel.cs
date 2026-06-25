@@ -12,7 +12,7 @@ public partial class TweakCategoryViewModel : ViewModelBase
     private readonly string _scriptDirectory;
     private readonly IScriptExecutor _executor;
     private readonly IDialogService _dialogService;
-    private readonly IRestorePointGuard _restorePointGuard;
+    private readonly RestorePointGuard _restorePointGuard;
     private readonly LogPanelViewModel _logPanel;
     private readonly Func<bool> _isGloballyRunning;
     private readonly Action<bool> _setGloballyRunning;
@@ -35,7 +35,7 @@ public partial class TweakCategoryViewModel : ViewModelBase
         string scriptDirectory,
         IScriptExecutor executor,
         IDialogService dialogService,
-        IRestorePointGuard restorePointGuard,
+        RestorePointGuard restorePointGuard,
         LogPanelViewModel logPanel,
         Func<bool> isGloballyRunning,
         Action<bool> setGloballyRunning,

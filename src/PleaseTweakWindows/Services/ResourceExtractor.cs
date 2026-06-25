@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace PleaseTweakWindows.Services;
 
-public sealed class ResourceExtractor : IResourceExtractor
+public sealed class ResourceExtractor
 {
     private readonly ILogger<ResourceExtractor> _logger;
     private string? _scriptsDirectory;

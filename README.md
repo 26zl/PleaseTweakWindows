@@ -4,7 +4,7 @@
 
 > **Under active development** — sub-tweaks, UI, and behavior may change between releases. Pin to a specific tag if you need stability.
 
-Windows optimization tool for performance tuning, gaming, network, privacy, security, and system customization.
+Windows optimization tool focused on **security hardening, privacy, latency/FPS, and debloating** — with per-tweak Apply/Revert, dependency-aware toggles that grey out until their prerequisite is applied, and shareable config profiles.
 
 <p align="center">
   <img src=".github/logo.png" alt="PleaseTweakWindows Logo" width="200" />
@@ -28,16 +28,26 @@ Latest EXE scan: [c4256a0c...7fea56](https://www.virustotal.com/gui/file/c4256a0
 
 ## Categories
 
+14 categories, ~128 sub-tweaks.
+
 | Category | Sub-tweaks | Description |
 | --- | --- | --- |
-| **Gaming** | 12 | GPU drivers, Game Bar, MSI mode, DirectX, polling rate, MPO, HAGS, Game Mode |
-| **Network** | 4 | IPv4 adapter bindings, Smart Network Optimization (standard / aggressive), set all networks to Public |
-| **General** | 16 | Power plans, bloatware removal, registry tweaks, scaling fixes |
-| **Services** | 2 | Disable unnecessary Windows services, restore defaults |
-| **Privacy** | 15 | Telemetry, Copilot, DNS (Cloudflare / Google / DoH / reset to automatic), tracking, Explorer privacy |
-| **Security** | 28 | Firewall hardening, TLS, DEP, SEHOP, Spectre/Meltdown, LLMNR, SMB 3.1.1, Defender tuning, ASLR, NTLM blocking |
+| **Gaming Optimizations** | 12 | GPU drivers, Game Bar, MSI mode, DirectX, polling rate, MPO, HAGS, Game Mode |
+| **Performance & Power** | 4 | Ultimate power plan, performance registry batch, HDCP, DPI scaling fix |
+| **Network Optimizations** | 3 | IPv4-only adapter bindings, Smart Network Optimization (standard / aggressive) |
+| **Debloat** | 7 | Remove bloatware (+ persistent), reinstall Store, disable widgets / background apps / unnecessary services |
+| **Privacy** | 19 | Telemetry, Copilot, DNS (Cloudflare / Google / DoH), Explorer privacy, MS-account & OneDrive policy, O&O ShutUp profile |
+| **Microsoft Defender** | 8 | Controlled Folder Access, network / PUA protection, cloud + max protection, ASR rules, sandbox, gaming-scan tuning |
+| **Exploit Protection** | 7 | System & per-app mitigations, ASLR, DEP, SEHOP, Spectre/Meltdown |
+| **Device Guard** | 7 | HVCI / Memory Integrity, Credential Guard, LSA protection, vulnerable-driver blocklist, WDigest |
+| **Network Security** | 20 | Firewall hardening + logging, TLS / SMB / NTLM / LLMNR / mDNS, country-IP blocking, LOLBin block, RDP NLA, WinRM, PrintNightmare |
+| **System Security** | 17 | UAC level, SmartScreen, binary integrity, lock screen, account lockout, audit policy, PowerShell logging, WSH |
+| **Customize** | 13 | Dark mode, taskbar, Explorer, context menu, lock screen, Start menu, keyboard shortcuts |
+| **Maintenance & Tools** | 4 | Disk cleanup, DDU driver cleanup, Autoruns, C++ redistributables |
+| **Windows Update** | 5 | Default / security-only / pause / off / secure modes |
+| **Edge** | 2 | Security baseline + HardCore hardening |
 
-Each toggle sub-tweak exposes **Apply** and **Revert** buttons individually. "Run All" applies every toggle in a category sequentially and stops if you cancel a confirmation dialog — it does not bulk-revert.
+Each toggle sub-tweak exposes **Apply** and **Revert** buttons individually. A toggle that depends on another tweak greys out until its prerequisite is applied (live registry check). "Run All" applies every toggle in a category sequentially and stops if you cancel a confirmation dialog — it does not bulk-revert.
 
 ## How It Works
 

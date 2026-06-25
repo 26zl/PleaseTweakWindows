@@ -12,12 +12,7 @@ internal enum ScriptRunOutcome
     ConfirmationCancelled,
 }
 
-internal readonly record struct ScriptRunResult(ScriptRunOutcome Outcome, int ExitCode)
-{
-    public bool UserCancelled =>
-        Outcome is ScriptRunOutcome.RestorePointCancelled
-                or ScriptRunOutcome.ConfirmationCancelled;
-}
+internal readonly record struct ScriptRunResult(ScriptRunOutcome Outcome, int ExitCode);
 
 /// <summary>
 /// Shared script-execution flow: ensure restore point → confirm if destructive → run.
@@ -32,7 +27,7 @@ internal static class ScriptRunner
         string scriptDirectory,
         IScriptExecutor executor,
         IDialogService dialogService,
-        IRestorePointGuard restorePointGuard,
+        RestorePointGuard restorePointGuard,
         LogPanelViewModel logPanel,
         bool ensureRestorePoint = true,
         bool skipConfirmation = false)

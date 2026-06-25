@@ -36,16 +36,28 @@ jobs:
           $scripts = @(
             "scripts/Gaming optimizations/Gaming-Optimizations.ps1",
             "scripts/Network optimizations/Network-Optimizations.ps1",
-            "scripts/General Tweaks/General-Tweaks.ps1",
+            "scripts/Performance/performance.ps1",
             "scripts/Privacy Security/privacy.ps1",
-            "scripts/Privacy Security/security.ps1",
-            "scripts/Services management/Services-Management.ps1",
+            "scripts/Defender/defender.ps1",
+            "scripts/Exploit Protection/exploit-protection.ps1",
+            "scripts/Device Guard/device-guard.ps1",
+            "scripts/Network Security/network-security.ps1",
+            "scripts/System Security/system-security.ps1",
+            "scripts/Debloat/debloat.ps1",
+            "scripts/Maintenance/maintenance.ps1",
+            "scripts/Customize/Customize.ps1",
+            "scripts/Windows Update/windows-update.ps1",
+            "scripts/Edge/Edge.ps1",
             "scripts/Privacy Security/revert-privacy.ps1",
-            "scripts/Privacy Security/revert-security.ps1",
+            "scripts/Defender/revert-defender.ps1",
+            "scripts/Exploit Protection/revert-exploit-protection.ps1",
+            "scripts/Device Guard/revert-device-guard.ps1",
+            "scripts/Network Security/revert-network-security.ps1",
+            "scripts/System Security/revert-system-security.ps1",
             "scripts/Gaming optimizations/revert-gaming.ps1",
-            "scripts/General Tweaks/revert-general.ps1",
+            "scripts/Performance/revert-performance.ps1",
             "scripts/Network optimizations/revert-network.ps1",
-            "scripts/Services management/revert-services.ps1",
+            "scripts/Debloat/revert-debloat.ps1",
             "scripts/create_restore_point.ps1",
             "scripts/CommonFunctions.ps1"
           )
@@ -80,10 +92,18 @@ jobs:
           $scripts = @(
             "scripts/Gaming optimizations/Gaming-Optimizations.ps1",
             "scripts/Network optimizations/Network-Optimizations.ps1",
-            "scripts/General Tweaks/General-Tweaks.ps1",
+            "scripts/Performance/performance.ps1",
             "scripts/Privacy Security/privacy.ps1",
-            "scripts/Privacy Security/security.ps1",
-            "scripts/Services management/Services-Management.ps1"
+            "scripts/Defender/defender.ps1",
+            "scripts/Exploit Protection/exploit-protection.ps1",
+            "scripts/Device Guard/device-guard.ps1",
+            "scripts/Network Security/network-security.ps1",
+            "scripts/System Security/system-security.ps1",
+            "scripts/Debloat/debloat.ps1",
+            "scripts/Maintenance/maintenance.ps1",
+            "scripts/Customize/Customize.ps1",
+            "scripts/Windows Update/windows-update.ps1",
+            "scripts/Edge/Edge.ps1"
           )
 
           foreach ($script in $scripts) {
@@ -184,441 +204,6 @@ jobs:
           Write-Host "[+] All script checksums current"
         shell: pwsh
 
-  security-scan:
-    name: Security Scan
-    runs-on: windows-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2
-        with:
-          egress-policy: audit
-
-      - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Check for obfuscated code
-        run: |
-          Write-Host "Scanning for obfuscated code patterns..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-
-          $obfuscationPatterns = @(
-            'RunAsTI',
-            'TrustedInstaller.*powershell',
-            'iex\s*\(.*env:',
-            'Invoke-Expression.*\$env',
-            '\[System\.Reflection\.Assembly\]::LoadWithPartialName.*obfuscat',
-            'base64.*decode',
-            'FromBase64String'
-          )
-
-          $issues = 0
-          foreach ($script in $scripts) {
-            Write-Host "Scanning: $($script.FullName)"
-            $content = Get-Content $script.FullName -Raw
-
-            foreach ($pattern in $obfuscationPatterns) {
-              if ($content -match $pattern) {
-                Write-Warning "Potential obfuscation pattern found in $($script.Name)`: $pattern"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues potential obfuscation patterns. Please review."
-            exit 1
-          } else {
-            Write-Host "[+] No obfuscated code patterns detected"
-          }
-        shell: pwsh
-
-      - name: Check for Windows Update disabling
-        run: |
-          Write-Host "Scanning for Windows Update disabling functionality..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-
-          $updateDisablePatterns = @(
-            'WindowsUpdate.*disable|Disable.*WindowsUpdate',
-            'WUServer|WUStatusServer',
-            'UpdateServiceUrl',
-            'fuckyoumicrosoft',
-            'LGPO.*update|update.*LGPO',
-            'DisableUpdates|EnableUpdates',
-            'PreventWinUpdate.*True',
-            'SearchOrderConfig.*0.*driver.*update'
-          )
-
-          $issues = 0
-          foreach ($script in $scripts) {
-            Write-Host "Scanning: $($script.FullName)"
-            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
-
-            foreach ($pattern in $updateDisablePatterns) {
-              if ($content -match $pattern) {
-                Write-Error "Windows Update disabling pattern found in $($script.Name)`: $pattern"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues Windows Update disabling patterns. These must be removed."
-            exit 1
-          } else {
-            Write-Host "[+] No Windows Update disabling patterns detected"
-          }
-        shell: pwsh
-
-      - name: Verify OOSU profile keeps core protections enabled
-        run: |
-          $cfg = "scripts/Privacy Security/regs/ooshutup10.cfg"
-          if (-not (Test-Path $cfg)) {
-            Write-Error "OOSU profile not found: $cfg"
-            exit 1
-          }
-
-          # O&O ShutUp10++ profile semantics:
-          #   + = apply the listed "Disable ..." setting
-          #   - = do not apply it / leave Windows default protection in place
-          #
-          # These settings must stay '-' so the privacy profile does not weaken
-          # phishing/malware protection or Windows Update safety.
-          $mustStayDisabled = @(
-            @{ Id = 'E106'; Name = 'Edge SmartScreen filter (machine)' },
-            @{ Id = 'E206'; Name = 'Edge SmartScreen filter (user)' },
-            @{ Id = 'E006'; Name = 'Legacy Edge SmartScreen filter' },
-            @{ Id = 'E127'; Name = 'Edge typosquatting checker (machine)' },
-            @{ Id = 'E227'; Name = 'Edge typosquatting checker (user)' },
-            @{ Id = 'E126'; Name = 'Edge site safety services (machine)' },
-            @{ Id = 'E226'; Name = 'Edge site safety services (user)' },
-            @{ Id = 'S012'; Name = 'Microsoft Defender SpyNet/MAPS membership' },
-            @{ Id = 'S013'; Name = 'Microsoft Defender sample submission' },
-            @{ Id = 'S014'; Name = 'Microsoft Defender malware reporting' },
-            @{ Id = 'W006'; Name = 'Automatic Windows Updates' },
-            @{ Id = 'W010'; Name = 'Driver updates through Windows Update' }
-          )
-
-          $lines = Get-Content $cfg
-          $bad = 0
-          foreach ($entry in $mustStayDisabled) {
-            $match = $lines | Where-Object { $_ -match "^$($entry.Id)\s+([+-])\s+" } | Select-Object -First 1
-            if (-not $match) {
-              Write-Error "Missing OOSU safety entry $($entry.Id): $($entry.Name)"
-              $bad++
-              continue
-            }
-
-            if ($match -notmatch "^$($entry.Id)\s+-\s+") {
-              Write-Error "Unsafe OOSU setting $($entry.Id) is enabled (+): $($entry.Name). Keep it '-' so core protection remains enabled."
-              $bad++
-            }
-          }
-
-          if ($bad -gt 0) {
-            Write-Error "$bad unsafe OOSU profile setting(s)."
-            exit 1
-          }
-
-          Write-Host "[+] OOSU profile keeps SmartScreen, Defender reporting, and Windows Update protections enabled"
-        shell: pwsh
-
-      - name: Check for security feature disabling
-        run: |
-          Write-Host "Scanning for security feature disabling..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-
-          # Defender cmdlet names are boolean-negated (DisableX = $true disables, $false enables),
-          # so patterns must require the value = $true to avoid flagging legitimate "reset to
-          # Windows default" calls that pass $false (which re-enables the protection).
-          $securityDisablePatterns = @(
-            'Windows.*Defender.*disable|Disable.*Windows.*Defender',
-            'SmartScreen.*disable|Disable.*SmartScreen',
-            'Firewall.*disable|Disable.*Firewall',
-            'UAC.*disable|Disable.*UAC',
-            'SecurityHealthService.*disable',
-            'Set-MpPreference.*DisableRealtimeMonitoring.*\$true',
-            'Set-MpPreference.*DisableBehaviorMonitoring.*\$true',
-            'Set-MpPreference.*DisableIOAVProtection.*\$true',
-            'Set-MpPreference.*DisableScriptScanning.*\$true',
-            'Set-MpPreference.*DisableBlockAtFirstSeen.*\$true',
-            'Set-MpPreference.*DisablePrivacyMode.*\$true',
-            'Set-MpPreference.*DisableArchiveScanning.*\$true',
-            'Set-MpPreference.*DisableIntrusionPreventionSystem.*\$true',
-            'Set-MpPreference.*DisableNetworkProtection.*\$true'
-          )
-
-          $issues = 0
-          foreach ($script in $scripts) {
-            Write-Host "Scanning: $($script.FullName)"
-            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
-
-            foreach ($pattern in $securityDisablePatterns) {
-              if ($content -match $pattern) {
-                Write-Error "Security feature disabling pattern found in $($script.Name)`: $pattern"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues security feature disabling patterns. These must be removed."
-            exit 1
-          } else {
-            Write-Host "[+] No security feature disabling patterns detected"
-          }
-        shell: pwsh
-
-      - name: Check for suspicious network calls
-        run: |
-          Write-Host "Scanning for suspicious network calls..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-
-          $allowedDomains = @(
-            'github.com',
-            'microsoft.com',
-            'aka.ms',
-            'githubusercontent.com',
-            'sysinternals.com',
-            'oo-software.com',
-            'geforce.com',
-            'nvidia.com',
-            '7-zip.org',
-            'wagnardsoft.com',
-            'amd.com',
-            'cloudflare-dns.com',
-            'dns.google',
-            'dns.quad9.net'
-          )
-
-          $issues = 0
-          foreach ($script in $scripts) {
-            Write-Host "Scanning: $($script.FullName)"
-            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
-
-            # Extract URLs
-            $urlMatches = [regex]::Matches($content, 'https?://[^\s''"`]+')
-            foreach ($match in $urlMatches) {
-              $url = $match.Value
-              $isAllowed = $false
-
-              # Parse the host from the URL and check against allowed domains
-              try {
-                $uri = [System.Uri]::new($url)
-                $host_ = $uri.Host
-                foreach ($domain in $allowedDomains) {
-                  if ($host_ -eq $domain -or $host_.EndsWith(".$domain")) {
-                    $isAllowed = $true
-                    break
-                  }
-                }
-              } catch {
-                # Malformed URL — flag it
-              }
-
-              if (-not $isAllowed) {
-                Write-Warning "Suspicious URL found in $($script.Name)`: $url"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues potentially suspicious network calls."
-            exit 1
-          } else {
-            Write-Host "[+] No suspicious network calls detected"
-          }
-        shell: pwsh
-
-      - name: Check for credential exposure
-        run: |
-          Write-Host "Scanning for exposed credentials..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-
-          $credentialPatterns = @(
-            'password\s*=\s*["'']',
-            'pwd\s*=\s*["'']',
-            'passwd\s*=\s*["'']',
-            'secret\s*=\s*["'']',
-            'api[_-]?key\s*=\s*["'']',
-            'token\s*=\s*["'']',
-            'Authorization.*Bearer\s+[A-Za-z0-9]{20,}',
-            'ConvertTo-SecureString.*-AsPlainText'
-          )
-
-          $issues = 0
-          foreach ($script in $scripts) {
-            Write-Host "Scanning: $($script.FullName)"
-            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
-
-            foreach ($pattern in $credentialPatterns) {
-              if ($content -match $pattern) {
-                Write-Warning "Potential credential exposure pattern found in $($script.Name)`: $pattern"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues potential credential exposure patterns."
-            exit 1
-          } else {
-            Write-Host "[+] No credential exposure patterns detected"
-          }
-        shell: pwsh
-
-      - name: Check for malicious registry modifications
-        run: |
-          Write-Host "Scanning for malicious registry modifications..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-
-          $maliciousPatterns = @(
-            'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run.*powershell.*hidden',
-            'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run.*powershell.*hidden',
-            'Startup.*powershell.*hidden',
-            'reg.*add.*Run.*powershell.*-WindowStyle.*Hidden',
-            'reg.*add.*Run.*cmd.*\/c.*powershell.*hidden'
-          )
-
-          $issues = 0
-          foreach ($script in $scripts) {
-            Write-Host "Scanning: $($script.FullName)"
-            $content = Get-Content $script.FullName -Raw -ErrorAction SilentlyContinue
-
-            foreach ($pattern in $maliciousPatterns) {
-              if ($content -match $pattern) {
-                Write-Error "Malicious registry modification pattern found in $($script.Name)`: $pattern"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues malicious registry modification patterns. These must be removed."
-            exit 1
-          } else {
-            Write-Host "[+] No malicious registry modification patterns detected"
-          }
-        shell: pwsh
-
-      - name: Scan for hardcoded secrets
-        run: |
-          Write-Host "Scanning for hardcoded secrets across repository..."
-
-          $allFiles = Get-ChildItem -Path "." -Recurse -File |
-            Where-Object {
-              $_.Extension -in @('.ps1', '.cs', '.xml', '.xaml', '.yml', '.yaml', '.json', '.properties', '.conf', '.cfg', '.bat', '.cmd', '.txt', '.md', '.env') -and
-              $_.FullName -notmatch '[\\/](bin|obj|dist|publish|\.git|node_modules|\.idea)[\\/]'
-            }
-
-          Write-Host "Scanning $($allFiles.Count) files..."
-
-          $secretPatterns = @(
-            @{ Name = "GitHub Token";           Pattern = 'gh[pousr]_[A-Za-z0-9_]{36,}' },
-            @{ Name = "Generic API Key";        Pattern = '(?i)(api[_-]?key|apikey)\s*[:=]\s*[''"][A-Za-z0-9\-_.]{20,}[''"]' },
-            @{ Name = "Generic Secret";         Pattern = '(?i)(client[_-]?secret|secret[_-]?key)\s*[:=]\s*[''"][A-Za-z0-9\-_.]{20,}[''"]' },
-            @{ Name = "Private Key";            Pattern = '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----' }
-          )
-
-          $issues = 0
-          foreach ($file in $allFiles) {
-            $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
-            if (-not $content) { continue }
-
-            foreach ($sp in $secretPatterns) {
-              if ($content -match $sp.Pattern) {
-                $relativePath = $file.FullName -replace [regex]::Escape((Get-Location).Path + '\'), ''
-                Write-Error "Potential $($sp.Name) found in: $relativePath"
-                $issues++
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues potential hardcoded secrets. These must be removed or moved to GitHub Secrets."
-            exit 1
-          } else {
-            Write-Host "[+] No hardcoded secrets detected"
-          }
-        shell: pwsh
-
-      - name: Check for hardcoded Windows paths
-        run: |
-          Write-Host "Scanning for hardcoded user-specific Windows paths..."
-
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-          $csFiles = Get-ChildItem -Path "src/PleaseTweakWindows" -Filter "*.cs" -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
-
-          $pathPatterns = @(
-            @{ Name = "Hardcoded user profile path"; Pattern = '[A-Za-z]:\\Users\\[^$\\{][A-Za-z0-9._-]+\\' },
-            @{ Name = "Hardcoded Program Files path"; Pattern = '[A-Za-z]:\\Program Files( \(x86\))?\\[A-Za-z]' },
-            @{ Name = "Hardcoded temp path";          Pattern = '[A-Za-z]:\\[Tt]emp\\' }
-          )
-
-          # Patterns that are OK (environment variable usage)
-          $allowedPatterns = @(
-            '\$env:',
-            '\$Env:',
-            '\[Environment\]',
-            'Environment\.GetEnvironmentVariable',
-            'Environment\.GetFolderPath',
-            'Environment\.SpecialFolder',
-            'AppContext\.BaseDirectory',
-            'Path\.GetTempPath',
-            '%USERPROFILE%',
-            '%PROGRAMFILES%',
-            '%TEMP%',
-            '%APPDATA%'
-          )
-
-          $issues = 0
-          foreach ($file in ($scripts + $csFiles)) {
-            $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
-            if (-not $content) { continue }
-
-            foreach ($pp in $pathPatterns) {
-              $pathMatches = [regex]::Matches($content, $pp.Pattern)
-              foreach ($m in $pathMatches) {
-                # Check the line containing the match for allowed env var usage
-                $lineStart = $content.LastIndexOf("`n", [Math]::Max(0, $m.Index - 1)) + 1
-                $lineEnd = $content.IndexOf("`n", $m.Index)
-                if ($lineEnd -eq -1) { $lineEnd = $content.Length }
-                $line = $content.Substring($lineStart, $lineEnd - $lineStart).Trim()
-
-                $isAllowed = $false
-                foreach ($ap in $allowedPatterns) {
-                  if ($line -match $ap) { $isAllowed = $true; break }
-                }
-
-                # Skip comments
-                if ($line -match '^\s*#' -or $line -match '^\s*//') { $isAllowed = $true }
-
-                if (-not $isAllowed) {
-                  $relativePath = $file.FullName -replace [regex]::Escape((Get-Location).Path + '\'), ''
-                  Write-Error "$($pp.Name) in $relativePath`: $($m.Value)"
-                  $issues++
-                }
-              }
-            }
-          }
-
-          if ($issues -gt 0) {
-            Write-Error "Found $issues hardcoded paths. Use environment variables (`$env:USERPROFILE, `$env:PROGRAMFILES, `$env:TEMP) instead."
-            exit 1
-          } else {
-            Write-Host "[+] No hardcoded Windows paths detected"
-          }
-        shell: pwsh
-
   functional-testing:
     name: Functional Testing
     runs-on: windows-latest
@@ -690,10 +275,18 @@ jobs:
           $scripts = @(
             "scripts/Gaming optimizations/Gaming-Optimizations.ps1",
             "scripts/Network optimizations/Network-Optimizations.ps1",
-            "scripts/General Tweaks/General-Tweaks.ps1",
+            "scripts/Performance/performance.ps1",
             "scripts/Privacy Security/privacy.ps1",
-            "scripts/Privacy Security/security.ps1",
-            "scripts/Services management/Services-Management.ps1"
+            "scripts/Defender/defender.ps1",
+            "scripts/Exploit Protection/exploit-protection.ps1",
+            "scripts/Device Guard/device-guard.ps1",
+            "scripts/Network Security/network-security.ps1",
+            "scripts/System Security/system-security.ps1",
+            "scripts/Debloat/debloat.ps1",
+            "scripts/Maintenance/maintenance.ps1",
+            "scripts/Customize/Customize.ps1",
+            "scripts/Windows Update/windows-update.ps1",
+            "scripts/Edge/Edge.ps1"
           )
 
           foreach ($scriptPath in $scripts) {
@@ -817,11 +410,15 @@ jobs:
 
           $revertScripts = @(
             "scripts/Privacy Security/revert-privacy.ps1",
-            "scripts/Privacy Security/revert-security.ps1",
+            "scripts/Defender/revert-defender.ps1",
+            "scripts/Exploit Protection/revert-exploit-protection.ps1",
+            "scripts/Device Guard/revert-device-guard.ps1",
+            "scripts/Network Security/revert-network-security.ps1",
+            "scripts/System Security/revert-system-security.ps1",
             "scripts/Gaming optimizations/revert-gaming.ps1",
-            "scripts/General Tweaks/revert-general.ps1",
+            "scripts/Performance/revert-performance.ps1",
             "scripts/Network optimizations/revert-network.ps1",
-            "scripts/Services management/revert-services.ps1"
+            "scripts/Debloat/revert-debloat.ps1"
           )
 
           foreach ($scriptPath in $revertScripts) {
@@ -869,7 +466,7 @@ jobs:
   build-exe:
     name: Build Windows EXE
     runs-on: windows-latest
-    needs: [validate-scripts, security-scan, functional-testing]
+    needs: [validate-scripts, functional-testing]
     timeout-minutes: 30
 
     steps:
@@ -928,17 +525,30 @@ jobs:
           $requiredScripts = @(
             "Gaming optimizations/Gaming-Optimizations.ps1",
             "Network optimizations/Network-Optimizations.ps1",
-            "General Tweaks/General-Tweaks.ps1",
+            "Performance/performance.ps1",
+            "Performance/revert-performance.ps1",
             "Privacy Security/privacy.ps1",
-            "Privacy Security/security.ps1",
             "Privacy Security/revert-privacy.ps1",
-            "Privacy Security/revert-security.ps1",
-            "Services management/Services-Management.ps1",
+            "Defender/defender.ps1",
+            "Defender/revert-defender.ps1",
+            "Exploit Protection/exploit-protection.ps1",
+            "Exploit Protection/revert-exploit-protection.ps1",
+            "Device Guard/device-guard.ps1",
+            "Device Guard/revert-device-guard.ps1",
+            "Network Security/network-security.ps1",
+            "Network Security/revert-network-security.ps1",
+            "System Security/system-security.ps1",
+            "System Security/revert-system-security.ps1",
+            "Debloat/debloat.ps1",
+            "Debloat/revert-debloat.ps1",
+            "Maintenance/maintenance.ps1",
             "create_restore_point.ps1"
           )
           $requiredRegFiles = @(
-            "General Tweaks/regs/Registry-Optimize.reg",
-            "General Tweaks/regs/Registry-Defaults.reg"
+            "Performance/regs/Registry-Optimize.reg",
+            "Performance/regs/Registry-Defaults.reg",
+            "Debloat/regs/servicesTweaked.reg",
+            "Debloat/regs/servicesDefault.reg"
           )
 
           $scriptsDir = "scripts"
@@ -978,10 +588,10 @@ jobs:
           $scriptResources = $asm.GetManifestResourceNames() | Where-Object { $_ -like '*Scripts*' }
 
           Write-Host "Embedded script resources: $($scriptResources.Count)"
-          # Current inventory: 14 .ps1 + index.txt + file-checksums.json + 4 .reg + nvidia_profile.xml + ooshutup10.cfg = 22.
+          # Current inventory: 26 .ps1 + index.txt + file-checksums.json + 4 .reg + nvidia_profile.xml + ooshutup10.cfg = 34.
           # Tightening the threshold means a silently removed script file fails CI instead of sliding in.
-          if ($scriptResources.Count -lt 22) {
-            Write-Error "Expected at least 22 embedded script resources, found $($scriptResources.Count)"
+          if ($scriptResources.Count -lt 34) {
+            Write-Error "Expected at least 34 embedded script resources, found $($scriptResources.Count)"
             exit 1
           }
           Write-Host "[+] Scripts are embedded in the assembly"

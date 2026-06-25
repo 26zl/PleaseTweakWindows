@@ -7,8 +7,6 @@ namespace PleaseTweakWindows.Converters;
 
 public sealed class BoolToVisibilityConverter : IValueConverter
 {
-    public static readonly BoolToVisibilityConverter Instance = new();
-
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is true ? Visibility.Visible : Visibility.Collapsed;
 
@@ -18,30 +16,15 @@ public sealed class BoolToVisibilityConverter : IValueConverter
 
 public sealed class InverseBoolConverter : IValueConverter
 {
-    public static readonly InverseBoolConverter Instance = new();
-
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is not true;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is not true;
-}
-
-public sealed class InverseBoolToVisibilityConverter : IValueConverter
-{
-    public static readonly InverseBoolToVisibilityConverter Instance = new();
-
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is true ? Visibility.Collapsed : Visibility.Visible;
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is Visibility v && v == Visibility.Collapsed;
 }
 
 public sealed class StringNotEmptyToVisibilityConverter : IValueConverter
 {
-    public static readonly StringNotEmptyToVisibilityConverter Instance = new();
-
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => string.IsNullOrEmpty(value as string) ? Visibility.Collapsed : Visibility.Visible;
 
@@ -56,8 +39,6 @@ public sealed class StringNotEmptyToVisibilityConverter : IValueConverter
 /// </summary>
 public sealed class NotAnyTrueConverter : IMultiValueConverter
 {
-    public static readonly NotAnyTrueConverter Instance = new();
-
     public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
         => !values.Any(v => v is true);
 
@@ -67,10 +48,8 @@ public sealed class NotAnyTrueConverter : IMultiValueConverter
 
 public sealed class ExpandArrowConverter : IValueConverter
 {
-    public static readonly ExpandArrowConverter Instance = new();
-
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is true ? "\u25B2" : "\u25BC";
+        => value is true ? "▲" : "▼";
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();

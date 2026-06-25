@@ -110,10 +110,10 @@ public partial class LogPanelViewModel : ViewModelBase
         return _defaultBrush ??= Resolve("PtwTextPrimaryBrush", Color.FromRgb(0xED, 0xED, 0xEF));
     }
 
-    private static Brush Resolve(string key, Color fallback)
+    private static Brush Resolve(string resourceKey, Color fallback)
     {
         var app = System.Windows.Application.Current;
-        if (app?.TryFindResource(key) is Brush brush)
+        if (app?.TryFindResource(resourceKey) is Brush brush)
             return brush;
 
         var solid = new SolidColorBrush(fallback);

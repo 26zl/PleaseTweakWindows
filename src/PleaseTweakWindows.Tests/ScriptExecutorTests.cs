@@ -274,4 +274,28 @@ public class ScriptExecutorTests
                 $"consolidated script '{name}' must exist as an embedded resource (a rename silently drops its -Action argument)");
         }
     }
+
+    [Fact]
+    public void ConsolidatedScripts_CoversEveryRegistryScript()
+    {
+        // Every script the registry routes an -Action to must be listed in
+        // ConsolidatedScripts. If a category script is renamed without updating that
+        // list, Contains() silently returns false and the script runs WITHOUT its
+        // -Action argument. This converts that silent drift into a test failure.
+        var registry = new TweakRegistry();
+
+        var registryScripts = registry.GetTweaks()
+            .SelectMany(t => new[] { t.ApplyScript, t.RevertScript })
+            .Select(Path.GetFileName)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in registryScripts)
+        {
+            ScriptExecutor.ConsolidatedScripts
+                .Contains(name!, StringComparer.OrdinalIgnoreCase)
+                .Should().BeTrue(
+                    $"registry script '{name}' must be listed in ScriptExecutor.ConsolidatedScripts so it receives its -Action argument (a rename silently drops it otherwise)");
+        }
+    }
 }

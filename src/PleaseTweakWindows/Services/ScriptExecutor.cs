@@ -15,12 +15,26 @@ public sealed partial class ScriptExecutor : IScriptExecutor
     {
         "gaming-optimizations.ps1",
         "network-optimizations.ps1",
-        "general-tweaks.ps1",
-        "services-management.ps1",
+        "performance.ps1",
+        "revert-performance.ps1",
+        "debloat.ps1",
+        "revert-debloat.ps1",
+        "maintenance.ps1",
         "revert-privacy.ps1",
         "privacy.ps1",
-        "security.ps1",
-        "revert-security.ps1"
+        "defender.ps1",
+        "revert-defender.ps1",
+        "exploit-protection.ps1",
+        "revert-exploit-protection.ps1",
+        "device-guard.ps1",
+        "revert-device-guard.ps1",
+        "network-security.ps1",
+        "revert-network-security.ps1",
+        "system-security.ps1",
+        "revert-system-security.ps1",
+        "customize.ps1",
+        "windows-update.ps1",
+        "edge.ps1"
     };
 
     private readonly IProcessRunner _processRunner;

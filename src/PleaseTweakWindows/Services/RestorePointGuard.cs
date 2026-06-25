@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 
 namespace PleaseTweakWindows.Services;
 
-public sealed class RestorePointGuard : IRestorePointGuard
+public sealed class RestorePointGuard
 {
     private enum Decision { Unknown, Created, Skipped }
 

@@ -3,18 +3,20 @@ using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using PleaseTweakWindows.Models;
 using PleaseTweakWindows.Services;
 
 namespace PleaseTweakWindows.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    private readonly ITweakRegistry _tweakRegistry;
+    private readonly TweakRegistry _tweakRegistry;
     private readonly IScriptExecutor _executor;
     private readonly IDialogService _dialogService;
-    private readonly IRestorePointGuard _restorePointGuard;
-    private readonly IResourceExtractor _resourceExtractor;
-    private readonly IUpdateChecker _updateChecker;
+    private readonly RestorePointGuard _restorePointGuard;
+    private readonly ResourceExtractor _resourceExtractor;
+    private readonly UpdateChecker _updateChecker;
+    private readonly ConfigProfileService _configProfileService;
     private readonly AdminChecker _adminChecker;
     private readonly ILogger<MainWindowViewModel> _logger;
 
@@ -65,12 +67,13 @@ public partial class MainWindowViewModel : ViewModelBase
     partial void OnIsInitializedChanged(bool value) => OnPropertyChanged(nameof(HasNoResults));
 
     public MainWindowViewModel(
-        ITweakRegistry tweakRegistry,
+        TweakRegistry tweakRegistry,
         IScriptExecutor executor,
         IDialogService dialogService,
-        IRestorePointGuard restorePointGuard,
-        IResourceExtractor resourceExtractor,
-        IUpdateChecker updateChecker,
+        RestorePointGuard restorePointGuard,
+        ResourceExtractor resourceExtractor,
+        UpdateChecker updateChecker,
+        ConfigProfileService configProfileService,
         AdminChecker adminChecker,
         ILoggerFactory loggerFactory)
     {
@@ -80,6 +83,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _restorePointGuard = restorePointGuard;
         _resourceExtractor = resourceExtractor;
         _updateChecker = updateChecker;
+        _configProfileService = configProfileService;
         _adminChecker = adminChecker;
         _logger = loggerFactory.CreateLogger<MainWindowViewModel>();
         LogPanel = new LogPanelViewModel();
@@ -226,6 +230,149 @@ public partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.LogWarning("Failed to open browser: {Message}", ex.Message);
+        }
+    }
+
+    // Maps every apply action ID to a friendly label and the script that runs it.
+    // The basis for export (all action IDs) and import (validate + run selected).
+    private List<(string ActionId, string DisplayName, string ScriptPath)> BuildApplyActionCatalog()
+    {
+        var catalog = new List<(string ActionId, string DisplayName, string ScriptPath)>();
+        if (_scriptDirectory == null) return catalog;
+
+        foreach (var tweak in _tweakRegistry.GetTweaks())
+        {
+            var scriptPath = Path.Combine(_scriptDirectory, tweak.ApplyScript);
+            foreach (var sub in tweak.SubTweaks)
+                catalog.Add((sub.ApplyAction, $"{tweak.Title}: {sub.Name}", scriptPath));
+        }
+        return catalog;
+    }
+
+    [RelayCommand]
+    private void ExportConfig()
+    {
+        if (_scriptDirectory == null) return;
+        var catalog = BuildApplyActionCatalog();
+        if (catalog.Count == 0)
+        {
+            ErrorMessage = "Nothing to export yet.";
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export tweak profile",
+            Filter = "PleaseTweakWindows profile (*.ptw.json)|*.ptw.json",
+            FileName = "ptw-profile.ptw.json"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var version = GetType().Assembly.GetName().Version?.ToString() ?? "unknown";
+            var json = _configProfileService.Export(catalog.Select(c => c.ActionId), version, DateTimeOffset.UtcNow);
+            File.WriteAllText(dialog.FileName, json);
+            LogPanel.AppendLine($"[+] Exported {catalog.Count} tweaks to {dialog.FileName}");
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Export failed: {ex.Message}";
+            _logger.LogWarning(ex, "Config export failed");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportConfigAsync()
+    {
+        if (IsScriptsRunning || _scriptDirectory == null) return;
+
+        var openDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import tweak profile",
+            Filter = "PleaseTweakWindows profile (*.ptw.json;*.json)|*.ptw.json;*.json|All files (*.*)|*.*"
+        };
+        if (openDialog.ShowDialog() != true) return;
+
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(openDialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Could not read profile: {ex.Message}";
+            return;
+        }
+
+        var catalog = BuildApplyActionCatalog();
+        var byId = catalog
+            .GroupBy(c => c.ActionId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        var known = new HashSet<string>(byId.Keys, StringComparer.Ordinal);
+
+        var result = _configProfileService.Import(json, known);
+        if (result.Error != null)
+        {
+            ErrorMessage = result.Error;
+            return;
+        }
+        if (result.ValidActions.Count == 0)
+        {
+            ErrorMessage = "No tweaks in that profile apply to this build.";
+            return;
+        }
+
+        var reviewItems = result.ValidActions
+            .Select(a => (ActionId: a, DisplayName: byId[a].DisplayName))
+            .ToList();
+        var selected = await _dialogService.ShowConfigReviewAsync(reviewItems, result.DroppedActions.Count);
+        if (selected == null || selected.Count == 0) return;
+
+        // One batch confirmation, escalated if any selected tweak is high-risk.
+        var highRisk = selected.Any(a => _dialogService.IsHighRisk(a));
+        var batchAction = highRisk ? "run-all-batch-high-risk" : "run-all-batch";
+        var confirmed = await _dialogService.ShowConfirmationAsync(batchAction, $"Imported profile: {selected.Count} tweaks");
+        if (!confirmed) return;
+
+        Action<string> onOutput = line => UiDispatcher.Post(() => LogPanel.AppendLine(line));
+
+        // One restore point for the whole import, then skip it inside the loop.
+        var proceed = await _restorePointGuard.EnsureRestorePointAsync(_scriptDirectory, onOutput);
+        if (!proceed) return;
+
+        IsScriptsRunning = true;
+        try
+        {
+            foreach (var actionId in selected)
+            {
+                var entry = byId[actionId];
+                // High-risk tweaks still show their specific warning (UAC, wu-disable,
+                // persist, NTLM block, …) so an imported profile can't silently apply a
+                // severe change behind one generic batch prompt. Reviewed non-high-risk
+                // tweaks run without an extra prompt.
+                var skipConfirm = !_dialogService.IsHighRisk(actionId);
+                var runResult = await ScriptRunner.RunAsync(
+                    entry.ScriptPath, actionId, entry.DisplayName, _scriptDirectory,
+                    _executor, _dialogService, _restorePointGuard, LogPanel,
+                    ensureRestorePoint: false, skipConfirmation: skipConfirm);
+
+                if (runResult.Outcome == ScriptRunOutcome.ConfirmationCancelled)
+                {
+                    onOutput("[!] Import cancelled by user — stopping remaining tweaks.");
+                    break;
+                }
+                if (runResult.Outcome == ScriptRunOutcome.Applied && runResult.ExitCode != 0)
+                {
+                    onOutput($"[!] '{entry.DisplayName}' exited with code {runResult.ExitCode} — stopping import.");
+                    ErrorMessage = $"'{entry.DisplayName}' failed (exit {runResult.ExitCode}) — check the output panel.";
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            IsScriptsRunning = false;
         }
     }
 

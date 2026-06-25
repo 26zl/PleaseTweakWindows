@@ -1,85 +1,70 @@
 using System.Windows;
 using Microsoft.Extensions.Logging;
+using PleaseTweakWindows.Models;
 using PleaseTweakWindows.Views.Dialogs;
 
 namespace PleaseTweakWindows.Services;
 
 public sealed class DialogService : IDialogService
 {
-    private static readonly HashSet<string> DestructiveActions = new(StringComparer.Ordinal)
-    {
-        "bloatware-remove",
-        "services-disable",
-        "driver-clean",
-        "cleanup-run",
-        "registry-apply",
-        "tls-hardening",
-        "firewall-hardening",
-        "smart-optimize-aggressive",
-        "network-all-private",
-        "ui-online-content-disable",
-        "ui-secure-recent-docs",
-        "ui-remove-this-pc-folders",
-        "ui-lock-screen-notifications-disable",
-        "ui-store-open-with-disable",
-        "ui-quick-access-recent-disable",
-        "ui-sync-provider-notifications-disable",
-        "ui-hibernation-disable",
-        "ui-camera-osd-enable",
-        "copilot-disable",
-        "security-improve-network",
-        "security-clipboard-data-disable",
-        "security-spectre-meltdown-enable",
-        "security-dep-enable",
-        "security-autorun-disable",
-        "security-lock-screen-camera-disable",
-        "security-lm-hash-disable",
-        "security-always-install-elevated-disable",
-        "security-sehop-enable",
-        "security-ps2-downgrade-protection-enable",
-        "security-wcn-disable",
-        "amd-driver-install",
-        "security-smb-modern-enforce",
-        "security-firewall-logging-enable",
-        "security-defender-cfa-enable",
-        "security-defender-network-protection-enable",
-        "security-defender-cloud-tune",
-        "security-defender-sandbox-enable",
-        "security-aslr-system-enable",
-        "security-tls-cipher-order",
-        "security-block-ntlm-incoming",
-        "security-block-ntlm-outgoing",
-        "network-all-public",
-    };
+    // Batch pseudo-actions are not SubTweaks (they cover a whole Run-All / import sweep),
+    // and network-all-private is the Revert side of the "Set all networks to Public" toggle
+    // (its risk + warning differ from the Apply action), so neither is projected from the
+    // tweak model — they are declared here as the single source for those ids.
+    private const string RunAllBatchWarning =
+        "'{0}' will apply multiple tweaks in sequence.\n\n" +
+        "The app stops on the first failed tweak so you can inspect the output before continuing.";
+    private const string RunAllBatchHighRiskWarning =
+        "'{0}' will apply multiple tweaks in sequence and includes high-risk changes.\n\n" +
+        "Review the category contents first. These changes can affect services, networking, drivers, security policy, or app compatibility.";
+    private const string NetworkAllPrivateWarning =
+        "'{0}' will set every connected network profile to Private.\n\n" +
+        "WARNING: This increases trust for LAN discovery and sharing. Only use on trusted home/work networks.";
 
-    private static readonly HashSet<string> HighRiskActions = new(StringComparer.Ordinal)
-    {
-        "run-all-batch-high-risk",
-        "services-disable",
-        "driver-clean",
-        "tls-hardening",
-        "firewall-hardening",
-        "smart-optimize-aggressive",
-        "security-spectre-meltdown-enable",
-        "security-improve-network",
-        "security-smb-modern-enforce",
-        "security-defender-cfa-enable",
-        "security-block-ntlm-incoming",
-        "security-block-ntlm-outgoing",
-        "network-all-public",
-        "network-all-private",
-        "security-aslr-system-enable",
-    };
+    private const string GenericWarning =
+        "'{0}' will make changes to your system.\n\n" +
+        "Are you sure you want to proceed?";
+
+    // Projected once from the tweak model: an action requires confirmation when its
+    // SubTweak.Risk is Confirm or High, and is high-risk when its Risk is High.
+    private readonly HashSet<string> _destructiveActions;
+    private readonly HashSet<string> _highRiskActions;
+    private readonly Dictionary<string, string> _warningTemplates;
 
     private readonly ILogger<DialogService> _logger;
 
-    public DialogService(ILoggerFactory loggerFactory)
+    public DialogService(ILoggerFactory loggerFactory, TweakRegistry tweakRegistry)
     {
         _logger = loggerFactory.CreateLogger<DialogService>();
+
+        _destructiveActions = new HashSet<string>(StringComparer.Ordinal);
+        _highRiskActions = new HashSet<string>(StringComparer.Ordinal);
+        _warningTemplates = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var sub in tweakRegistry.GetTweaks().SelectMany(t => t.SubTweaks))
+        {
+            if (sub.Risk != SubTweakRisk.None)
+                _destructiveActions.Add(sub.ApplyAction);
+            if (sub.Risk == SubTweakRisk.High)
+                _highRiskActions.Add(sub.ApplyAction);
+            if (sub.Warning != null)
+                _warningTemplates[sub.ApplyAction] = sub.Warning;
+        }
+
+        // Overlay the non-SubTweak ids. run-all-batch is only ever passed to
+        // ShowConfirmationAsync directly (never RequiresConfirmation), so it is neither
+        // destructive nor high-risk but still carries a warning. run-all-batch-high-risk is
+        // high-risk. network-all-private (a Revert id) is destructive + high-risk.
+        _highRiskActions.Add("run-all-batch-high-risk");
+        _destructiveActions.Add("network-all-private");
+        _highRiskActions.Add("network-all-private");
+        _warningTemplates["run-all-batch"] = RunAllBatchWarning;
+        _warningTemplates["run-all-batch-high-risk"] = RunAllBatchHighRiskWarning;
+        _warningTemplates["network-all-private"] = NetworkAllPrivateWarning;
     }
 
-    public bool RequiresConfirmation(string action) => DestructiveActions.Contains(action);
-    public bool IsHighRisk(string action) => HighRiskActions.Contains(action);
+    public bool RequiresConfirmation(string action) => _destructiveActions.Contains(action);
+    public bool IsHighRisk(string action) => _highRiskActions.Contains(action);
 
     public Task<bool> ShowConfirmationAsync(string action, string actionName)
     {
@@ -134,6 +119,25 @@ public sealed class DialogService : IDialogService
         });
     }
 
+    public Task<IReadOnlyList<string>?> ShowConfigReviewAsync(
+        IReadOnlyList<(string ActionId, string DisplayName)> items, int droppedCount)
+    {
+        return ShowDialogOnUiAsync<IReadOnlyList<string>?>(() =>
+        {
+            var reviewItems = items
+                .Select(i => new ConfigReviewItem(i.ActionId, i.DisplayName))
+                .ToList();
+            var dialog = new ConfigReviewDialog(reviewItems, droppedCount)
+            {
+                Owner = GetMainWindow()
+            };
+            var applied = dialog.ShowDialog() == true;
+            _logger.LogInformation("Config review: {Result} ({Count} selected)",
+                applied ? "applied" : "cancelled", applied ? dialog.SelectedActionIds.Count : 0);
+            return applied ? dialog.SelectedActionIds : null;
+        });
+    }
+
     public Task<bool> ShowCancelConfirmationAsync()
     {
         return ShowDialogOnUiAsync(() =>
@@ -157,112 +161,10 @@ public sealed class DialogService : IDialogService
         });
     }
 
-    public string GetActionWarning(string action, string actionName) => action switch
-    {
-        "bloatware-remove" =>
-            $"'{actionName}' will uninstall pre-installed Windows apps.\n\n" +
-            "Some apps may be difficult to reinstall. Make sure you have a restore point.",
-        "services-disable" =>
-            $"'{actionName}' will disable Windows services.\n\n" +
-            "WARNING: This may break Windows features like printing, Bluetooth, or remote desktop.\n" +
-            "A system restore point is STRONGLY recommended.",
-        "driver-clean" =>
-            $"'{actionName}' will remove GPU drivers using DDU.\n\n" +
-            "Your display may go blank temporarily. Have a new driver ready to install.",
-        "cleanup-run" =>
-            $"'{actionName}' will delete temporary files and caches.\n\n" +
-            "This is generally safe but cannot be undone.",
-        "registry-apply" =>
-            $"'{actionName}' will modify Windows registry settings.\n\n" +
-            "A restore point is recommended before proceeding.",
-        "tls-hardening" =>
-            $"'{actionName}' will disable legacy TLS/SSL protocols.\n\n" +
-            "WARNING: This may break connectivity with older websites, VPNs, or enterprise systems.",
-        "firewall-hardening" =>
-            $"'{actionName}' will modify Windows Firewall policies.\n\n" +
-            "This changes default inbound/outbound rules for all profiles. " +
-            "Some applications may be blocked.",
-        "security-improve-network" =>
-            $"'{actionName}' will harden SMB/NetBIOS and disable legacy network components.\n\n" +
-            "WARNING: This may break file sharing, remote access, or older devices on your network.",
-        "security-spectre-meltdown-enable" =>
-            $"'{actionName}' will enable Spectre/Meltdown CPU mitigations.\n\n" +
-            "WARNING: This may reduce CPU performance by 5-30% depending on workload.",
-        "security-clipboard-data-disable" =>
-            $"'{actionName}' will disable clipboard sync and history.\n\n" +
-            "Clipboard sync across devices and history will stop working.",
-        "security-ps2-downgrade-protection-enable" =>
-            $"'{actionName}' will disable PowerShell 2.0 optional features.\n\n" +
-            "Legacy scripts requiring PowerShell 2.0 may stop working.",
-        "smart-optimize-aggressive" =>
-            $"'{actionName}' applies aggressive network adapter changes.\n\n" +
-            "It may disable Flow Control/Jumbo Frames and force Interrupt Moderation.\n" +
-            "This can reduce throughput on some LANs or increase latency.",
-        "run-all-batch" =>
-            $"'{actionName}' will apply multiple tweaks in sequence.\n\n" +
-            "The app stops on the first failed tweak so you can inspect the output before continuing.",
-        "run-all-batch-high-risk" =>
-            $"'{actionName}' will apply multiple tweaks in sequence and includes high-risk changes.\n\n" +
-            "Review the category contents first. These changes can affect services, networking, drivers, security policy, or app compatibility.",
-        "copilot-disable" =>
-            $"'{actionName}' will disable Windows Copilot.\n\n" +
-            "This removes the Copilot app and sets group policy to prevent it from running.",
-        "ui-remove-this-pc-folders" =>
-            $"'{actionName}' will hide standard folders from This PC.\n\n" +
-            "The folders remain on disk, but Explorer shortcuts will be hidden.",
-        "ui-hibernation-disable" =>
-            $"'{actionName}' will disable hibernation.\n\n" +
-            "This removes hiberfil.sys and may affect Fast Startup and sleep behavior.",
-        "amd-driver-install" =>
-            "AMD's driver download page will open in your browser.\n\n" +
-            "Click 'Download Windows Drivers' on the AMD page to get the latest Auto-Detect installer.\n" +
-            "The installer will detect your GPU and download the correct driver.",
-        "security-smb-modern-enforce" =>
-            $"'{actionName}' will enforce SMB 3.1.1 minimum and require server-side encryption.\n\n" +
-            "WARNING: May break connectivity to older file servers (SMB 2.x/3.0) including some NAS devices and printers.",
-        "security-firewall-logging-enable" =>
-            $"'{actionName}' will write firewall logs to %SystemRoot%\\System32\\LogFiles\\Firewall\\pfirewall.log (up to 32 MB per profile).\n\n" +
-            "Safe change — useful for forensics. Revert restores defaults.",
-        "security-defender-cfa-enable" =>
-            $"'{actionName}' will enable Defender Controlled Folder Access.\n\n" +
-            "WARNING: Some apps (games, sync tools, backup software) may be blocked from writing to protected folders. " +
-            "You can whitelist apps via Windows Security > Virus & threat protection > Ransomware protection.",
-        "security-defender-network-protection-enable" =>
-            $"'{actionName}' will enable Defender Network Protection.\n\n" +
-            "Blocks connections to known malicious IPs and domains. Occasionally flags legitimate sites — check event log if something breaks.",
-        "security-defender-cloud-tune" =>
-            $"'{actionName}' will set Defender cloud protection to maximum aggressiveness.\n\n" +
-            "MAPS Advanced reporting + Cloud Block Level High + Block At First Sight. " +
-            "Requires internet connectivity for real-time cloud lookups; may slow first-run of unsigned apps.",
-        "security-defender-sandbox-enable" =>
-            $"'{actionName}' will run Defender Antivirus inside a sandbox.\n\n" +
-            "REQUIRES REBOOT to take effect. Tamper-resistant but may increase CPU overhead slightly.",
-        "security-aslr-system-enable" =>
-            $"'{actionName}' will enable system-wide Mandatory ASLR (ForceRelocateImages).\n\n" +
-            "WARNING: May break older apps that were not compiled with /DYNAMICBASE. " +
-            "Known incompatibilities: GitHub Desktop, Git Bash, MSYS2 — enable the 'Exclude dev tools' tweak after this if you use them.",
-        "security-tls-cipher-order" =>
-            $"'{actionName}' will set the system-wide TLS cipher suite and ECC curve order.\n\n" +
-            "Prefers TLS 1.3 suites and AES-256-GCM. Mostly safe but may affect apps that hardcoded specific cipher orders.",
-        "security-block-ntlm-incoming" =>
-            $"'{actionName}' will DENY all incoming NTLM authentication to this machine.\n\n" +
-            "SEVERE: Breaks SMB file shares, RDP, Hyper-V, MMC snap-ins, and any service that uses NTLM to authenticate AGAINST this machine. " +
-            "Only suitable for isolated Privileged Access Workstations.",
-        "security-block-ntlm-outgoing" =>
-            $"'{actionName}' will DENY all outgoing NTLM authentication from this machine.\n\n" +
-            "SEVERE: Breaks authentication to legacy servers, some network printers, and SMB shares that don't support Kerberos. " +
-            "Only suitable for isolated Privileged Access Workstations.",
-        "network-all-public" =>
-            $"'{actionName}' will set every connected network profile to Public.\n\n" +
-            "WARNING: Breaks local file sharing, printer discovery, mDNS/Bonjour, network discovery, and Cast-to-Device on your LAN. " +
-            "Only appropriate for coffee-shop / untrusted networks.",
-        "network-all-private" =>
-            $"'{actionName}' will set every connected network profile to Private.\n\n" +
-            "WARNING: This increases trust for LAN discovery and sharing. Only use on trusted home/work networks.",
-        _ =>
-            $"'{actionName}' will make changes to your system.\n\n" +
-            "Are you sure you want to proceed?"
-    };
+    public string GetActionWarning(string action, string actionName) =>
+        _warningTemplates.TryGetValue(action, out var template)
+            ? string.Format(template, actionName)
+            : string.Format(GenericWarning, actionName);
 
     private static Task<T> ShowDialogOnUiAsync<T>(Func<T> show)
     {
