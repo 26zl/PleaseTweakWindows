@@ -2,20 +2,32 @@ CommonFunctions.ps1
 Gaming optimizations/Gaming-Optimizations.ps1
 Gaming optimizations/revert-gaming.ps1
 Gaming optimizations/reg/nvidia_profile.xml
-General Tweaks/General-Tweaks.ps1
-General Tweaks/revert-general.ps1
-General Tweaks/regs/Registry-Optimize.reg
-General Tweaks/regs/Registry-Defaults.reg
+Performance/performance.ps1
+Performance/revert-performance.ps1
+Performance/regs/Registry-Optimize.reg
+Performance/regs/Registry-Defaults.reg
 Network optimizations/Network-Optimizations.ps1
 Network optimizations/revert-network.ps1
+Debloat/debloat.ps1
+Debloat/revert-debloat.ps1
+Debloat/regs/servicesTweaked.reg
+Debloat/regs/servicesDefault.reg
 Privacy Security/privacy.ps1
 Privacy Security/revert-privacy.ps1
-Privacy Security/security.ps1
-Privacy Security/revert-security.ps1
 Privacy Security/regs/ooshutup10.cfg
-Services management/Services-Management.ps1
-Services management/revert-services.ps1
-Services management/regs/servicesTweaked.reg
-Services management/regs/servicesDefault.reg
+Defender/defender.ps1
+Defender/revert-defender.ps1
+Exploit Protection/exploit-protection.ps1
+Exploit Protection/revert-exploit-protection.ps1
+Device Guard/device-guard.ps1
+Device Guard/revert-device-guard.ps1
+Network Security/network-security.ps1
+Network Security/revert-network-security.ps1
+System Security/system-security.ps1
+System Security/revert-system-security.ps1
+Customize/Customize.ps1
+Maintenance/maintenance.ps1
+Windows Update/windows-update.ps1
+Edge/Edge.ps1
 create_restore_point.ps1
 file-checksums.json

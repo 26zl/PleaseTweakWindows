@@ -1,6 +1,6 @@
-# General Tweaks Revert Script
-# Purpose: Restores defaults and repairs removed components.
-# Usage: powershell -File revert-general.ps1 -Mode <Revert|Repair|RevertAndRepair>
+# Debloat Revert Script
+# Purpose: Restores defaults and repairs removed components (apps, widgets, background apps, services).
+# Usage: powershell -File revert-debloat.ps1 -Mode <Revert|Repair|RevertAndRepair>
 # Version: 2.1.0
 # Last Updated: 2026-01-18
 #Requires -RunAsAdministrator
@@ -21,14 +21,6 @@ if (Test-Path $commonFunctionsPath) {
     Write-Output "[!] CommonFunctions.ps1 not found - some features may not work"
 }
 
-function Resolve-FallbackRegPath {
-    param([Parameter(Mandatory=$true)][string[]]$Candidates)
-    foreach ($p in $Candidates) {
-        if (Test-Path $p) { return $p }
-    }
-    return $null
-}
-
 $ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -37,63 +29,14 @@ $doRepair = ($Mode -eq 'Repair') -or ($Mode -eq 'RevertAndRepair')
 
 Write-Output ""
 Write-Output "========================================"
-Write-Output "  General Tweaks - $Mode"
+Write-Output "  Debloat - $Mode"
 Write-Output "========================================"
 Write-Output ""
 
 #region REVERT Operations
 if ($doRevert) {
-    $totalSteps = 8
+    $totalSteps = 3
     $currentStep = 0
-
-    # Power plans & power policy
-    $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Restoring power settings..."
-    try {
-        powercfg -restoredefaultschemes 2>$null | Out-Null
-        cmd /c "powercfg /delete 99999999-9999-9999-9999-999999999999 >nul 2>&1"
-        Write-PTWSuccess "Power plans restored to defaults"
-    } catch {
-        Write-PTWWarning "Could not fully restore power settings"
-    }
-    Remove-RegKey -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings"
-    Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Services\USB" -Name "DisableSelectiveSuspend" -Value 0
-    Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" -Name "ValueMax" -Value 100
-    Remove-RegKey -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling"
-    Set-RegDword -Path "HKLM:\System\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\0853a681-27c8-4100-a2fd-82013e970683" -Name "Attributes" -Value 1
-    Set-RegDword -Path "HKLM:\System\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009" -Name "Attributes" -Value 1
-    powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 1 2>$null | Out-Null
-    powercfg -setdcvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 1 2>$null | Out-Null
-
-    # Privacy & UX defaults
-    $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Restoring privacy & UX settings..."
-    try {
-        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -Value 1
-        Remove-RegValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed"
-        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "SilentInstalledAppsEnabled" -Value 1
-        Set-RegDword -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "SystemPaneSuggestionsEnabled" -Value 1
-        Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows\CloudContent" -Name "DisableWindowsConsumerFeatures" -Value 0
-        Set-RegDword -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\HandwritingErrorReports" -Name "PreventHandwritingErrorReports" -Value 0
-        Set-RegSz -Path "HKCU:\Control Panel\Desktop\WindowMetrics" -Name "MinAnimate" -Value "1"
-        Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Services\USB" -Name "DisableSelectiveSuspend" -Value 0
-        Remove-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoLowDiskSpaceChecks"
-        Remove-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "LinkResolveIgnoreLinkInfo"
-        Remove-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoResolveSearch"
-        Remove-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoInternetOpenWith"
-        Write-PTWSuccess "Privacy & UX settings restored"
-    } catch {
-        Write-PTWWarning "Could not fully restore privacy settings"
-    }
-
-    # Photo viewer associations
-    $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Removing custom photo associations..."
-    $photoExts = @(".tif", ".tiff", ".bmp", ".dib", ".gif", ".jfif", ".jpe", ".jpeg", ".jpg", ".jxr", ".png")
-    foreach ($ext in $photoExts) {
-        Remove-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" -Name $ext
-    }
-    Write-PTWSuccess "Photo associations cleared"
 
     # Background apps & Widgets
     $currentStep++
@@ -102,29 +45,6 @@ if ($doRevert) {
     Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 1
     Remove-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
     Write-PTWSuccess "Background apps & widgets restored"
-
-    # Registry defaults
-    $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Restoring registry defaults..."
-    $regSuccess = $false
-    $fallback = Resolve-FallbackRegPath -Candidates @(
-        (Join-Path $PSScriptRoot "regs\Registry Defaults.reg"),
-        (Join-Path $PSScriptRoot "regs\Registry-Defaults.reg"),
-        (Join-Path $PSScriptRoot "Registry Defaults.reg"),
-        (Join-Path $PSScriptRoot "Registry-Defaults.reg")
-    )
-    if ($fallback) {
-        powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 1 2>$null | Out-Null
-        # Reflect the real import result instead of assuming success.
-        $regSuccess = Import-RegistryFile -RegFile $fallback
-    }
-    if ($regSuccess) {
-        Write-PTWSuccess "Registry defaults restored"
-    } else {
-        Write-PTWWarning "Registry defaults not found (skipped)"
-    }
-    # Clear the registry-apply guard marker so registry-apply can run again after revert
-    Remove-RegValue -Path "HKCU:\Software\PleaseTweakWindows" -Name "RegistryOptimized"
 
     # Shell & Search restore
     $currentStep++
@@ -154,30 +74,23 @@ if ($doRevert) {
     cmd /c "sc start WSearch >nul 2>&1"
     Write-PTWSuccess "Shell & search restored"
 
-    # Keyboard shortcuts
+    # Services restore
     $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Restoring keyboard shortcuts..."
-    # Also restore hidserv in case an older version of this tweak disabled it.
-    Set-RegDword -Path "HKLM:\SYSTEM\CurrentControlSet\Services\hidserv" -Name "Start" -Value 3
-    Remove-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoWinKeys"
-    Remove-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys"
-    Remove-RegValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map"
-    Write-PTWSuccess "Keyboard shortcuts restored"
-
-    # HDCP settings
-    $currentStep++
-    Write-Output "  [$currentStep/$totalSteps] Restoring HDCP settings..."
-    $gpuClassPath = "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
-    try {
-        $gpuKeys = (Get-ChildItem -Path $gpuClassPath -Force -ErrorAction SilentlyContinue).Name
-        foreach ($key in $gpuKeys) {
-            if ($key -notlike '*Configuration') {
-                Set-RegDword -Path "Registry::$key" -Name "RMHdcpKeyglobZero" -Value 0
-            }
+    Write-Output "  [$currentStep/$totalSteps] Restoring services to default..."
+    $regPath = Join-Path $PSScriptRoot "regs\servicesDefault.reg"
+    if (-not (Test-Path $regPath)) {
+        Write-PTWWarning "Services default registry not found: $regPath (skipped)"
+    } else {
+        $imported = Import-RegistryFile -RegFile $regPath
+        # regedit.exe /s can report success even on a partial/blocked import, so
+        # re-validate a couple of key services returned to their defaults (Start=2).
+        $spoolerStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Spooler" -Name "Start" -ErrorAction SilentlyContinue).Start
+        $themesStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Themes" -Name "Start" -ErrorAction SilentlyContinue).Start
+        if ((-not $imported) -or ($spoolerStart -ne 2) -or ($themesStart -ne 2)) {
+            Write-PTWWarning "Services restore did not fully apply (Spooler Start='$spoolerStart', Themes Start='$themesStart', expected 2). Some services may still be disabled - try running this again as Administrator."
+        } else {
+            Write-PTWSuccess "Services restored to Windows defaults"
         }
-        Write-PTWSuccess "HDCP settings restored"
-    } catch {
-        Write-PTWWarning "Could not restore HDCP settings"
     }
 
     Write-Output ""

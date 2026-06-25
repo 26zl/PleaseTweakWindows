@@ -64,7 +64,7 @@ public partial class App : Application
             {
                 var executor = _serviceProvider.GetRequiredService<IScriptExecutor>();
                 executor.Shutdown();
-                var extractor = _serviceProvider.GetRequiredService<IResourceExtractor>();
+                var extractor = _serviceProvider.GetRequiredService<ResourceExtractor>();
                 extractor.Cleanup();
             }
             catch (Exception ex) { Log.Warning(ex, "Shutdown cleanup failed"); }
@@ -113,11 +113,12 @@ public partial class App : Application
 
         services.AddSingleton<IProcessRunner, ProcessRunner>();
         services.AddSingleton<IScriptExecutor, ScriptExecutor>();
-        services.AddSingleton<IResourceExtractor, ResourceExtractor>();
-        services.AddSingleton<ITweakRegistry, TweakRegistry>();
+        services.AddSingleton<ResourceExtractor>();
+        services.AddSingleton<TweakRegistry>();
         services.AddSingleton<IDialogService, DialogService>();
-        services.AddSingleton<IRestorePointGuard, RestorePointGuard>();
-        services.AddSingleton<IUpdateChecker, UpdateChecker>();
+        services.AddSingleton<RestorePointGuard>();
+        services.AddSingleton<UpdateChecker>();
+        services.AddSingleton<ConfigProfileService>();
         services.AddSingleton<AdminChecker>();
 
         services.AddTransient<MainWindowViewModel>();

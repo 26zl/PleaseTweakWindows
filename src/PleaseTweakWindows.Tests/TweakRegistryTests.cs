@@ -10,10 +10,10 @@ public class TweakRegistryTests
     private readonly TweakRegistry _registry = new();
 
     [Fact]
-    public void GetTweaks_ReturnsSixCategories()
+    public void GetTweaks_ReturnsFourteenCategories()
     {
         var tweaks = _registry.GetTweaks();
-        tweaks.Should().HaveCount(6);
+        tweaks.Should().HaveCount(14);
     }
 
     [Fact]
@@ -24,11 +24,19 @@ public class TweakRegistryTests
 
         names.Should().ContainInOrder(
             "Gaming Optimizations",
+            "Performance & Power",
             "Network Optimizations",
-            "General Tweaks",
-            "Services Management",
+            "Debloat",
             "Privacy",
-            "Security");
+            "Microsoft Defender",
+            "Exploit Protection",
+            "Device Guard",
+            "Network Security",
+            "System Security",
+            "Customize",
+            "Maintenance & Tools",
+            "Windows Update",
+            "Edge");
     }
 
     [Fact]
@@ -44,23 +52,31 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var network = tweaks.First(t => t.Title == "Network Optimizations");
-        network.SubTweaks.Should().HaveCount(4);
+        network.SubTweaks.Should().HaveCount(3);
     }
 
     [Fact]
-    public void General_HasCorrectSubTweakCount()
+    public void Performance_HasCorrectSubTweakCount()
     {
         var tweaks = _registry.GetTweaks();
-        var general = tweaks.First(t => t.Title == "General Tweaks");
-        general.SubTweaks.Should().HaveCount(16);
+        var performance = tweaks.First(t => t.Title == "Performance & Power");
+        performance.SubTweaks.Should().HaveCount(4);
     }
 
     [Fact]
-    public void Services_HasCorrectSubTweakCount()
+    public void Debloat_HasCorrectSubTweakCount()
     {
         var tweaks = _registry.GetTweaks();
-        var services = tweaks.First(t => t.Title == "Services Management");
-        services.SubTweaks.Should().HaveCount(2);
+        var debloat = tweaks.First(t => t.Title == "Debloat");
+        debloat.SubTweaks.Should().HaveCount(7);
+    }
+
+    [Fact]
+    public void Maintenance_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var maintenance = tweaks.First(t => t.Title == "Maintenance & Tools");
+        maintenance.SubTweaks.Should().HaveCount(4);
     }
 
     [Fact]
@@ -68,15 +84,71 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var privacy = tweaks.First(t => t.Title == "Privacy");
-        privacy.SubTweaks.Should().HaveCount(15);
+        privacy.SubTweaks.Should().HaveCount(19);
     }
 
     [Fact]
-    public void Security_HasCorrectSubTweakCount()
+    public void Defender_HasCorrectSubTweakCount()
     {
         var tweaks = _registry.GetTweaks();
-        var security = tweaks.First(t => t.Title == "Security");
-        security.SubTweaks.Should().HaveCount(28);
+        var defender = tweaks.First(t => t.Title == "Microsoft Defender");
+        defender.SubTweaks.Should().HaveCount(8);
+    }
+
+    [Fact]
+    public void ExploitProtection_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var exploit = tweaks.First(t => t.Title == "Exploit Protection");
+        exploit.SubTweaks.Should().HaveCount(7);
+    }
+
+    [Fact]
+    public void DeviceGuard_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var deviceGuard = tweaks.First(t => t.Title == "Device Guard");
+        deviceGuard.SubTweaks.Should().HaveCount(7);
+    }
+
+    [Fact]
+    public void NetworkSecurity_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var networkSecurity = tweaks.First(t => t.Title == "Network Security");
+        networkSecurity.SubTweaks.Should().HaveCount(20);
+    }
+
+    [Fact]
+    public void SystemSecurity_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var systemSecurity = tweaks.First(t => t.Title == "System Security");
+        systemSecurity.SubTweaks.Should().HaveCount(17);
+    }
+
+    [Fact]
+    public void Customize_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var customize = tweaks.First(t => t.Title == "Customize");
+        customize.SubTweaks.Should().HaveCount(13);
+    }
+
+    [Fact]
+    public void WindowsUpdate_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var wu = tweaks.First(t => t.Title == "Windows Update");
+        wu.SubTweaks.Should().HaveCount(5);
+    }
+
+    [Fact]
+    public void Edge_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var edge = tweaks.First(t => t.Title == "Edge");
+        edge.SubTweaks.Should().HaveCount(2);
     }
 
     [Fact]
@@ -156,10 +228,10 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var privacy = tweaks.First(t => t.Title == "Privacy");
-        var security = tweaks.First(t => t.Title == "Security");
+        var defender = tweaks.First(t => t.Title == "Microsoft Defender");
 
         privacy.ApplyScript.Should().Contain("Privacy Security");
-        security.ApplyScript.Should().Contain("Privacy Security");
+        defender.ApplyScript.Should().Contain("Defender");
     }
 
     [Fact]

@@ -11,7 +11,7 @@ public class DialogServiceTests
 
     public DialogServiceTests()
     {
-        _service = new DialogService(NullLoggerFactory.Instance);
+        _service = new DialogService(NullLoggerFactory.Instance, new TweakRegistry());
     }
 
     [Theory]
@@ -26,6 +26,22 @@ public class DialogServiceTests
     [InlineData("copilot-disable", true)]
     [InlineData("amd-driver-install", true)]
     [InlineData("network-all-private", true)]
+    [InlineData("bloatware-persist-on", true)]
+    [InlineData("wu-disable", true)]
+    [InlineData("security-uac-silent-elevation", true)]
+    [InlineData("security-asr-rules-enable", true)]
+    [InlineData("security-hvci-enable", true)]
+    [InlineData("country-ip-block", true)]
+    [InlineData("security-hvci-mandatory", true)]
+    [InlineData("security-winrm-harden", true)]
+    [InlineData("block-ms-account", true)]
+    [InlineData("security-wsh-disable", true)]
+    [InlineData("security-defender-gaming-scan", false)]
+    [InlineData("wu-secure", false)]
+    [InlineData("edge-harden", false)]
+    [InlineData("security-smartscreen-enforce", false)]
+    [InlineData("wu-default", false)]
+    [InlineData("theme-dark", false)]
     [InlineData("nvidia-settings-on", false)]
     [InlineData("store-install", false)]
     [InlineData("power-plan-on", false)]
@@ -46,8 +62,21 @@ public class DialogServiceTests
     [InlineData("security-smb-modern-enforce", true)]
     [InlineData("security-defender-cfa-enable", true)]
     [InlineData("run-all-batch-high-risk", true)]
+    [InlineData("bloatware-persist-on", true)]
+    [InlineData("wu-disable", true)]
+    [InlineData("security-uac-silent-elevation", true)]
+    [InlineData("security-hvci-enable", true)]
+    [InlineData("security-block-lolbins", true)]
+    [InlineData("country-ip-block", true)]
+    [InlineData("security-secure-launch", true)]
+    [InlineData("block-ms-account", true)]
+    [InlineData("security-rdp-nla", true)]
+    [InlineData("security-wsh-disable", false)]
+    [InlineData("security-asr-rules-enable", false)]
+    [InlineData("edge-hardcore", false)]
     [InlineData("bloatware-remove", false)]
     [InlineData("copilot-disable", false)]
+    [InlineData("wu-pause-updates", false)]
     [InlineData("nvidia-settings-on", false)]
     public void IsHighRisk_IdentifiesHighRiskActions(string action, bool expected)
     {

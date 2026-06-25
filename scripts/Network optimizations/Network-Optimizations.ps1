@@ -12,8 +12,6 @@ param(
         "adapter-default",
         "smart-optimize",
         "smart-optimize-aggressive",
-        "network-all-public",
-        "network-all-private",
         "menu"
     )]
     [string]$Action = "Menu"
@@ -258,44 +256,6 @@ switch ($Action.ToLowerInvariant()) {
 
     "smart-optimize-aggressive" {
         Invoke-SmartNetworkOptimization -Aggressive
-        Exit-PTW
-    }
-
-    "network-all-public" {
-        Write-Output "[*] Setting all network profiles to Public..."
-        try {
-            Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
-                try {
-                    Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Public -ErrorAction Stop
-                    Write-Output "  [+] $($_.Name) -> Public"
-                } catch {
-                    Write-Warning "  [WARN] Could not set $($_.Name) to Public: $($_.Exception.Message)"
-                }
-            }
-            Write-Output "[+] SUCCESS: All network profiles set to Public (reduces trust to LAN devices)"
-        } catch {
-            Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
-            exit 1
-        }
-        Exit-PTW
-    }
-
-    "network-all-private" {
-        Write-Output "[*] Setting all network profiles to Private..."
-        try {
-            Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
-                try {
-                    Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
-                    Write-Output "  [+] $($_.Name) -> Private"
-                } catch {
-                    Write-Warning "  [WARN] Could not set $($_.Name) to Private: $($_.Exception.Message)"
-                }
-            }
-            Write-Output "[+] SUCCESS: All network profiles restored to Private"
-        } catch {
-            Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
-            exit 1
-        }
         Exit-PTW
     }
 

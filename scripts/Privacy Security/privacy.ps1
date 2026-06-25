@@ -19,6 +19,10 @@ param(
         "ui-hibernation-disable",
         "ui-camera-osd-enable",
         "copilot-disable",
+        "telemetry-off",
+        "telemetry-policy-enforce",
+        "block-ms-account",
+        "onedrive-policy-disable",
         "dns-cloudflare",
         "dns-google",
         "dns-reset",
@@ -270,6 +274,38 @@ function Invoke-UiCameraOsdEnable {
     Write-Output "[+] SUCCESS: camera OSD notifications enabled"
 }
 
+function Invoke-TelemetryPolicyEnforce {
+    Write-Output "[*] Enforcing telemetry / consumer-content GPO policies..."
+    # Consumer content / tailored experiences.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableConsumerAccountStateContent' -Value 1
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableTailoredExperiencesWithDiagnosticData' -Value 1
+    # Application Impact Telemetry (AIT).
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat' -Name 'AITEnable' -Value 0
+    # Customer Experience Improvement Program (CEIP).
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\SQMClient\Windows' -Name 'CEIPEnable' -Value 0
+    # Help Experience Improvement / implicit feedback.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Assistance\Client\1.0' -Name 'NoImplicitFeedback' -Value 1
+    # Diagnostic data collection policy.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name 'DoNotShowFeedbackNotifications' -Value 1
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name 'AllowDeviceNameInTelemetry' -Value 0
+    # Advertising ID.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo' -Name 'DisabledByGroupPolicy' -Value 1
+    Write-Output "[+] SUCCESS: telemetry / consumer GPO policies enforced"
+}
+
+function Invoke-BlockMsAccount {
+    Write-Output "[*] Blocking Microsoft account sign-in..."
+    Write-Output "[!] WARNING: NoConnectedUser=3 blocks adding OR using a Microsoft account on this PC. This breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in. Revert removes the block."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'NoConnectedUser' -Value 3
+    Write-Output "[+] SUCCESS: Microsoft account sign-in blocked"
+}
+
+function Invoke-OneDrivePolicyDisable {
+    Write-Output "[*] Disabling OneDrive file sync via policy (durable across reinstall)..."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive' -Name 'DisableFileSyncNGSC' -Value 1
+    Write-Output "[+] SUCCESS: OneDrive sync disabled via policy"
+}
+
 switch ($Action.ToLowerInvariant()) {
     "ooshutup-apply" {
         Write-Output "[*] Applying O&O ShutUp10++ Profile..."
@@ -356,6 +392,48 @@ switch ($Action.ToLowerInvariant()) {
         Set-RegDword -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1
         Set-RegDword -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1
         Write-Output "[+] SUCCESS: Copilot disabled (restart recommended)"
+        Exit-PTW
+    }
+
+    "telemetry-off" {
+        Write-Output "[*] Disabling Windows telemetry/diagnostic data collection..."
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
+        )
+        # Policy value; on Pro/Enterprise this caps telemetry at Security (0), on Home it is
+        # honoured as the lowest selectable level. SmartScreen/Defender reporting is untouched.
+        Set-RegDword -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
+        Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
+        Write-Output "[+] SUCCESS: telemetry minimized"
+        Exit-PTW
+    }
+
+    "telemetry-policy-enforce" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat',
+            'HKLM:\SOFTWARE\Policies\Microsoft\SQMClient\Windows',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Assistance\Client\1.0',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo'
+        )
+        Invoke-TelemetryPolicyEnforce
+        Exit-PTW
+    }
+
+    "block-ms-account" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+        )
+        Invoke-BlockMsAccount
+        Exit-PTW
+    }
+
+    "onedrive-policy-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive'
+        )
+        Invoke-OneDrivePolicyDisable
         Exit-PTW
     }
 

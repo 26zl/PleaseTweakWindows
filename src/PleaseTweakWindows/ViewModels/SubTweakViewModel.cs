@@ -13,7 +13,7 @@ public partial class SubTweakViewModel : ViewModelBase
     private readonly string _scriptDirectory;
     private readonly IScriptExecutor _executor;
     private readonly IDialogService _dialogService;
-    private readonly IRestorePointGuard _restorePointGuard;
+    private readonly RestorePointGuard _restorePointGuard;
     private readonly LogPanelViewModel _logPanel;
     private readonly Func<bool> _isGloballyRunning;
     private readonly Action<bool> _setGloballyRunning;
@@ -33,6 +33,15 @@ public partial class SubTweakViewModel : ViewModelBase
     /// </summary>
     public bool IsGloballyRunning => _isGloballyRunning();
 
+    /// <summary>
+    /// True when this tweak has no unmet dependency (its prerequisite is applied on this
+    /// machine). Read live from the registry; re-evaluated whenever a run completes.
+    /// </summary>
+    public bool RequirementMet => RegistryState.IsSatisfied(_model.Requires);
+    public bool RequirementUnmet => !RequirementMet;
+    public bool HasRequirement => _model.Requires != null;
+    public string? RequirementMessage => _model.Requires?.UnmetMessage;
+
     public SubTweakViewModel(
         SubTweak model,
         string applyScriptPath,
@@ -40,7 +49,7 @@ public partial class SubTweakViewModel : ViewModelBase
         string scriptDirectory,
         IScriptExecutor executor,
         IDialogService dialogService,
-        IRestorePointGuard restorePointGuard,
+        RestorePointGuard restorePointGuard,
         LogPanelViewModel logPanel,
         Func<bool> isGloballyRunning,
         Action<bool> setGloballyRunning,
@@ -59,12 +68,22 @@ public partial class SubTweakViewModel : ViewModelBase
         _setError = setError;
     }
 
-    /// <summary>Raises a change notification for <see cref="IsGloballyRunning"/>.</summary>
-    public void OnGlobalRunningChanged() => OnPropertyChanged(nameof(IsGloballyRunning));
+    /// <summary>
+    /// Raises change notifications for <see cref="IsGloballyRunning"/> and the dependency
+    /// state (a just-applied prerequisite may now satisfy another tweak's requirement).
+    /// </summary>
+    public void OnGlobalRunningChanged()
+    {
+        OnPropertyChanged(nameof(IsGloballyRunning));
+        OnPropertyChanged(nameof(RequirementMet));
+        OnPropertyChanged(nameof(RequirementUnmet));
+    }
 
     [RelayCommand]
     private async Task ApplyAsync()
     {
+        // Guard: a greyed (unmet-dependency) Apply must be a no-op even if invoked.
+        if (!RequirementMet) return;
         await ExecuteActionAsync(_applyScriptPath, _model.ApplyAction, "apply");
     }
 

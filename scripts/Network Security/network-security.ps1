@@ -1,6 +1,6 @@
-# Security Tweaks
+# Network Security Tweaks
 # Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File security.ps1 -Action "<action-id>"
+# Usage: powershell -File network-security.ps1 -Action "<action-id>"
 # Version: 2.1.0
 # Last Updated: 2026-01-21
 #Requires -RunAsAdministrator
@@ -11,31 +11,25 @@ param(
         "firewall-hardening",
         "tls-hardening",
         "security-improve-network",
-        "security-clipboard-data-disable",
-        "security-spectre-meltdown-enable",
-        "security-dep-enable",
-        "security-autorun-disable",
-        "security-lock-screen-camera-disable",
-        "security-lm-hash-disable",
-        "security-always-install-elevated-disable",
-        "security-sehop-enable",
-        "security-ps2-downgrade-protection-enable",
-        "security-wcn-disable",
         "security-llmnr-disable",
         "security-smart-name-resolution-disable",
         "security-smb-modern-enforce",
         "security-smb-cipher-suite-order",
         "security-firewall-logging-enable",
-        "security-defender-cfa-enable",
-        "security-defender-network-protection-enable",
-        "security-defender-pua-enable",
-        "security-defender-cloud-tune",
-        "security-defender-sandbox-enable",
-        "security-aslr-system-enable",
         "security-tls-cipher-order",
         "security-block-ntlm-incoming",
         "security-block-ntlm-outgoing",
-        "security-aslr-exclude-dev-tools",
+        "security-network-rpc-harden",
+        "security-block-lolbins",
+        "security-mss-hardening",
+        "security-mdns-disable",
+        "security-print-nightmare",
+        "security-rdp-nla",
+        "security-winrm-harden",
+        "network-all-public",
+        "network-all-private",
+        "country-ip-block",
+        "country-ip-unblock",
         "menu"
     )]
     [string]$Action = "Menu"
@@ -66,84 +60,6 @@ if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
     Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
-}
-
-function Get-OsBuildNumber {
-    try {
-        return [Environment]::OSVersion.Version.Build
-    } catch {
-        return 0
-    }
-}
-
-function Test-DefenderTamperProtected {
-    # Returns $true if Microsoft Defender Tamper Protection is ON. When it is on,
-    # Set-MpPreference changes to protection state are silently ignored/reverted by
-    # the Defender service, so the GUI must NOT report success.
-    try {
-        return [bool](Get-MpComputerStatus -ErrorAction Stop).IsTamperProtected
-    } catch {
-        return $false
-    }
-}
-
-function Disable-ClipboardService {
-    foreach ($svcName in @('cbdhsvc')) {
-        try {
-            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-            if ($svc) {
-                if ($svc.Status -ne 'Stopped') {
-                    Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
-                }
-                Set-Service -Name $svcName -StartupType Disabled -ErrorAction SilentlyContinue
-            }
-        } catch {
-            Write-Warning "[WARN] Service disable failed for ${svcName}: $($_.Exception.Message)"
-        }
-    }
-
-    try {
-        Get-Service -Name 'cbdhsvc_*' -ErrorAction SilentlyContinue | ForEach-Object {
-            try {
-                if ($_.Status -ne 'Stopped') {
-                    Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue
-                }
-                Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue
-            } catch { Write-Verbose "Failed to disable service $($_.Name): $($_.Exception.Message)" }
-        }
-    } catch { Write-Verbose "Failed to enumerate cbdhsvc_* services: $($_.Exception.Message)" }
-}
-
-function Disable-OptionalFeaturesSafe {
-    param([string[]]$Names)
-    foreach ($f in $Names) {
-        try {
-            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction SilentlyContinue
-            if ($feat -and $feat.State -ne 'Disabled') {
-                Disable-WindowsOptionalFeature -Online -FeatureName $f -NoRestart -ErrorAction SilentlyContinue | Out-Null
-            }
-        } catch {
-            Write-Warning "[WARN] Optional feature op failed for ${f}: $($_.Exception.Message)"
-        }
-    }
-}
-
-function Remove-WindowsCapabilitiesSafe {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param([string[]]$Patterns)
-    foreach ($capPattern in $Patterns) {
-        try {
-            Get-WindowsCapability -Online -Name $capPattern -ErrorAction SilentlyContinue |
-                Where-Object { $_.State -ne 'NotPresent' } |
-                ForEach-Object {
-                    if ($PSCmdlet.ShouldProcess($_.Name, "Remove Windows capability")) {
-                        Remove-WindowsCapability -Online -Name $_.Name -ErrorAction SilentlyContinue | Out-Null
-                    }
-                }
-        } catch {
-            Write-Warning "[WARN] Capability remove failed for ${capPattern}: $($_.Exception.Message)"
-        }
-    }
 }
 
 # Firewall hardening
@@ -266,160 +182,6 @@ function Set-ImproveNetworkSecurity {
     )
 
     Write-Output "[+] SUCCESS: network security improved (restart recommended)"
-}
-
-function Set-ClipboardDataCollectionDisabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable clipboard data collection")) { return }
-    Write-Output "[*] Disabling clipboard data collection..."
-
-    $regSets = @(
-        # Disable Cloud Clipboard (breaks clipboard sync).
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'AllowCrossDeviceClipboard'; Type = 'DWord'; Value = 0 },
-        # Disable Cloud Clipboard automatic upload.
-        [pscustomobject]@{ Path = 'HKCU:\Software\Microsoft\Clipboard'; Name = 'CloudClipboardAutomaticUpload'; Type = 'DWord'; Value = 0 },
-        # Disable clipboard history.
-        [pscustomobject]@{ Path = 'HKCU:\Software\Microsoft\Clipboard'; Name = 'EnableClipboardHistory'; Type = 'DWord'; Value = 0 },
-        # Disable clipboard history via policy.
-        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'AllowClipboardHistory'; Type = 'DWord'; Value = 0 }
-    )
-
-    foreach ($r in $regSets) {
-        Set-RegValueSafe -Path $r.Path -Name $r.Name -Type $r.Type -Value $r.Value
-    }
-
-    # Disable background clipboard data collection (cbdhsvc).
-    Disable-ClipboardService
-
-    Write-Output "[+] SUCCESS: clipboard data collection disabled"
-}
-
-function Set-SpectreMeltdownProtection {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Enable Spectre/Meltdown protection")) { return }
-    Write-Output "[*] Enabling Spectre/Meltdown protection..."
-
-    # Mitigate Spectre/Meltdown in host OS.
-    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverrideMask' -Type 'DWord' -Value 3
-    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverride' -Type 'DWord' -Value 64
-    # Mitigate Spectre/Meltdown in Hyper-V.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization' -Name 'MinVmVersionForCpuBasedMitigations' -Type 'String' -Value '1.0'
-
-    Write-Output "[!] WARNING: This only forces the default mitigations on; it is largely redundant on modern (microcode-patched) CPUs which already enable them, and some override bits are ignored on AMD - so this may be a partial no-op. It can also add a small CPU latency/performance cost, which matters for gaming."
-    Write-Output "[+] SUCCESS: Spectre/Meltdown default mitigations enabled (only matters on unpatched/older CPUs)"
-}
-
-function Set-DepProtection {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Enable DEP protection")) { return }
-    Write-Output "[*] Enabling Data Execution Prevention (DEP)..."
-
-    # Enable DEP for Explorer policies.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -Name 'NoDataExecutionPrevention' -Type 'DWord' -Value 0
-    # Enable DEP for HTML Help (HHDEP).
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name 'DisableHHDEP' -Type 'DWord' -Value 0
-
-    Write-Output "[+] SUCCESS: DEP enabled"
-}
-
-function Set-AutoPlayAutoRunDisabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable AutoPlay and AutoRun")) { return }
-    Write-Output "[*] Disabling AutoPlay and AutoRun..."
-
-    # Disable AutoRun on all drives.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name 'NoDriveTypeAutoRun' -Type 'DWord' -Value 255
-    # Disable AutoRun.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name 'NoAutorun' -Type 'DWord' -Value 1
-    # Disable AutoPlay for non-volume devices.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -Name 'NoAutoplayfornonVolume' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: AutoPlay/AutoRun disabled"
-}
-
-function Set-LockScreenCameraDisabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable lock screen camera access")) { return }
-    Write-Output "[*] Disabling lock screen camera access..."
-
-    # Disable lock screen camera access.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' -Name 'NoLockScreenCamera' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: lock screen camera access disabled"
-}
-
-function Set-LmHashStorageDisabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable LM hash storage")) { return }
-    Write-Output "[*] Disabling LM password hash storage..."
-
-    # Disable storage of LAN Manager password hashes.
-    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'NoLMHash' -Type 'DWord' -Value 1
-
-    Write-Output "[+] SUCCESS: LM hash storage disabled"
-}
-
-function Set-AlwaysInstallElevatedDisabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable AlwaysInstallElevated")) { return }
-    Write-Output "[*] Disabling AlwaysInstallElevated..."
-
-    # Disable AlwaysInstallElevated (prevents MSI privilege escalation).
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer' -Name 'AlwaysInstallElevated' -Type 'DWord' -Value 0
-
-    Write-Output "[+] SUCCESS: AlwaysInstallElevated disabled"
-}
-
-function Set-SehopEnabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Enable SEHOP")) { return }
-    Write-Output "[*] Enabling SEHOP..."
-
-    # Enable Structured Exception Handling Overwrite Protection (SEHOP).
-    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\kernel' -Name 'DisableExceptionChainValidation' -Type 'DWord' -Value 0
-
-    Write-Output "[+] SUCCESS: SEHOP enabled"
-}
-
-function Set-PowerShellV2DowngradeProtection {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable PowerShell 2.0 features")) { return }
-    Write-Output "[*] Disabling PowerShell 2.0 features..."
-
-    # Disable PowerShell 2.0 (downgrade protection).
-    Disable-OptionalFeaturesSafe -Names @(
-        'MicrosoftWindowsPowerShellV2',
-        'MicrosoftWindowsPowerShellV2Root'
-    )
-
-    Write-Output "[+] SUCCESS: PowerShell 2.0 features disabled"
-}
-
-function Set-WindowsConnectNowDisabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Disable Windows Connect Now wizard")) { return }
-    Write-Output "[*] Disabling Windows Connect Now wizard..."
-
-    # Disable Windows Connect Now UI.
-    Set-RegValueSafe -Path 'HKLM:\Software\Policies\Microsoft\Windows\WCN\UI' -Name 'DisableWcnUi' -Type 'DWord' -Value 1
-    # Disable WCN registrars.
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WCN\Registrars' -Name 'DisableFlashConfigRegistrar' -Type 'DWord' -Value 1
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WCN\Registrars' -Name 'DisableInBand802DOT11Registrar' -Type 'DWord' -Value 1
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WCN\Registrars' -Name 'DisableUPnPRegistrar' -Type 'DWord' -Value 1
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WCN\Registrars' -Name 'DisableWPDRegistrar' -Type 'DWord' -Value 1
-    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WCN\Registrars' -Name 'EnableRegistrars' -Type 'DWord' -Value 0
-
-    Write-Output "[+] SUCCESS: Windows Connect Now disabled"
 }
 
 function Set-TlsHardening {
@@ -628,114 +390,6 @@ function Set-FirewallLoggingEnabled {
     }
 }
 
-function Set-DefenderControlledFolderAccessEnabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("Defender", "Enable Controlled Folder Access")) { return }
-    Write-Output "[*] Enabling Controlled Folder Access (ransomware protection)..."
-    if (Test-DefenderTamperProtected) {
-        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
-        exit 1
-    }
-    try {
-        Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
-        Write-Output "[+] SUCCESS: Controlled Folder Access enabled"
-    } catch {
-        Write-Warning "[WARN] Set-MpPreference failed: $($_.Exception.Message)"
-        exit 1
-    }
-}
-
-function Set-DefenderNetworkProtectionEnabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("Defender", "Enable Network Protection")) { return }
-    Write-Output "[*] Enabling Defender Network Protection..."
-    if (Test-DefenderTamperProtected) {
-        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
-        exit 1
-    }
-    try {
-        Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction Stop
-        Write-Output "[+] SUCCESS: Network Protection enabled"
-    } catch {
-        Write-Warning "[WARN] Set-MpPreference failed: $($_.Exception.Message)"
-        exit 1
-    }
-}
-
-function Set-DefenderPuaEnabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("Defender", "Enable PUA Protection")) { return }
-    Write-Output "[*] Enabling Potentially Unwanted App (PUA) protection..."
-    if (Test-DefenderTamperProtected) {
-        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
-        exit 1
-    }
-    try {
-        Set-MpPreference -PUAProtection Enabled -ErrorAction Stop
-        Write-Output "[+] SUCCESS: PUA protection enabled"
-    } catch {
-        Write-Warning "[WARN] Set-MpPreference failed: $($_.Exception.Message)"
-        exit 1
-    }
-}
-
-function Set-DefenderCloudTuned {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("Defender", "Tune Defender cloud protection")) { return }
-    Write-Output "[*] Tuning Defender cloud protection..."
-    if (Test-DefenderTamperProtected) {
-        Write-Warning "[WARN] Tamper Protection is ON; this change will not persist - disable Tamper Protection in Windows Security > Virus & threat protection first"
-        exit 1
-    }
-    try {
-        Set-MpPreference -MAPSReporting Advanced -ErrorAction Stop
-        Set-MpPreference -SubmitSamplesConsent SendSafeSamples -ErrorAction Stop
-        Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction Stop
-        Set-MpPreference -CloudBlockLevel High -ErrorAction Stop
-        Set-MpPreference -CloudExtendedTimeout 50 -ErrorAction Stop
-        # Read back one value to confirm the change actually stuck before reporting success.
-        if ((Get-MpPreference -ErrorAction Stop).CloudBlockLevel -ne 'High') {
-            Write-Warning "[WARN] Defender cloud tuning did not persist (CloudBlockLevel not High)"
-            exit 1
-        }
-        Write-Output "[+] SUCCESS: Defender cloud protection tuned (MAPS Advanced, BAFS on, Cloud Block High)"
-    } catch {
-        Write-Warning "[WARN] Set-MpPreference failed: $($_.Exception.Message)"
-        exit 1
-    }
-}
-
-function Set-DefenderSandboxEnabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("Defender", "Enable sandbox mode")) { return }
-    Write-Output "[*] Enabling Defender sandbox mode..."
-    & setx.exe /M MP_FORCE_USE_SANDBOX 1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "[WARN] setx returned $LASTEXITCODE"
-    }
-    Write-Output "[+] SUCCESS: Defender sandbox flag set (requires REBOOT to take effect)"
-}
-
-function Set-AslrSystemWideEnabled {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Enable system-wide mandatory ASLR")) { return }
-    Write-Output "[*] Enabling system-wide mandatory ASLR (ForceRelocateImages)..."
-    Write-Output "[!] WARNING: System-wide mandatory ASLR can crash or prevent launch of games' anti-cheat drivers, older 32-bit apps, and binaries built without /DYNAMICBASE. After enabling this, TEST your game launches; if something breaks, run the 'Exclude dev tools' tweak or revert this. This is especially relevant on a gaming PC."
-    try {
-        Set-ProcessMitigation -System -Enable ForceRelocateImages -ErrorAction Stop
-        Write-Output "[+] SUCCESS: System-wide mandatory ASLR enabled (complement to DEP)"
-    } catch {
-        Write-Warning "[WARN] Set-ProcessMitigation failed: $($_.Exception.Message)"
-        exit 1
-    }
-}
-
 function Set-TlsCipherOrder {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
@@ -783,29 +437,106 @@ function Set-BlockNtlmOutgoing {
     Write-Output "[+] SUCCESS: Outgoing NTLM blocked (may break legacy authentication to servers)"
 }
 
-function Set-AslrDevToolExclusions {
+function Set-NetworkRpcHardening {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Exclude dev tools from mandatory ASLR")) { return }
-    Write-Output "[*] Excluding GitHub Desktop, Git, and MSYS2 from mandatory ASLR..."
-    # Known developer executables incompatible with ForceRelocateImages
-    $exes = @(
-        'GitHubDesktop.exe',
-        'github.exe',
-        'bash.exe',
-        'mintty.exe',
-        'msys-2.0.dll',
-        'sh.exe'
-    )
-    foreach ($exe in $exes) {
-        try {
-            Set-ProcessMitigation -Name $exe -Disable ForceRelocateImages -ErrorAction Stop
-            Write-Output "  [+] Excluded $exe"
-        } catch {
-            Write-Warning "  [WARN] Could not exclude ${exe}: $($_.Exception.Message)"
+    if (-not $PSCmdlet.ShouldProcess("System", "Harden RPC endpoint mapper and disable LMHOSTS")) { return }
+    Write-Output "[*] Requiring RPC endpoint-mapper client authentication and disabling LMHOSTS lookup..."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Rpc' -Name 'EnableAuthEpResolution' -Value 1
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters' -Name 'EnableLMHOSTS' -Value 0
+    Write-Output "[+] SUCCESS: RPC/LMHOSTS network hardening applied"
+}
+
+# Living-off-the-land binaries that are frequently abused to download/execute payloads
+# and that PTW itself does NOT depend on (powershell.exe / cmd.exe / rundll32.exe are
+# deliberately excluded so PTW's own download tweaks keep working).
+$script:PtwLolbins = @('bitsadmin.exe','certutil.exe','cmstp.exe','cscript.exe','wscript.exe','mshta.exe','wmic.exe','regsvr32.exe')
+
+function Set-BlockLolbinNetwork {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("Windows Firewall", "Block network for dual-use binaries")) { return }
+    Write-Output "[*] Creating firewall rules to block network access for dual-use (living-off-the-land) binaries..."
+    Write-Output "[!] WARNING: this cuts inbound/outbound network for tools like certutil, mshta, wscript, regsvr32. It can break legitimate admin scripting or tooling that relies on them."
+    foreach ($baseDir in @("$env:SystemRoot\System32", "$env:SystemRoot\SysWOW64")) {
+        foreach ($exe in $script:PtwLolbins) {
+            $progPath = Join-Path $baseDir $exe
+            if (-not (Test-Path -LiteralPath $progPath)) { continue }
+            foreach ($dir in @('Inbound','Outbound')) {
+                New-NetFirewallRule -DisplayName "PTW-BlockLOLBin-$exe-$dir" -Group 'PTW LOLBin Block' `
+                    -Program $progPath -Direction $dir -Action Block -Profile Any -ErrorAction SilentlyContinue | Out-Null
+            }
         }
     }
-    Write-Output "[+] SUCCESS: Developer tool ASLR exclusions applied"
+    Write-Output "[+] SUCCESS: dual-use binary network rules created"
+}
+
+function Set-MssHardening {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Apply MSS legacy TCP/IP hardening")) { return }
+    Write-Output "[*] Applying MSS legacy TCP/IP stack hardening..."
+    # Disable IPv4/IPv6 source routing entirely (2 = highest protection).
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'DisableIPSourceRouting' -Value 2
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters' -Name 'DisableIPSourceRouting' -Value 2
+    # Ignore ICMP redirects (prevents route table poisoning).
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'EnableICMPRedirect' -Value 0
+    # Don't release the NetBIOS name on demand (anti-spoofing).
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters' -Name 'NoNameReleaseOnDemand' -Value 1
+    # Force safe DLL search order.
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'SafeDllSearchMode' -Value 1
+    Write-Output "[+] SUCCESS: MSS legacy TCP/IP hardening applied"
+}
+
+function Set-MdnsDisable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Disable mDNS")) { return }
+    Write-Output "[*] Disabling mDNS (closes the LAN mDNS spoofing vector, same class as LLMNR)..."
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters' -Name 'EnableMDNS' -Value 0
+    Write-Output "[+] SUCCESS: mDNS disabled"
+}
+
+function Set-PrintNightmareHardening {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Harden Print Spooler (PrintNightmare)")) { return }
+    Write-Output "[*] Hardening Print Spooler against remote driver installation (CVE-2021-34527 / PrintNightmare)..."
+    # RestrictDriverInstallationToAdministrators lives under PointAndPrint (per KB5005652); it is inert under the parent key.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint' -Name 'RestrictDriverInstallationToAdministrators' -Value 1
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint' -Name 'NoWarningNoElevationOnInstall' -Value 0
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint' -Name 'UpdatePromptSettings' -Value 0
+    Write-Output "[+] SUCCESS: Print Spooler hardened (printing still works; remote driver install is restricted to admins)"
+}
+
+function Set-RdpNla {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Require RDP Network Level Authentication")) { return }
+    Write-Output "[*] Requiring Network Level Authentication and TLS for Remote Desktop..."
+    Write-Output "[!] WARNING: only relevant if you use Remote Desktop to connect to this PC. NLA + high encryption + TLS will block legacy RDP clients (old mstsc, some thin clients) that cannot do CredSSP/NLA."
+    $rdp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+    Set-RegDword -Path $rdp -Name 'UserAuthentication' -Value 1
+    Set-RegDword -Path $rdp -Name 'SecurityLayer' -Value 2
+    Set-RegDword -Path $rdp -Name 'MinEncryptionLevel' -Value 3
+    Write-Output "[+] SUCCESS: RDP Network Level Authentication required"
+}
+
+function Set-WinRmHarden {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Harden WinRM / RPC remote access")) { return }
+    Write-Output "[*] Hardening WinRM and RPC remote access..."
+    Write-Output "[!] WARNING: this breaks INBOUND remote PowerShell / WinRM management to this PC and restricts remote RPC clients. Do not enable on a machine you manage remotely."
+    # WinRM service: no Basic auth, no unencrypted traffic, no RunAs credential delegation.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service' -Name 'AllowBasic' -Value 0
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service' -Name 'AllowUnencryptedTraffic' -Value 0
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service' -Name 'DisableRunAs' -Value 1
+    # CredSSP encryption-oracle remediation: 0 = Force Updated Clients (most secure).
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\CredSSP\Parameters' -Name 'AllowEncryptionOracle' -Value 0
+    # Restrict unauthenticated remote RPC clients (2 = authenticated only, no exceptions).
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc' -Name 'RestrictRemoteClients' -Value 2
+    Write-Output "[+] SUCCESS: WinRM / RPC remote access hardened (inbound remote management restricted)"
 }
 
 switch ($Action.ToLowerInvariant()) {
@@ -838,72 +569,6 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
         )
         Set-ImproveNetworkSecurity
-        Exit-PTW
-    }
-
-    "security-clipboard-data-disable" {
-        Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System',
-            'HKCU:\Software\Microsoft\Clipboard'
-        )
-        Set-ClipboardDataCollectionDisabled
-        Exit-PTW
-    }
-
-    "security-spectre-meltdown-enable" {
-        Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management',
-            'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization'
-        )
-        Set-SpectreMeltdownProtection
-        Exit-PTW
-    }
-
-    "security-dep-enable" {
-        Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer',
-            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
-        )
-        Set-DepProtection
-        Exit-PTW
-    }
-
-    "security-autorun-disable" {
-        Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer',
-            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer'
-        )
-        Set-AutoPlayAutoRunDisabled
-        Exit-PTW
-    }
-
-    "security-lock-screen-camera-disable" {
-        Set-LockScreenCameraDisabled
-        Exit-PTW
-    }
-
-    "security-lm-hash-disable" {
-        Set-LmHashStorageDisabled
-        Exit-PTW
-    }
-
-    "security-always-install-elevated-disable" {
-        Set-AlwaysInstallElevatedDisabled
-        Exit-PTW
-    }
-
-    "security-sehop-enable" {
-        Set-SehopEnabled
-        Exit-PTW
-    }
-
-    "security-ps2-downgrade-protection-enable" {
-        Set-PowerShellV2DowngradeProtection
-        Exit-PTW
-    }
-
-    "security-wcn-disable" {
-        Set-WindowsConnectNowDisabled
         Exit-PTW
     }
 
@@ -943,36 +608,6 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
-    "security-defender-cfa-enable" {
-        Set-DefenderControlledFolderAccessEnabled
-        Exit-PTW
-    }
-
-    "security-defender-network-protection-enable" {
-        Set-DefenderNetworkProtectionEnabled
-        Exit-PTW
-    }
-
-    "security-defender-pua-enable" {
-        Set-DefenderPuaEnabled
-        Exit-PTW
-    }
-
-    "security-defender-cloud-tune" {
-        Set-DefenderCloudTuned
-        Exit-PTW
-    }
-
-    "security-defender-sandbox-enable" {
-        Set-DefenderSandboxEnabled
-        Exit-PTW
-    }
-
-    "security-aslr-system-enable" {
-        Set-AslrSystemWideEnabled
-        Exit-PTW
-    }
-
     "security-tls-cipher-order" {
         Backup-RegistryPath -Action $Action -Paths @(
             'HKLM:\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL'
@@ -997,8 +632,157 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
-    "security-aslr-exclude-dev-tools" {
-        Set-AslrDevToolExclusions
+    "security-network-rpc-harden" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Rpc',
+            'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters'
+        )
+        Set-NetworkRpcHardening
+        Exit-PTW
+    }
+
+    "security-block-lolbins" {
+        Set-BlockLolbinNetwork
+        Exit-PTW
+    }
+
+    "security-mss-hardening" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters',
+            'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters',
+            'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters',
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'
+        )
+        Set-MssHardening
+        Exit-PTW
+    }
+
+    "security-mdns-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters'
+        )
+        Set-MdnsDisable
+        Exit-PTW
+    }
+
+    "security-print-nightmare" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers'
+        )
+        Set-PrintNightmareHardening
+        Exit-PTW
+    }
+
+    "security-rdp-nla" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+        )
+        Set-RdpNla
+        Exit-PTW
+    }
+
+    "security-winrm-harden" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service',
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\CredSSP\Parameters',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc'
+        )
+        Set-WinRmHarden
+        Exit-PTW
+    }
+
+    "network-all-public" {
+        Write-Output "[*] Setting all network profiles to Public..."
+        try {
+            Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+                try {
+                    Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Public -ErrorAction Stop
+                    Write-Output "  [+] $($_.Name) -> Public"
+                } catch {
+                    Write-Warning "  [WARN] Could not set $($_.Name) to Public: $($_.Exception.Message)"
+                }
+            }
+            Write-Output "[+] SUCCESS: All network profiles set to Public (reduces trust to LAN devices)"
+        } catch {
+            Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
+            exit 1
+        }
+        Exit-PTW
+    }
+
+    "network-all-private" {
+        Write-Output "[*] Setting all network profiles to Private..."
+        try {
+            Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+                try {
+                    Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
+                    Write-Output "  [+] $($_.Name) -> Private"
+                } catch {
+                    Write-Warning "  [WARN] Could not set $($_.Name) to Private: $($_.Exception.Message)"
+                }
+            }
+            Write-Output "[+] SUCCESS: All network profiles restored to Private"
+        } catch {
+            Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
+            exit 1
+        }
+        Exit-PTW
+    }
+
+    "country-ip-block" {
+        Write-Output "[*] Blocking sanctioned-region IP ranges in Windows Firewall..."
+        Write-Output "[!] WARNING: this blocks inbound AND outbound traffic to entire countries' IP ranges (State Sponsors of Terrorism + OFAC sanctioned). A VPN/VPS endpoint in another country bypasses it. Lists are fetched live from a curated IANA IP-block source and validated as CIDR before use."
+        $bundles = @(
+            @{ Name = 'PTW Country IP Block - State Sponsors of Terrorism'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/main/Curated-Lists/StateSponsorsOfTerrorism.txt' },
+            @{ Name = 'PTW Country IP Block - OFAC Sanctioned'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/main/Curated-Lists/OFACSanctioned.txt' }
+        )
+        # Clean slate so re-applying does not stack duplicate rules.
+        Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
+        # The default Windows Firewall store throws "The array bounds are invalid" on very large
+        # -RemoteAddress arrays (the OFAC list is ~20k+ CIDRs), so split each list into batches
+        # and create numbered rules per batch within the shared group (group revert removes them all).
+        $chunkSize = 1000
+        $created = 0
+        foreach ($b in $bundles) {
+            try {
+                $cidrs = @(Get-CidrListFromWeb -URL $b.Url)
+            } catch {
+                Write-Output "[-] Could not fetch '$($b.Name)': $($_.Exception.Message)"
+                continue
+            }
+            if ($cidrs.Count -eq 0) {
+                Write-Output "[-] '$($b.Name)' returned no ranges; skipping"
+                continue
+            }
+            $batch = 0
+            for ($i = 0; $i -lt $cidrs.Count; $i += $chunkSize) {
+                $batch++
+                $hi = [Math]::Min($i + $chunkSize - 1, $cidrs.Count - 1)
+                $slice = @($cidrs[$i..$hi])
+                foreach ($dir in @('Inbound','Outbound')) {
+                    try {
+                        New-NetFirewallRule -DisplayName "$($b.Name) - $dir $batch" -Group 'PTW Country IP Block' `
+                            -Direction $dir -Action Block -RemoteAddress $slice -Profile Any -ErrorAction Stop | Out-Null
+                        $created++
+                    } catch {
+                        Write-Output "[-] '$($b.Name)' batch $batch ($dir) failed: $($_.Exception.Message)"
+                    }
+                }
+            }
+            Write-Output "  [+] $($b.Name): $($cidrs.Count) ranges across $batch batch(es)"
+        }
+        if ($created -eq 0) {
+            Write-Output "[-] No country IP block rules were created."
+            exit 1
+        }
+        Write-Output "[+] SUCCESS: country IP blocking applied ($created firewall rule(s))"
+        Exit-PTW
+    }
+
+    "country-ip-unblock" {
+        Write-Output "[*] Removing country IP block firewall rules..."
+        Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
+        Write-Output "[+] SUCCESS: country IP block rules removed"
         Exit-PTW
     }
 
