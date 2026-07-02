@@ -236,8 +236,10 @@ public class TweakRegistryTests
     {
         foreach (var tweak in _registry.GetTweaks())
         {
-            tweak.RunAllSubTweaks.Should().OnlyContain(
-                sub => sub.Type == SubTweakType.Toggle && !string.IsNullOrWhiteSpace(sub.RevertAction));
+            // NotContain (not OnlyContain, which fails on the empty Run-All of button-only categories).
+            tweak.RunAllSubTweaks.Should().NotContain(
+                sub => sub.Type != SubTweakType.Toggle || string.IsNullOrWhiteSpace(sub.RevertAction),
+                $"Run All for '{tweak.Title}' must include only reversible toggles");
         }
     }
 
