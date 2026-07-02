@@ -28,12 +28,6 @@
           "Microsoft.Extensions.Options": "10.0.9"
         }
       },
-      "Microsoft.NET.ILLink.Tasks": {
-        "type": "Direct",
-        "requested": "[10.0.9, )",
-        "resolved": "10.0.9",
-        "contentHash": "/zs/o28l6Hq8G9XgEfeYC8VkiSfv98zpNdWnZu4Y3pwoStzI0MNRO8xjFuSF6aI/fMdKf3+sVDRZGlxyBc88jA=="
-      },
       "Serilog": {
         "type": "Direct",
         "requested": "[4.3.1, )",
