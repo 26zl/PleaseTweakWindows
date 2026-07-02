@@ -14,6 +14,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         tweaks.Should().HaveCount(14);
+        tweaks.Sum(t => t.SubTweaks.Count).Should().Be(148);
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var network = tweaks.First(t => t.Title == "Network Optimizations");
-        network.SubTweaks.Should().HaveCount(3);
+        network.SubTweaks.Should().HaveCount(4);
     }
 
     [Fact]
@@ -60,7 +61,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var performance = tweaks.First(t => t.Title == "Performance & Power");
-        performance.SubTweaks.Should().HaveCount(4);
+        performance.SubTweaks.Should().HaveCount(5);
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var debloat = tweaks.First(t => t.Title == "Debloat");
-        debloat.SubTweaks.Should().HaveCount(7);
+        debloat.SubTweaks.Should().HaveCount(10);
     }
 
     [Fact]
@@ -84,7 +85,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var privacy = tweaks.First(t => t.Title == "Privacy");
-        privacy.SubTweaks.Should().HaveCount(19);
+        privacy.SubTweaks.Should().HaveCount(26);
     }
 
     [Fact]
@@ -100,7 +101,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var exploit = tweaks.First(t => t.Title == "Exploit Protection");
-        exploit.SubTweaks.Should().HaveCount(7);
+        exploit.SubTweaks.Should().HaveCount(8);
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var deviceGuard = tweaks.First(t => t.Title == "Device Guard");
-        deviceGuard.SubTweaks.Should().HaveCount(7);
+        deviceGuard.SubTweaks.Should().HaveCount(8);
     }
 
     [Fact]
@@ -116,7 +117,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var networkSecurity = tweaks.First(t => t.Title == "Network Security");
-        networkSecurity.SubTweaks.Should().HaveCount(20);
+        networkSecurity.SubTweaks.Should().HaveCount(24);
     }
 
     [Fact]
@@ -124,7 +125,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var systemSecurity = tweaks.First(t => t.Title == "System Security");
-        systemSecurity.SubTweaks.Should().HaveCount(17);
+        systemSecurity.SubTweaks.Should().HaveCount(19);
     }
 
     [Fact]
@@ -174,6 +175,27 @@ public class TweakRegistryTests
     }
 
     [Fact]
+    public void ApplyActionIds_AreGloballyUnique()
+    {
+        var actionIds = _registry.GetTweaks()
+            .SelectMany(t => t.SubTweaks)
+            .Select(s => s.ApplyAction);
+
+        actionIds.Should().OnlyHaveUniqueItems(
+            "an imported action ID must map to exactly one catalog entry and script");
+    }
+
+    [Fact]
+    public void AllSubTweaks_HaveUserFacingNamesAndDescriptions()
+    {
+        foreach (var sub in _registry.GetTweaks().SelectMany(t => t.SubTweaks))
+        {
+            sub.Name.Should().NotBeNullOrWhiteSpace();
+            sub.Description.Should().NotBeNullOrWhiteSpace($"'{sub.ApplyAction}' needs explanatory UI text");
+        }
+    }
+
+    [Fact]
     public void AllToggleSubTweaks_HaveRevertActions()
     {
         var tweaks = _registry.GetTweaks();
@@ -210,6 +232,27 @@ public class TweakRegistryTests
     }
 
     [Fact]
+    public void RunAll_ContainsOnlyReversibleToggleActions()
+    {
+        foreach (var tweak in _registry.GetTweaks())
+        {
+            tweak.RunAllSubTweaks.Should().OnlyContain(
+                sub => sub.Type == SubTweakType.Toggle && !string.IsNullOrWhiteSpace(sub.RevertAction));
+        }
+    }
+
+    [Fact]
+    public void ButtonOnlyCategories_DoNotOfferRunAll()
+    {
+        var categories = _registry.GetTweaks().ToDictionary(t => t.Title);
+
+        categories["Maintenance & Tools"].CanRunAll.Should().BeFalse();
+        categories["Windows Update"].CanRunAll.Should().BeFalse();
+        categories["Privacy"].RunAllSubTweaks.Should().NotContain(
+            sub => sub.ApplyAction.StartsWith("dns-", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AllTweaks_HaveValidScriptPaths()
     {
         var tweaks = _registry.GetTweaks();
@@ -234,8 +277,9 @@ public class TweakRegistryTests
         defender.ApplyScript.Should().Contain("Defender");
     }
 
+    // Smoke-check stable action IDs; routing is covered separately below.
     [Fact]
-    public void ActionIds_MatchJavaDefinitions()
+    public void ActionIds_IncludeKnownAnchors()
     {
         var tweaks = _registry.GetTweaks();
         var allActions = tweaks.SelectMany(t => t.SubTweaks)
@@ -244,71 +288,29 @@ public class TweakRegistryTests
             .ToHashSet();
 
         allActions.Should().Contain("nvidia-settings-on");
-        allActions.Should().Contain("nvidia-settings-default");
+        allActions.Should().NotContain("nvidia-settings-default");
         allActions.Should().Contain("services-disable");
         allActions.Should().Contain("services-restore");
         allActions.Should().Contain("firewall-hardening");
         allActions.Should().Contain("tls-hardening");
         allActions.Should().Contain("copilot-disable");
         allActions.Should().Contain("doh-enable");
-        allActions.Should().Contain("driver-clean");
+        allActions.Should().Contain("ddu-install");
         allActions.Should().Contain("bloatware-remove");
     }
 
     [Fact]
-    public void AllActionIds_HavePowerShellRoutes()
+    public void LongRunningActions_AreAllRealCatalogActionIds()
     {
-        var scriptsRoot = FindRepositoryScriptsRoot();
+        var allActions = _registry.GetTweaks()
+            .SelectMany(t => t.SubTweaks)
+            .SelectMany(s => new[] { s.ApplyAction, s.RevertAction })
+            .Where(a => a != null)
+            .ToHashSet();
 
-        foreach (var tweak in _registry.GetTweaks())
-        {
-            var applyScript = File.ReadAllText(Path.Combine(scriptsRoot, tweak.ApplyScript));
-            var revertScript = File.ReadAllText(Path.Combine(scriptsRoot, tweak.RevertScript));
-
-            foreach (var sub in tweak.SubTweaks)
-            {
-                ScriptHandlesAction(applyScript, sub.ApplyAction).Should().BeTrue(
-                    $"Apply action '{sub.ApplyAction}' for '{sub.Name}' must be routed by {tweak.ApplyScript}");
-
-                if (sub.RevertAction != null)
-                {
-                    ScriptHandlesAction(revertScript, sub.RevertAction).Should().BeTrue(
-                        $"Revert action '{sub.RevertAction}' for '{sub.Name}' must be routed by {tweak.RevertScript}");
-                }
-            }
-        }
+        // Keep long-running timeout overrides aligned with catalog action IDs.
+        foreach (var id in ScriptExecutor.LongRunningActions)
+            allActions.Should().Contain(id, $"long-running action '{id}' must be a real catalog action id");
     }
 
-    private static string FindRepositoryScriptsRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            var scripts = Path.Combine(dir.FullName, "scripts");
-            if (Directory.Exists(scripts))
-                return scripts;
-            dir = dir.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate repository scripts directory.");
-    }
-
-    private static bool ScriptHandlesAction(string scriptContent, string action)
-    {
-        if (ContainsQuotedAction(scriptContent, action))
-            return true;
-
-        if (action.EndsWith("-revert", StringComparison.OrdinalIgnoreCase))
-        {
-            var baseAction = action[..^"-revert".Length];
-            if (ContainsQuotedAction(scriptContent, baseAction))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool ContainsQuotedAction(string scriptContent, string action) =>
-        scriptContent.Contains($"\"{action}\"", StringComparison.OrdinalIgnoreCase) ||
-        scriptContent.Contains($"'{action}'", StringComparison.OrdinalIgnoreCase);
 }

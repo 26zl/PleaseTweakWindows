@@ -30,8 +30,7 @@ public partial class TweakCategoryView : UserControl
     {
         if (DataContext is not TweakCategoryViewModel vm) return;
 
-        // Give the header keyboard focus when first activated so subsequent
-        // Tab navigation continues from here.
+        // Focus the header when the category is first activated.
         focusTarget?.Focus();
 
         vm.ToggleExpandCommand.Execute(null);

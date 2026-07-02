@@ -16,10 +16,7 @@ public interface IDialogService
     Task<bool> ShowCancelConfirmationAsync();
     string GetActionWarning(string action, string actionName);
 
-    /// <summary>
-    /// Shows the per-item import review. Returns the action IDs the user kept,
-    /// or null if they cancelled.
-    /// </summary>
+    /// <summary>Returns the reviewed action IDs or null when cancelled.</summary>
     Task<IReadOnlyList<string>?> ShowConfigReviewAsync(
         IReadOnlyList<(string ActionId, string DisplayName)> items, int droppedCount);
 }

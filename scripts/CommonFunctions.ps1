@@ -1,27 +1,99 @@
-# Common Functions
-# Purpose: Shared functions used across PleaseTweakWindows scripts.
-# Usage: . "$PSScriptRoot\\CommonFunctions.ps1"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Common Functions
 
-# Force UTF-8 console output so non-ASCII text (adapter/driver names, accented vendor
-# strings) is not mangled when the GUI reads stdout. Windows PowerShell 5.1 otherwise
-# emits the OEM code page. Guarded because this can throw if no console host is attached.
+# Use UTF-8 console output when a console host is available.
 try {
     [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 } catch {
-    # No console host attached (or redirected handles) - safe to ignore.
+    Write-Verbose "Could not set UTF-8 console output: $($_.Exception.Message)"
 }
 
 #region Pinned download URLs
-# Version-pinned third-party downloads. Each URL has a matching SHA256 in
-# file-checksums.json, so bumping a version means updating BOTH the URL here AND
-# its checksum entry there. Defined once and shared via dot-sourcing so the same
-# URL is never copy-pasted across scripts (was duplicated 6x before).
+# Pin third-party downloads to checksums in file-checksums.json.
 $script:PTWDownloadUrls = @{
     SevenZip                 = 'https://www.7-zip.org/a/7z2501-x64.exe'
     NvidiaProfileInspector   = 'https://github.com/Orbmu2k/nvidiaProfileInspector/releases/download/2.4.0.31/nvidiaProfileInspector.zip'
     DisplayDriverUninstaller = 'https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.0.exe'
+}
+#endregion
+
+#region Runtime paths
+$script:PTWRuntimeDir = if ($env:PTW_EMBEDDED -eq '1') {
+    if (-not $env:PTW_SCRIPTS_DIR -or -not $env:PTW_RUNTIME_DIR) {
+        throw 'PTW runtime paths were not provided by the application.'
+    }
+
+    $scriptsFull = [IO.Path]::GetFullPath($env:PTW_SCRIPTS_DIR).TrimEnd('\', '/')
+    $runtimeFull = [IO.Path]::GetFullPath($env:PTW_RUNTIME_DIR)
+    $scriptsPrefix = $scriptsFull + [IO.Path]::DirectorySeparatorChar
+    if (-not $runtimeFull.StartsWith($scriptsPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'PTW runtime directory is outside the protected scripts directory.'
+    }
+    $runtimeFull
+} else {
+    Join-Path $env:TEMP ("PleaseTweakWindows-runtime-" + [Guid]::NewGuid().ToString('N'))
+}
+
+function Get-PTWRuntimePath {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $runtimeFull = [IO.Path]::GetFullPath($script:PTWRuntimeDir).TrimEnd('\', '/')
+    $path = [IO.Path]::GetFullPath((Join-Path $runtimeFull $Name))
+    $runtimePrefix = $runtimeFull + [IO.Path]::DirectorySeparatorChar
+    if (-not $path.StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Runtime path escapes the protected directory: $Name"
+    }
+    if (-not (Test-Path -LiteralPath $runtimeFull)) {
+        New-Item -ItemType Directory -Path $runtimeFull -Force -ErrorAction Stop | Out-Null
+    }
+    return $path
+}
+
+$script:PTWStateDir = if ($env:PTW_EMBEDDED -eq '1') {
+    if (-not $env:PTW_STATE_DIR) {
+        throw 'PTW protected state directory was not provided by the application.'
+    }
+    $stateFull = [IO.Path]::GetFullPath($env:PTW_STATE_DIR).TrimEnd('\', '/')
+    $stateItem = Get-Item -LiteralPath $stateFull -Force -ErrorAction Stop
+    if ($stateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw 'PTW protected state directory is a reparse point.'
+    }
+    $stateFull
+} else {
+    $programData = [Environment]::GetFolderPath('CommonApplicationData')
+    if ([string]::IsNullOrWhiteSpace($programData)) {
+        throw 'Could not resolve ProgramData for protected PTW state.'
+    }
+
+    $productDir = Join-Path $programData 'PleaseTweakWindows'
+    $existingProduct = Get-Item -LiteralPath $productDir -Force -ErrorAction SilentlyContinue
+    if ($existingProduct -and ($existingProduct.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "Protected PTW state parent is a reparse point: $productDir"
+    }
+    New-Item -ItemType Directory -Path $productDir -Force -ErrorAction Stop | Out-Null
+
+    $stateDir = Join-Path $productDir 'state'
+    $existingState = Get-Item -LiteralPath $stateDir -Force -ErrorAction SilentlyContinue
+    if ($existingState -and ($existingState.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "Protected PTW state path is a reparse point: $stateDir"
+    }
+    New-Item -ItemType Directory -Path $stateDir -Force -ErrorAction Stop | Out-Null
+    & icacls.exe "$stateDir" /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not secure PTW state directory (icacls exit $LASTEXITCODE): $stateDir"
+    }
+    [IO.Path]::GetFullPath($stateDir).TrimEnd('\', '/')
+}
+
+function Get-PTWStatePath {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $stateFull = [IO.Path]::GetFullPath($script:PTWStateDir).TrimEnd('\', '/')
+    $path = [IO.Path]::GetFullPath((Join-Path $stateFull $Name))
+    $statePrefix = $stateFull + [IO.Path]::DirectorySeparatorChar
+    if (-not $path.StartsWith($statePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "State path escapes the protected directory: $Name"
+    }
+    return $path
 }
 #endregion
 
@@ -60,8 +132,7 @@ function Write-PTWError { param([string]$Text) Write-Output "[-] $Text" }
 #endregion
 
 #region Detailed File Logging (file-only, not visible in GUI)
-# Writes detailed operation logs to a daily log file for debugging.
-# Activated automatically when PTW_EMBEDDED=1 and PTW_LOG_DIR is set by the Java GUI.
+# Write detailed daily logs when running in embedded mode.
 $script:PTWDetailLogFile = $null
 
 function Write-PTWDetail {
@@ -75,26 +146,28 @@ if ($env:PTW_EMBEDDED -eq '1' -and $env:PTW_LOG_DIR) {
     $dateStamp = Get-Date -Format "yyyy-MM-dd"
     $script:PTWDetailLogFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-detail-$dateStamp.log"
 
-    # Prune our own daily detail/transcript logs older than 14 days. These can contain adapter
-    # names, file paths, installed-app info, etc., so they should not accumulate indefinitely.
-    # Scoped by name so we never touch the GUI's Serilog-managed *.log files.
     try {
         $cutoff = (Get-Date).AddDays(-14)
         Get-ChildItem -LiteralPath $env:PTW_LOG_DIR -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match '^PleaseTweakWindows-(detail|transcript)-.*\.log$' -and $_.LastWriteTime -lt $cutoff } |
             Remove-Item -Force -ErrorAction SilentlyContinue
-    } catch { }
+        # Prune convenience snapshots without touching protected rollback state.
+        $backupCutoff = (Get-Date).AddDays(-30)
+        $registryBackupPath = Join-Path $env:PTW_LOG_DIR 'registry-backups'
+        Get-ChildItem -LiteralPath $registryBackupPath -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt $backupCutoff } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    } catch {
+        Write-Verbose "Log retention cleanup failed: $($_.Exception.Message)"
+    }
 
-    # A full PowerShell transcript captures ALL console output (Write-Output/Warning/Error,
-    # exceptions, and every direct cmdlet's output). It is useful for debugging but a privacy
-    # concern and redundant with the GUI's own output capture, so it is OFF by default. It is
-    # enabled only when PTW_TRANSCRIPT=1 (DEBUG builds set this; release builds do not).
+    # Enable full PowerShell transcripts only when PTW_TRANSCRIPT=1.
     if ($env:PTW_TRANSCRIPT -eq '1') {
         $script:PTWTranscriptFile = Join-Path $env:PTW_LOG_DIR "PleaseTweakWindows-transcript-$dateStamp.log"
         try {
             Start-Transcript -Path $script:PTWTranscriptFile -Append -Force | Out-Null
         } catch {
-            # Transcript may already be running (nested dot-source) — safe to ignore
+            Write-Verbose "PowerShell transcript could not start: $($_.Exception.Message)"
         }
     }
 
@@ -118,22 +191,29 @@ function Get-ActiveAdapter {
 function Import-RegistryFile {
     param([Parameter(Mandatory=$true)][string]$RegFile)
     Write-PTWDetail "IMPORT registry file: $RegFile"
-    if (Test-Path $RegFile) {
-        # Use reg.exe (not regedit.exe /s): reg.exe returns a real non-zero exit code and
-        # writes to stderr on import failure, whereas regedit /s returns 0 even on failure.
-        & reg.exe import "$RegFile" 2>&1 | Out-Null
-        $success = ($LASTEXITCODE -eq 0)
-        Write-PTWDetail "  $(if ($success) { 'OK' } else { "FAILED (exit code $LASTEXITCODE)" })"
-        return $success
+    if (-not (Test-Path $RegFile)) {
+        Write-PTWDetail "  SKIP (file not found)"
+        return $false
     }
-    Write-PTWDetail "  SKIP (file not found)"
-    return $false
+
+    # Verify registry payload integrity before importing it into HKLM.
+    if (-not (Test-PtwFileChecksum -Path $RegFile)) {
+        Write-PTWError "Registry file integrity check FAILED for $RegFile. Refusing to import."
+        $script:PTWErrorCount++
+        return $false
+    }
+
+    # Use reg.exe so registry import failures return a non-zero exit code.
+    & reg.exe import "$RegFile" 2>&1 | Out-Null
+    $success = ($LASTEXITCODE -eq 0)
+    Write-PTWDetail "  $(if ($success) { 'OK' } else { "FAILED (exit code $LASTEXITCODE)" })"
+    if (-not $success) { $script:PTWErrorCount++ }
+    return $success
 }
 #endregion
 
 #region Registry Helpers (Safe)
-# Tracks how many registry mutations failed so dispatchers can exit non-zero instead of
-# falsely reporting success. Incremented in each helper's catch block.
+# Track failed registry mutations for dispatcher exit codes.
 $script:PTWErrorCount = 0
 
 # Dispatchers can call this in place of `exit 0` to signal failure when any helper failed.
@@ -169,10 +249,10 @@ function Set-RegValueSafe {
     try {
         if ($PSCmdlet.ShouldProcess("$Path\\$Name", "Set registry value")) {
             if (-not (Test-Path -LiteralPath $Path)) {
-                New-Item -Path $Path -Force | Out-Null
+                New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
                 Write-PTWDetail "  Created registry key: $Path"
             }
-            New-ItemProperty -Path $Path -Name $Name -PropertyType $Type -Value $Value -Force | Out-Null
+            New-ItemProperty -Path $Path -Name $Name -PropertyType $Type -Value $Value -Force -ErrorAction Stop | Out-Null
             Write-PTWDetail "  OK"
         }
     } catch {
@@ -210,19 +290,19 @@ function Remove-RegValueSafe {
     )
     $Path = ConvertTo-PSDrivePath $Path
     Write-PTWDetail "REMOVE value $Path\$Name"
+    # Treat an already-absent registry value as a successful restore.
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Write-PTWDetail "  SKIP (key not found - already default)"
+        return
+    }
+    if ($null -eq (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue)) {
+        Write-PTWDetail "  SKIP (value not found - already default)"
+        return
+    }
     try {
-        if (Test-Path -LiteralPath $Path) {
-            $has = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
-            if ($null -ne $has) {
-                if ($PSCmdlet.ShouldProcess("$Path\\$Name", "Remove registry value")) {
-                    Remove-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
-                    Write-PTWDetail "  OK (removed)"
-                }
-            } else {
-                Write-PTWDetail "  SKIP (value not found)"
-            }
-        } else {
-            Write-PTWDetail "  SKIP (key not found)"
+        if ($PSCmdlet.ShouldProcess("$Path\\$Name", "Remove registry value")) {
+            Remove-ItemProperty -Path $Path -Name $Name -ErrorAction Stop
+            Write-PTWDetail "  OK (removed)"
         }
     } catch {
         $script:PTWErrorCount++
@@ -245,14 +325,15 @@ function Remove-RegKeySafe {
     param([Parameter(Mandatory)][string]$Path)
     $Path = ConvertTo-PSDrivePath $Path
     Write-PTWDetail "REMOVE key $Path"
+    # Treat an already-absent registry key as a successful restore.
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Write-PTWDetail "  SKIP (key not found - already default)"
+        return
+    }
     try {
-        if (Test-Path -LiteralPath $Path) {
-            if ($PSCmdlet.ShouldProcess($Path, "Remove registry key")) {
-                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
-                Write-PTWDetail "  OK (key removed)"
-            }
-        } else {
-            Write-PTWDetail "  SKIP (key not found)"
+        if ($PSCmdlet.ShouldProcess($Path, "Remove registry key")) {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            Write-PTWDetail "  OK (key removed)"
         }
     } catch {
         $script:PTWErrorCount++
@@ -278,10 +359,10 @@ function Set-RegistryDefaultValueSafe {
     try {
         if ($PSCmdlet.ShouldProcess("$Path\\(Default)", "Set registry default value")) {
             if (-not (Test-Path -LiteralPath $Path)) {
-                New-Item -Path $Path -Force | Out-Null
+                New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
                 Write-PTWDetail "  Created registry key: $Path"
             }
-            New-ItemProperty -Path $Path -Name '(Default)' -PropertyType String -Value $Value -Force | Out-Null
+            New-ItemProperty -Path $Path -Name '(Default)' -PropertyType String -Value $Value -Force -ErrorAction Stop | Out-Null
             Write-PTWDetail "  OK"
         }
     } catch {
@@ -293,22 +374,10 @@ function Set-RegistryDefaultValueSafe {
 #endregion
 
 #region Shared Security Helpers
-# Moved verbatim from the former security.ps1 / revert-security.ps1 so the split
-# Defender / Exploit Protection / Device Guard / Network Security / System Security
-# category scripts can all dot-source them.
-
-function Get-OsBuildNumber {
-    try {
-        return [Environment]::OSVersion.Version.Build
-    } catch {
-        return 0
-    }
-}
+# Shared by the split security categories.
 
 function Test-DefenderTamperProtected {
-    # Returns $true if Microsoft Defender Tamper Protection is ON. When it is on,
-    # Set-MpPreference changes to protection state are silently ignored/reverted by
-    # the Defender service, so the GUI must NOT report success.
+    # Detect Tamper Protection before applying Defender preferences.
     try {
         return [bool](Get-MpComputerStatus -ErrorAction Stop).IsTamperProtected
     } catch {
@@ -322,11 +391,12 @@ function Disable-ClipboardService {
             $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
             if ($svc) {
                 if ($svc.Status -ne 'Stopped') {
-                    Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+                    Stop-Service -Name $svcName -Force -ErrorAction Stop
                 }
-                Set-Service -Name $svcName -StartupType Disabled -ErrorAction SilentlyContinue
+                Set-Service -Name $svcName -StartupType Disabled -ErrorAction Stop
             }
         } catch {
+            $script:PTWErrorCount++
             Write-Warning "[WARN] Service disable failed for ${svcName}: $($_.Exception.Message)"
         }
     }
@@ -335,24 +405,31 @@ function Disable-ClipboardService {
         Get-Service -Name 'cbdhsvc_*' -ErrorAction SilentlyContinue | ForEach-Object {
             try {
                 if ($_.Status -ne 'Stopped') {
-                    Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue
+                    Stop-Service -Name $_.Name -Force -ErrorAction Stop
                 }
-                Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue
-            } catch { Write-Verbose "Failed to disable service $($_.Name): $($_.Exception.Message)" }
+                Set-Service -Name $_.Name -StartupType Disabled -ErrorAction Stop
+            } catch {
+                $script:PTWErrorCount++
+                Write-Warning "Failed to disable service $($_.Name): $($_.Exception.Message)"
+            }
         }
-    } catch { Write-Verbose "Failed to enumerate cbdhsvc_* services: $($_.Exception.Message)" }
+    } catch {
+        $script:PTWErrorCount++
+        Write-Warning "Failed to enumerate cbdhsvc_* services: $($_.Exception.Message)"
+    }
 }
 
 function Disable-OptionalFeaturesSafe {
     param([string[]]$Names)
     foreach ($f in $Names) {
         try {
-            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction SilentlyContinue
+            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction Stop
             if ($feat -and $feat.State -ne 'Disabled') {
-                Disable-WindowsOptionalFeature -Online -FeatureName $f -NoRestart -ErrorAction SilentlyContinue | Out-Null
+                Disable-WindowsOptionalFeature -Online -FeatureName $f -NoRestart -ErrorAction Stop | Out-Null
             }
         } catch {
             Write-Warning "[WARN] Optional feature op failed for ${f}: $($_.Exception.Message)"
+            $script:PTWErrorCount++
         }
     }
 }
@@ -362,27 +439,28 @@ function Remove-WindowsCapabilitiesSafe {
     param([string[]]$Patterns)
     foreach ($capPattern in $Patterns) {
         try {
-            Get-WindowsCapability -Online -Name $capPattern -ErrorAction SilentlyContinue |
+            Get-WindowsCapability -Online -Name $capPattern -ErrorAction Stop |
                 Where-Object { $_.State -ne 'NotPresent' } |
                 ForEach-Object {
                     if ($PSCmdlet.ShouldProcess($_.Name, "Remove Windows capability")) {
-                        Remove-WindowsCapability -Online -Name $_.Name -ErrorAction SilentlyContinue | Out-Null
+                        Remove-WindowsCapability -Online -Name $_.Name -ErrorAction Stop | Out-Null
                     }
                 }
         } catch {
             Write-Warning "[WARN] Capability remove failed for ${capPattern}: $($_.Exception.Message)"
+            $script:PTWErrorCount++
         }
     }
 }
 
-# Best-effort Set-MpPreference: a single unsupported parameter on older builds raises a
-# parameter-binding error that -ErrorAction cannot trap, so isolate each setting.
+# Apply Defender preferences individually for compatibility with older builds.
 function Invoke-MpPrefSafe {
     param([Parameter(Mandatory)][hashtable]$Pref)
     try {
         Set-MpPreference @Pref -ErrorAction Stop
     } catch {
         Write-PTWLog "Defender setting not applied (may be unsupported on this build): $($Pref.Keys -join ',') -> $($_.Exception.Message)" "WARNING"
+        $script:PTWErrorCount++
     }
 }
 
@@ -392,13 +470,14 @@ function Enable-ServiceSafe {
         try {
             $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
             if ($svc) {
-                Set-Service -Name $name -StartupType $StartupType -ErrorAction SilentlyContinue
+                Set-Service -Name $name -StartupType $StartupType -ErrorAction Stop
                 if ($svc.Status -ne 'Running') {
-                    Start-Service -Name $name -ErrorAction SilentlyContinue
+                    Start-Service -Name $name -ErrorAction Stop
                 }
             }
         } catch {
             Write-PTWLog "Failed to enable/start service ${name}: $($_.Exception.Message)" "WARNING"
+            $script:PTWErrorCount++
         }
     }
 }
@@ -407,12 +486,13 @@ function Enable-OptionalFeaturesSafe {
     param([string[]]$Names)
     foreach ($f in $Names) {
         try {
-            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction SilentlyContinue
+            $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction Stop
             if ($feat -and $feat.State -ne 'Enabled') {
-                Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+                Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction Stop | Out-Null
             }
         } catch {
             Write-PTWLog "Optional feature op failed for ${f}: $($_.Exception.Message)" "WARNING"
+            $script:PTWErrorCount++
         }
     }
 }
@@ -423,15 +503,16 @@ function Add-WindowsCapabilitiesSafe {
 
     foreach ($capPattern in $Patterns) {
         try {
-            Get-WindowsCapability -Online -Name $capPattern -ErrorAction SilentlyContinue |
+            Get-WindowsCapability -Online -Name $capPattern -ErrorAction Stop |
                 Where-Object { $_.State -eq 'NotPresent' } |
                 ForEach-Object {
                     if ($PSCmdlet.ShouldProcess($_.Name, "Add Windows capability")) {
-                        Add-WindowsCapability -Online -Name $_.Name -ErrorAction SilentlyContinue | Out-Null
+                        Add-WindowsCapability -Online -Name $_.Name -ErrorAction Stop | Out-Null
                     }
                 }
         } catch {
             Write-PTWLog "Capability op failed for pattern ${capPattern}: $($_.Exception.Message)" "WARNING"
+            $script:PTWErrorCount++
         }
     }
 }
@@ -449,9 +530,10 @@ function Save-RegState {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Name
     )
-    $entry = @{ Path = $Path; Name = $Name; Existed = $false; PreviousValue = $null; PreviousType = $null }
+    $entry = @{ Path = $Path; Name = $Name; Existed = $false; PreviousValue = $null; PreviousType = $null; KeyExisted = $false }
     try {
-        if (Test-Path -LiteralPath $Path) {
+        $entry.KeyExisted = [bool](Test-Path -LiteralPath $Path)
+        if ($entry.KeyExisted) {
             $prop = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
             if ($null -ne $prop -and $null -ne $prop.$Name) {
                 $entry.Existed = $true
@@ -490,13 +572,21 @@ function Undo-PTWTransaction {
     [Array]::Reverse($reversed)
     foreach ($entry in $reversed) {
         try {
-            if ($entry.Existed) {
-                $type = if ($entry.PreviousType) { $entry.PreviousType } else { 'String' }
-                Set-RegValueSafe -Path $entry.Path -Name $entry.Name -Type $type -Value $entry.PreviousValue
+            if ($entry.Existed -and $entry.PreviousType) {
+                Set-RegValueSafe -Path $entry.Path -Name $entry.Name -Type $entry.PreviousType -Value $entry.PreviousValue
                 Write-Verbose "Restored: $($entry.Path)\$($entry.Name)"
             } else {
+                # Remove values whose original registry type is unknown.
                 Remove-RegValueSafe -Path $entry.Path -Name $entry.Name
-                Write-Verbose "Removed new value: $($entry.Path)\$($entry.Name)"
+                Write-Verbose "Removed value: $($entry.Path)\$($entry.Name)"
+            }
+            # Remove empty keys created by the transaction.
+            if (-not $entry.KeyExisted) {
+                $key = Get-Item -LiteralPath $entry.Path -ErrorAction SilentlyContinue
+                if ($key -and $key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0) {
+                    Remove-RegKeySafe -Path $entry.Path
+                    Write-Verbose "Removed empty key created by transaction: $($entry.Path)"
+                }
             }
         } catch {
             Write-Warning "Rollback failed for $($entry.Path)\$($entry.Name): $($_.Exception.Message)"
@@ -584,19 +674,6 @@ function Get-ChecksumFromFile {
                     return $script:RuntimeChecksumCache[$URL]
                 }
             }
-            
-            # Legacy: check checksums section
-            if ($checksumData.PSObject.Properties.Name -contains "checksums") {
-                if ($checksumData.checksums.PSObject.Properties.Name -contains $URL) {
-                    $hash = $checksumData.checksums.$URL
-                    if ($null -ne $hash -and $hash -ne "" -and $hash -ne "DYNAMIC" -and $hash -ne "REQUIRED") {
-                        return $hash
-                    }
-                    if ($hash -eq "REQUIRED") {
-                        return "REQUIRED"
-                    }
-                }
-            }
         } catch {
             Write-Warning "Failed to load checksums: $($_.Exception.Message)"
         }
@@ -613,17 +690,70 @@ function Set-RuntimeChecksum {
     Write-Verbose "Cached runtime checksum for: $URL"
 }
 
+# Verify shipped payloads against the embedded checksum manifest.
+function Test-PtwFileChecksum {
+    param([Parameter(Mandatory)][string]$Path)
+    try {
+        $scriptsRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
+        $checksumFile = Join-Path $scriptsRoot "file-checksums.json"
+        # Refuse payloads when the checksum manifest is missing.
+        if (-not (Test-Path $checksumFile)) {
+            Write-PTWDetail "  file-checksums.json missing; refusing to import unverified."
+            return $false
+        }
+
+        $full = [System.IO.Path]::GetFullPath($Path)
+        $rootFull = [System.IO.Path]::GetFullPath($scriptsRoot)
+        # Reject payload paths outside the scripts root.
+        $rootPrefix = $rootFull.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $full.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-PTWDetail "  Refusing to verify a path outside the scripts root: $Path"
+            return $false
+        }
+        $rel = ($full.Substring($rootFull.Length).TrimStart('\', '/')) -replace '\\', '/'
+
+        $data = Get-Content $checksumFile -Raw | ConvertFrom-Json
+        if (-not ($data.scripts.PSObject.Properties.Name -contains $rel)) {
+            Write-PTWDetail "  No checksum entry for $rel; refusing to import unverified."
+            return $false
+        }
+        $expected = $data.scripts.$rel
+        $actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash
+        if ($actual -ne $expected) {
+            Write-PTWDetail "  Checksum MISMATCH for ${rel}: expected $expected, got $actual"
+            return $false
+        }
+        Write-PTWDetail "  Checksum verified OK: $rel"
+        return $true
+    } catch {
+        Write-PTWDetail "  Checksum verification error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 # Shared function for downloading files with URL validation and optional checksum verification
 function Get-FileFromWeb {
     param (
         [Parameter(Mandatory)][string]$URL,
         [Parameter(Mandatory)][string]$File,
-        [Parameter(Mandatory=$false)][string]$ExpectedHash
+        [Parameter(Mandatory=$false)][string]$ExpectedHash,
+        # Limit response size unless the caller provides a larger cap.
+        [Parameter(Mandatory=$false)][long]$MaxBytes = 1GB
     )
 
     Write-PTWDetail "DOWNLOAD $URL -> $File"
-    # Force TLS 1.2/1.3 for secure downloads (required by most modern servers).
-    # Tls13 enum isn't available on older .NET Framework; catch and fall back gracefully.
+    $maxDownloadBytes = $MaxBytes
+
+    $fullFile = [IO.Path]::GetFullPath($File)
+    if ($env:PTW_EMBEDDED -eq '1') {
+        $runtimeFull = [IO.Path]::GetFullPath($script:PTWRuntimeDir).TrimEnd('\', '/')
+        $runtimePrefix = $runtimeFull + [IO.Path]::DirectorySeparatorChar
+        if (-not $fullFile.StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "SECURITY: Embedded downloads must stay in the protected runtime directory: $fullFile"
+        }
+    }
+    $File = $fullFile
+    # Prefer TLS 1.2 and 1.3 while remaining compatible with older .NET Framework builds.
     try {
         [Net.ServicePointManager]::SecurityProtocol =
             [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
@@ -647,10 +777,12 @@ function Get-FileFromWeb {
         'microsoft.com',
         'download.microsoft.com',
         'aka.ms',
-        'msedge.sf.dl.delivery.mp.microsoft.com',
         'go.microsoft.com',
         'github.com',
         'raw.githubusercontent.com',
+        # Allow GitHub release-asset CDN hosts while retaining checksum verification.
+        'release-assets.githubusercontent.com',
+        'objects.githubusercontent.com',
         'download.sysinternals.com',
         'oo-software.com',
         'geforce.com',
@@ -660,8 +792,7 @@ function Get-FileFromWeb {
         'amd.com'
     )
 
-    # Use exact domain matching to prevent bypass via subdomain attacks
-    # Extract hostname from URL
+    # Validate download hosts with exact domain matching.
     try {
         $uri = [System.Uri]$URL
         $hostname = $uri.Host
@@ -690,8 +821,7 @@ function Get-FileFromWeb {
         }
     }
 
-    # For security-critical downloads from third-party sources (e.g., GitHub user repos),
-    # require explicit hash verification to prevent supply-chain attacks
+    # Require checksums for security-sensitive third-party downloads.
     $isThirdParty = $hostname -like "*.githubusercontent.com" -or $hostname -eq 'github.com' -or $hostname -like "*.github.com"
     if ($isThirdParty -and -not $ExpectedHash) {
         throw "SECURITY: Unverified third-party download blocked. Add SHA256 hash to file-checksums.json for: $URL"
@@ -716,23 +846,55 @@ function Get-FileFromWeb {
     try {
         $request = [System.Net.HttpWebRequest]::Create($URL)
         $request.UserAgent = "PleaseTweakWindows/1.0"
+        $request.Timeout = 30000
+        $request.ReadWriteTimeout = 30000
         $response = $request.GetResponse()
+        if ($response.ContentLength -gt 1GB) {
+            throw "Download is unexpectedly large ($($response.ContentLength) bytes): $URL"
+        }
+
+        # Revalidate the final download host after redirects.
+        $finalUri = $response.ResponseUri
+        $finalHost = $finalUri.Host
+        if ($finalUri.Scheme -ne 'https') {
+            $response.Close()
+            throw "SECURITY: download redirected to non-HTTPS URL '$finalUri'. Blocked."
+        }
+        $finalTrusted = $false
+        foreach ($domain in $trustedDomains) {
+            if ($finalHost -eq $domain -or $finalHost.EndsWith(".$domain")) { $finalTrusted = $true; break }
+        }
+        if (-not $finalTrusted) {
+            try { $response.Close() } catch { Write-Verbose "Response close failed: $($_.Exception.Message)" }
+            throw "SECURITY: download redirected to non-trusted host '$finalHost' (from $URL). Blocked."
+        }
+        # Apply third-party checksum requirements to the final redirected host.
+        $finalThirdParty = $finalHost -like "*.githubusercontent.com" -or $finalHost -eq 'github.com' -or $finalHost -like "*.github.com"
+        if ($finalThirdParty -and -not $ExpectedHash) {
+            try { $response.Close() } catch { Write-Verbose "Response close failed: $($_.Exception.Message)" }
+            throw "SECURITY: Unverified third-party download blocked (redirected to '$finalHost'). Add SHA256 hash to file-checksums.json for: $URL"
+        }
         if ($File -match '^\.\\') { $File = Join-Path (Get-Location -PSProvider 'FileSystem') ($File -Split '^\.')[1] }
         if ($File -and !(Split-Path $File)) { $File = Join-Path (Get-Location -PSProvider 'FileSystem') $File }
         if ($File) { $fileDirectory = $([System.IO.Path]::GetDirectoryName($File)); if (!(Test-Path($fileDirectory))) { [System.IO.Directory]::CreateDirectory($fileDirectory) | Out-Null } }
         [long]$fullSize = $response.ContentLength
+        if ($fullSize -gt $maxDownloadBytes) {
+            throw "Download is too large ($fullSize bytes; maximum $maxDownloadBytes): $URL"
+        }
         [byte[]]$buffer = new-object byte[] 1048576
         [long]$total = [long]$count = 0
-        # Delete any pre-existing file at the destination so a locally-planted file cannot be
-        # reused across the verify-then-execute window (TOCTOU hardening). The fresh download is
-        # then hash/signature-verified below before the caller executes it.
-        if (Test-Path -LiteralPath $File) { Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $File) {
+            Remove-Item -LiteralPath $File -Force -ErrorAction Stop
+        }
         $reader = $response.GetResponseStream()
-        $writer = new-object System.IO.FileStream $File, 'Create'
+        $writer = New-Object System.IO.FileStream $File, 'CreateNew'
         do {
             $count = $reader.Read($buffer, 0, $buffer.Length)
             $writer.Write($buffer, 0, $count)
             $total += $count
+            if ($total -gt $maxDownloadBytes) {
+                throw "Download exceeded the $maxDownloadBytes-byte limit: $URL"
+            }
             if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $total -ProgressText " $([System.IO.Path]::GetFileName($File))" }
         } while ($count -gt 0)
         if ($fullSize -gt 0) { Show-Progress -TotalValue $fullSize -CurrentValue $fullSize -ProgressText " $([System.IO.Path]::GetFileName($File))" -Complete }
@@ -758,16 +920,21 @@ function Get-FileFromWeb {
             Write-PTWDetail "  Downloaded OK, hash cached: $actualHash"
         }
     }
+    catch {
+        if ($writer) { try { $writer.Close() } catch { Write-Verbose "Writer close failed: $($_.Exception.Message)" }; $writer = $null }
+        if ($reader) { try { $reader.Close() } catch { Write-Verbose "Reader close failed: $($_.Exception.Message)" }; $reader = $null }
+        if ($File -and (Test-Path -LiteralPath $File)) {
+            Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue
+        }
+        throw
+    }
     finally {
         if ($reader) { $reader.Close() }
         if ($writer) { $writer.Close() }
     }
 }
 
-# Validated download for PUBLIC IP-range (CIDR) text lists only (used by country-IP firewall
-# blocking). These lists regenerate daily so a pinned SHA256 is impossible; instead the source
-# host + path are constrained and EVERY line is validated as a CIDR before returning. No file is
-# executed — this returns an array of strings.
+# Download public CIDR lists only from constrained sources and validate every entry.
 function Get-CidrListFromWeb {
     param([Parameter(Mandatory)][string]$URL)
 
@@ -783,12 +950,13 @@ function Get-CidrListFromWeb {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     }
 
-    $resp = Invoke-WebRequest -Uri $URL -UseBasicParsing -UserAgent 'PleaseTweakWindows/1.0' -ErrorAction Stop
+    $resp = Invoke-WebRequest -Uri $URL -UseBasicParsing -UserAgent 'PleaseTweakWindows/1.0' -TimeoutSec 30 -ErrorAction Stop
+    if ($resp.RawContentLength -gt 10MB) {
+        throw "CIDR response is unexpectedly large ($($resp.RawContentLength) bytes): $URL"
+    }
     $lines = ($resp.Content -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($_ -notmatch '^#') }
 
-    # The consuming sink is a block-all-capable firewall rule, so the regex was too weak: validate
-    # each entry as a real IP + in-range prefix, and REJECT catch-all / over-broad ranges
-    # (0.0.0.0/0, ::/0, tiny prefixes) that could sever all connectivity if the list were poisoned.
+    # Reject invalid, catch-all, and over-broad CIDR ranges.
     $valid = New-Object System.Collections.Generic.List[string]
     $skipped = 0
     foreach ($line in $lines) {
@@ -809,19 +977,34 @@ function Get-CidrListFromWeb {
         $valid.Add("$($ip.ToString())/$prefix")
     }
 
-    if ($valid.Count -eq 0) { throw "No valid CIDR entries returned from $URL" }
-    if ($valid.Count -gt 60000) { throw "CIDR list from $URL is unexpectedly large ($($valid.Count) entries); refusing." }
+    if ($valid.Count -lt 100 -or $valid.Count -gt 60000) {
+        throw "CIDR list from $URL has an unexpected size ($($valid.Count) entries); refusing."
+    }
     # A few benign bad lines are tolerated; a high invalid ratio is the real tampering signal.
     if ($skipped -gt [Math]::Max(50, [int]($valid.Count * 0.05))) {
         throw "Refusing CIDR list from ${URL}: $skipped invalid line(s) vs $($valid.Count) valid (possible tampering)."
     }
+
+    [double]$ipv4Coverage = 0
+    [double]$ipv6Coverage = 0
+    foreach ($cidr in $valid) {
+        $cidrParts = $cidr -split '/', 2
+        $parsedAddress = [System.Net.IPAddress]::Parse($cidrParts[0])
+        $parsedPrefix = [int]$cidrParts[1]
+        if ($parsedAddress.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+            $ipv4Coverage += [Math]::Pow(2, 32 - $parsedPrefix)
+        } else {
+            $ipv6Coverage += [Math]::Pow(2, 128 - $parsedPrefix)
+        }
+    }
+    if (($ipv4Coverage / [Math]::Pow(2, 32)) -gt 0.25 -or
+        ($ipv6Coverage / [Math]::Pow(2, 128)) -gt 0.25) {
+        throw "CIDR list from $URL covers an implausibly large share of the internet; refusing."
+    }
     return $valid.ToArray()
 }
 
-# Verify that a downloaded executable is Authenticode-signed by an expected publisher.
-# $PublisherPatterns are case-insensitive substrings of the signer's Subject.
-# For downloads where the hash is dynamic (e.g., aka.ms redirects, OOSU10 release channel),
-# this is the second line of supply-chain defence.
+# Verify downloaded executables against expected Authenticode publisher names.
 function Test-SignedFile {
     param (
         [Parameter(Mandatory)][string]$Path,
@@ -835,9 +1018,14 @@ function Test-SignedFile {
         throw "SECURITY: Authenticode signature not valid for $Path (status=$($sig.Status)). Refusing to execute."
     }
     $subject = [string]$sig.SignerCertificate.Subject
+    $signerName = $sig.SignerCertificate.GetNameInfo(
+        [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
     $matched = $false
     foreach ($pattern in $PublisherPatterns) {
-        if ($subject -like "*$pattern*") { $matched = $true; break }
+        if ([string]::Equals($signerName, $pattern, [StringComparison]::OrdinalIgnoreCase)) {
+            $matched = $true
+            break
+        }
     }
     if (-not $matched) {
         throw ("SECURITY: Signer '$subject' does not match expected publisher(s): " +
@@ -846,14 +1034,7 @@ function Test-SignedFile {
     Write-PTWDetail "  Authenticode OK: $subject"
 }
 
-# Export one or more registry paths to a timestamped .reg file before destructive mutations.
-# Paths are given in the "HKLM:\..." / "HKCU:\..." PowerShell form; reg.exe needs "HKLM\..."
-# (no colon), so we translate. Missing paths are silently skipped.
-#
-# Output location: $env:PTW_LOG_DIR\registry-backups\<action>_<yyyyMMdd-HHmmss>.reg
-# (falls back to $env:TEMP\PleaseTweakWindows\registry-backups when PTW_LOG_DIR is unset).
-#
-# Each call appends multiple key exports into a single combined .reg file for that action.
+# Export existing registry paths to a timestamped backup before destructive changes.
 function Backup-RegistryPath {
     [CmdletBinding()]
     param(

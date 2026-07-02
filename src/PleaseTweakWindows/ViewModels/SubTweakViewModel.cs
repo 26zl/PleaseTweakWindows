@@ -26,21 +26,16 @@ public partial class SubTweakViewModel : ViewModelBase
     public string? Description => _model.Description;
     public bool HasRevert => _model.Type == SubTweakType.Toggle && _model.RevertAction != null;
 
-    /// <summary>
-    /// True while ANY operation (this one or another tweak) is running. Bound to
-    /// button IsEnabled so Apply/Revert are disabled during other runs. Change
-    /// notifications are pushed via <see cref="OnGlobalRunningChanged"/>.
-    /// </summary>
+    /// <summary>Indicates whether any tweak operation is running.</summary>
     public bool IsGloballyRunning => _isGloballyRunning();
 
-    /// <summary>
-    /// True when this tweak has no unmet dependency (its prerequisite is applied on this
-    /// machine). Read live from the registry; re-evaluated whenever a run completes.
-    /// </summary>
+    /// <summary>Indicates whether this tweak's live dependency is met.</summary>
     public bool RequirementMet => RegistryState.IsSatisfied(_model.Requires);
     public bool RequirementUnmet => !RequirementMet;
     public bool HasRequirement => _model.Requires != null;
-    public string? RequirementMessage => _model.Requires?.UnmetMessage;
+
+    // Show the dependency tooltip only while Apply is disabled.
+    public string? RequirementMessage => RequirementUnmet ? _model.Requires?.UnmetMessage : null;
 
     public SubTweakViewModel(
         SubTweak model,
@@ -68,15 +63,13 @@ public partial class SubTweakViewModel : ViewModelBase
         _setError = setError;
     }
 
-    /// <summary>
-    /// Raises change notifications for <see cref="IsGloballyRunning"/> and the dependency
-    /// state (a just-applied prerequisite may now satisfy another tweak's requirement).
-    /// </summary>
+    /// <summary>Refreshes global-running and dependency state.</summary>
     public void OnGlobalRunningChanged()
     {
         OnPropertyChanged(nameof(IsGloballyRunning));
         OnPropertyChanged(nameof(RequirementMet));
         OnPropertyChanged(nameof(RequirementUnmet));
+        OnPropertyChanged(nameof(RequirementMessage));
     }
 
     [RelayCommand]
@@ -84,7 +77,7 @@ public partial class SubTweakViewModel : ViewModelBase
     {
         // Guard: a greyed (unmet-dependency) Apply must be a no-op even if invoked.
         if (!RequirementMet) return;
-        await ExecuteActionAsync(_applyScriptPath, _model.ApplyAction, "apply");
+        await ExecuteActionAsync(_applyScriptPath, _model.ApplyAction);
     }
 
     [RelayCommand]
@@ -92,10 +85,10 @@ public partial class SubTweakViewModel : ViewModelBase
     {
         var revertAction = _model.RevertAction;
         if (string.IsNullOrEmpty(revertAction)) return;
-        await ExecuteActionAsync(_revertScriptPath, revertAction, "revert");
+        await ExecuteActionAsync(_revertScriptPath, revertAction);
     }
 
-    private async Task ExecuteActionAsync(string scriptPath, string action, string actionType)
+    private async Task ExecuteActionAsync(string scriptPath, string action)
     {
         if (_isGloballyRunning()) return;
 
@@ -111,12 +104,20 @@ public partial class SubTweakViewModel : ViewModelBase
                 scriptPath, action, Name, _scriptDirectory,
                 _executor, _dialogService, _restorePointGuard, _logPanel);
 
-            // Surface a non-zero exit visibly instead of letting it disappear into
-            // a grey log line the user may never scroll to.
+            // Show script failures in the banner while leaving cancellations silent.
             if (result.Outcome == ScriptRunOutcome.Applied && result.ExitCode != 0)
             {
                 _setError($"'{Name}' failed (exit {result.ExitCode}) — check the output panel.");
             }
+            else if (result.Outcome == ScriptRunOutcome.RestorePointFailed)
+            {
+                _setError($"Restore point creation failed — '{Name}' was not applied. See the output panel.");
+            }
+        }
+        catch (Exception ex)
+        {
+            UiDispatcher.Post(() => _logPanel.AppendLine($"[-] ERROR: {ex.Message}"));
+            _setError($"'{Name}' could not be completed — check the output panel.");
         }
         finally
         {

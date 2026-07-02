@@ -1,8 +1,4 @@
-# System Security Tweaks
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File system-security.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-21
+﻿# System Security Tweaks
 #Requires -RunAsAdministrator
 
 param(
@@ -25,12 +21,12 @@ param(
         "security-audit-policy",
         "security-disable-coinstallers",
         "security-wsh-disable",
+        "security-filter-admin-token",
+        "security-ntfs-8dot3-disable",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 function Write-PTWLog {
     param([string]$Message, [string]$Level = "INFO")
@@ -54,7 +50,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 function Set-ClipboardDataCollectionDisabled {
@@ -174,16 +171,14 @@ function Set-UacSilentElevation {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Set administrator consent prompt to silent elevation")) { return }
     Write-Output "[*] Setting administrator elevation to silent (no consent prompt)..."
-    Write-Output "[!] WARNING: this is the 'Never notify' User Account Control level. Programs that request administrator rights elevate WITHOUT a prompt, so anything that gets admin can act unattended. EnableLUA stays ON (admin approval mode remains active); the Revert button restores the Windows default prompt."
+    Write-Output "[!] WARNING: this is the 'Never notify' User Account Control level. Programs that request administrator rights elevate WITHOUT a prompt, so anything that gets admin can act unattended. EnableLUA stays ON (admin approval mode remains active); Restore Default restores the Windows prompt."
     # ConsentPromptBehaviorAdmin 0 = elevate without prompting; PromptOnSecureDesktop 0 = no dimmed secure desktop.
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'ConsentPromptBehaviorAdmin' -Type 'DWord' -Value 0
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'PromptOnSecureDesktop' -Type 'DWord' -Value 0
     Write-Output "[+] SUCCESS: administrator elevation set to silent (no prompt)"
 }
 
-# ---------------------------------------------------------------------------
 # System-security hardening functions.
-# ---------------------------------------------------------------------------
 
 function Set-BinaryIntegrityHardening {
     [CmdletBinding(SupportsShouldProcess=$true)]
@@ -195,16 +190,23 @@ function Set-BinaryIntegrityHardening {
     Set-RegSz -Path 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Cryptography\Wintrust\Config' -Name 'EnableCertPaddingCheck' -Value '1'
     # Require signed AMSI providers only.
     Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\AMSI' -Name 'FeatureBits' -Value 2
-    # Audit full command lines in 4688 process-creation events. The registry value alone is
-    # necessary-but-not-sufficient: the Process Creation audit subcategory must also be on
-    # (GUID used instead of the localized name).
+    # Enable command-line capture and the Process Creation audit subcategory.
     Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit' -Name 'ProcessCreationIncludeCmdLine_Enabled' -Value 1
     & auditpol.exe /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable 2>&1 | Out-Null
+    $auditpolRc = $LASTEXITCODE
+    if ($auditpolRc -ne 0) {
+        Write-Warning "[WARN] auditpol (Process Creation) returned $auditpolRc - command-line auditing may not be active"
+        $script:PTWErrorCount++
+    }
     # Always show .url/.lnk/.pif extensions (anti-phishing) by removing NeverShowExt.
     foreach ($k in @('InternetShortcut','lnkfile','piffile')) {
         Remove-RegValueSafe -Path "Registry::HKEY_CLASSES_ROOT\$k" -Name 'NeverShowExt'
     }
-    Write-Output "[+] SUCCESS: binary integrity hardened"
+    if ($auditpolRc -eq 0) {
+        Write-Output "[+] SUCCESS: binary integrity hardened"
+    } else {
+        Write-Output "[!] PARTIAL: binary integrity registry hardening applied, but enabling the Process Creation audit subcategory failed"
+    }
 }
 
 function Set-SvchostMitigation {
@@ -249,22 +251,52 @@ function Set-AccountLockoutPolicy {
     Write-Output "[*] Applying account lockout policy (10 bad attempts, 15-minute lockout + window)..."
     Write-Output "[!] WARNING: after 10 failed sign-ins an account (including a local admin) is locked for 15 minutes. Mistyping your password repeatedly will lock you out temporarily."
     & net.exe accounts /lockoutthreshold:10 /lockoutduration:15 /lockoutwindow:15 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "[WARN] net accounts returned $LASTEXITCODE"
+    $netRc = $LASTEXITCODE
+    if ($netRc -ne 0) {
+        Write-Warning "[WARN] net accounts returned $netRc"
+        $script:PTWErrorCount++
+        Write-Output "[-] FAILED: account lockout policy not applied (net accounts returned $netRc)"
+        return
     }
     Write-Output "[+] SUCCESS: account lockout policy applied"
 }
 
-# Advanced audit subcategory GUIDs enabled by Set-AdvancedAuditPolicy (success+failure).
+# Enable the CIS-aligned audit subcategories while excluding extreme-volume object-access events.
 $script:PtwAuditSubcategories = @(
-    '{0CCE923F-69AE-11D9-BED3-505054503030}',  # Credential Validation
+    # System
+    '{0CCE9210-69AE-11D9-BED3-505054503030}',  # Security State Change
+    '{0CCE9211-69AE-11D9-BED3-505054503030}',  # Security System Extension
+    '{0CCE9212-69AE-11D9-BED3-505054503030}',  # System Integrity
+    '{0CCE9213-69AE-11D9-BED3-505054503030}',  # IPsec Driver
+    '{0CCE9214-69AE-11D9-BED3-505054503030}',  # Other System Events
+    # Logon/Logoff
     '{0CCE9215-69AE-11D9-BED3-505054503030}',  # Logon
-    '{0CCE921B-69AE-11D9-BED3-505054503030}',  # Special Logon
-    '{0CCE922B-69AE-11D9-BED3-505054503030}',  # Process Creation
-    '{0CCE9245-69AE-11D9-BED3-505054503030}',  # Removable Storage
-    '{0CCE9237-69AE-11D9-BED3-505054503030}',  # Security Group Management
+    '{0CCE9216-69AE-11D9-BED3-505054503030}',  # Logoff
     '{0CCE9217-69AE-11D9-BED3-505054503030}',  # Account Lockout
-    '{0CCE9228-69AE-11D9-BED3-505054503030}'   # Sensitive Privilege Use
+    '{0CCE921B-69AE-11D9-BED3-505054503030}',  # Special Logon
+    '{0CCE921C-69AE-11D9-BED3-505054503030}',  # Other Logon/Logoff Events
+    '{0CCE9249-69AE-11D9-BED3-505054503030}',  # Group Membership
+    # Object Access (volume-safe subset)
+    '{0CCE9224-69AE-11D9-BED3-505054503030}',  # File Share
+    '{0CCE9227-69AE-11D9-BED3-505054503030}',  # Other Object Access Events
+    '{0CCE9245-69AE-11D9-BED3-505054503030}',  # Removable Storage
+    # Privilege Use
+    '{0CCE9228-69AE-11D9-BED3-505054503030}',  # Sensitive Privilege Use
+    # Detailed Tracking
+    '{0CCE922B-69AE-11D9-BED3-505054503030}',  # Process Creation
+    '{0CCE9248-69AE-11D9-BED3-505054503030}',  # Plug and Play Events
+    # Policy Change
+    '{0CCE922F-69AE-11D9-BED3-505054503030}',  # Audit Policy Change
+    '{0CCE9230-69AE-11D9-BED3-505054503030}',  # Authentication Policy Change
+    '{0CCE9231-69AE-11D9-BED3-505054503030}',  # Authorization Policy Change
+    '{0CCE9232-69AE-11D9-BED3-505054503030}',  # MPSSVC Rule-Level Policy Change
+    # Account Management
+    '{0CCE9235-69AE-11D9-BED3-505054503030}',  # User Account Management
+    '{0CCE9236-69AE-11D9-BED3-505054503030}',  # Computer Account Management
+    '{0CCE9237-69AE-11D9-BED3-505054503030}',  # Security Group Management
+    '{0CCE923A-69AE-11D9-BED3-505054503030}',  # Other Account Management Events
+    # Account Logon
+    '{0CCE923F-69AE-11D9-BED3-505054503030}'   # Credential Validation
 )
 
 function Set-PowerShellAuditLogging {
@@ -283,11 +315,35 @@ function Set-PowerShellAuditLogging {
     Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'EnableTranscripting' -Value 1
     Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'EnableInvocationHeader' -Value 1
     Set-RegSz -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'OutputDirectory' -Value $transcriptDir
+    # Remove pre-existing reparse points before securing the transcript directory.
+    $existingTd = Get-Item -LiteralPath $transcriptDir -Force -ErrorAction SilentlyContinue
+    if ($existingTd -and ($existingTd.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        Write-Output "[!] '$transcriptDir' is a reparse point — removing the link before locking it down."
+        cmd /c rmdir "$transcriptDir" 2>&1 | Out-Null
+        # Fail closed (mirrors debloat.ps1): if the link survived, do NOT fall through to icacls.
+        if ((Test-Path -LiteralPath $transcriptDir) -or (Get-Item -LiteralPath $transcriptDir -Force -ErrorAction SilentlyContinue)) {
+            Write-Output "[-] ERROR: could not remove the reparse point at $transcriptDir. Aborting to avoid an unsafe privileged icacls."
+            $script:PTWErrorCount++
+            return
+        }
+    }
     if (-not (Test-Path -LiteralPath $transcriptDir)) {
         New-Item -ItemType Directory -Path $transcriptDir -Force | Out-Null
     }
+    # Recheck for a reparse point immediately before privileged ACL changes.
+    $tdFinal = Get-Item -LiteralPath $transcriptDir -Force -ErrorAction SilentlyContinue
+    if ((-not $tdFinal) -or ($tdFinal.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        Write-Output "[-] ERROR: '$transcriptDir' is missing or a reparse point right before lockdown. Aborting."
+        $script:PTWErrorCount++
+        return
+    }
     # Lock the transcript directory to SYSTEM + Administrators only (transcripts can contain secrets).
     & icacls.exe "$transcriptDir" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "[-] ERROR: could not secure the PowerShell transcript directory (icacls exit $LASTEXITCODE)"
+        $script:PTWErrorCount++
+        return
+    }
     Write-Output "[+] SUCCESS: PowerShell audit logging enabled (transcripts in $transcriptDir)"
 }
 
@@ -296,15 +352,34 @@ function Set-AdvancedAuditPolicy {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Apply advanced audit policy")) { return }
     Write-Output "[*] Applying advanced (subcategory) audit policy..."
+    # Snapshot the current audit policy once for exact restoration.
+    $auditBackup = Get-PTWStatePath 'audit-policy-backup.csv'
+    if (-not (Test-Path -LiteralPath $auditBackup)) {
+        & auditpol.exe /backup /file:"$auditBackup" 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Output "[*] Saved audit-policy snapshot for a precise restore: $auditBackup"
+        } else {
+            Write-Output "[-] ERROR: could not save the current audit policy; refusing to apply a change without a precise rollback"
+            $script:PTWErrorCount++
+            return
+        }
+    }
     # Force subcategory audit settings to override the legacy category policy.
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'SCENoApplyLegacyAuditPolicy' -Value 1
+    $auditFailures = 0
     foreach ($guid in $script:PtwAuditSubcategories) {
         & auditpol.exe /set /subcategory:"$guid" /success:enable /failure:enable 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { $auditFailures++ }
     }
-    Write-Output "[+] SUCCESS: advanced audit policy applied (8 subcategories, success + failure)"
+    if ($auditFailures -gt 0) {
+        $script:PTWErrorCount++
+        Write-Output "[!] PARTIAL: advanced audit policy applied, but $auditFailures of $($script:PtwAuditSubcategories.Count) subcategories failed to set (success + failure)"
+    } else {
+        Write-Output "[+] SUCCESS: advanced audit policy applied ($($script:PtwAuditSubcategories.Count) subcategories, success + failure)"
+    }
 }
 
-function Set-DisableCoInstallers {
+function Set-DisableCoInstaller {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Disable driver co-installers")) { return }
@@ -318,10 +393,30 @@ function Set-WindowsScriptHostDisabled {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Disable Windows Script Host")) { return }
     Write-Output "[*] Disabling Windows Script Host (blocks .vbs/.js execution)..."
-    Write-Output "[!] WARNING: this blocks ALL .vbs / .js / .wsf script execution, which breaks legitimate logon scripts, some installers and admin tooling. Revert re-enables WSH."
+    Write-Output "[!] WARNING: this blocks ALL .vbs / .js / .wsf script execution, which breaks legitimate logon scripts, some installers and admin tooling. Restore Default re-enables WSH."
     Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows Script Host\Settings' -Name 'Enabled' -Value 0
     Set-RegDword -Path 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows Script Host\Settings' -Name 'Enabled' -Value 0
     Write-Output "[+] SUCCESS: Windows Script Host disabled"
+}
+
+function Set-FilterAdminToken {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Enable Admin Approval Mode for the built-in Administrator")) { return }
+    Write-Output "[*] Forcing the built-in Administrator account through UAC (FilterAdministratorToken=1)..."
+    Write-Output "[!] WARNING: the built-in Administrator account will now run with a filtered token and get UAC prompts like a normal admin, instead of running fully elevated silently. This is the hardening counterpart to the 'silent elevation' tweak."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'FilterAdministratorToken' -Value 1
+    Write-Output "[+] SUCCESS: Admin Approval Mode enabled for the built-in Administrator"
+}
+
+function Set-Ntfs8Dot3Disable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Disable NTFS 8.3 short-name creation")) { return }
+    Write-Output "[*] Disabling NTFS 8.3 short-name creation (NtfsDisable8dot3NameCreation=1)..."
+    # Apply the per-volume default to new 8.3 aliases only.
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'NtfsDisable8dot3NameCreation' -Value 1
+    Write-Output "[+] SUCCESS: NTFS 8.3 short-name creation disabled (applies to new files)"
 }
 
 switch ($Action.ToLowerInvariant()) {
@@ -429,7 +524,7 @@ switch ($Action.ToLowerInvariant()) {
         Backup-RegistryPath -Action $Action -Paths @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
         )
-        Set-DisableCoInstallers
+        Set-DisableCoInstaller
         Exit-PTW
     }
 
@@ -442,8 +537,20 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "security-filter-admin-token" {
+        Backup-RegistryPath -Action $Action -Paths @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System')
+        Set-FilterAdminToken
+        Exit-PTW
+    }
+
+    "security-ntfs-8dot3-disable" {
+        Backup-RegistryPath -Action $Action -Paths @('HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem')
+        Set-Ntfs8Dot3Disable
+        Exit-PTW
+    }
+
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

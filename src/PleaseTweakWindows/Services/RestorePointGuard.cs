@@ -2,6 +2,9 @@ using Microsoft.Extensions.Logging;
 
 namespace PleaseTweakWindows.Services;
 
+/// <summary>Outcome of the latest restore-point request.</summary>
+public enum RestorePointStatus { None, Created, Skipped, UserCancelled, Failed }
+
 public sealed class RestorePointGuard
 {
     private enum Decision { Unknown, Created, Skipped }
@@ -11,8 +14,10 @@ public sealed class RestorePointGuard
     private readonly ILogger<RestorePointGuard> _logger;
     private readonly object _lock = new();
     private Decision _decision = Decision.Unknown;
-    // Set once the user has skipped the prompt in a HIGH-RISK context. Until then, a prior
-    // low-risk skip does not carry over to high-risk tweaks — they re-prompt (see below).
+
+    // Runs are serialized by the global IsScriptsRunning gate.
+    public RestorePointStatus LastStatus { get; private set; } = RestorePointStatus.None;
+    // Track whether the user has skipped the prompt for a high-risk action.
     private bool _highRiskSkipAcknowledged;
 
     public RestorePointGuard(IDialogService dialogService, IScriptExecutor executor, ILoggerFactory loggerFactory)
@@ -36,12 +41,16 @@ public sealed class RestorePointGuard
         {
             // A successfully created restore point covers the whole session.
             if (_decision == Decision.Created)
+            {
+                LastStatus = RestorePointStatus.Created;
                 return true;
-            // A prior Skip is honoured for low-risk tweaks. For high-risk tweaks it is NOT
-            // honoured until the user has skipped *in a high-risk context* at least once —
-            // so a casual low-risk skip can't silently carry into a boot-affecting change.
+            }
+            // Re-prompt high-risk actions until the user skips in a high-risk context.
             if (_decision == Decision.Skipped && (!isHighRisk || _highRiskSkipAcknowledged))
+            {
+                LastStatus = RestorePointStatus.Skipped;
                 return true;
+            }
         }
 
         var choice = await _dialogService.ShowRestorePointPromptAsync();
@@ -54,12 +63,19 @@ public sealed class RestorePointGuard
                 if (exitCode == 0)
                 {
                     lock (_lock) { _decision = Decision.Created; }
+                    LastStatus = RestorePointStatus.Created;
                     return true;
                 }
-                // User explicitly chose to create a restore point; if it failed, block
-                // the destructive tweak rather than proceeding without one.
+                // Treat Stop during restore-point creation as a user cancellation.
+                if (exitCode == ScriptExecutor.CancelledExitCode)
+                {
+                    LastStatus = RestorePointStatus.UserCancelled;
+                    return false;
+                }
+                // Block the tweak when requested restore-point creation fails.
                 _logger.LogWarning("Restore point creation failed (exit={ExitCode}); blocking tweak.", exitCode);
                 onOutput?.Invoke("[-] ERROR: Restore point creation failed — tweak aborted.");
+                LastStatus = RestorePointStatus.Failed;
                 return false;
 
             case RestorePointDecision.Skip:
@@ -68,10 +84,14 @@ public sealed class RestorePointGuard
                     _decision = Decision.Skipped;
                     if (isHighRisk) _highRiskSkipAcknowledged = true;
                 }
+                LastStatus = RestorePointStatus.Skipped;
                 return true;
 
             case RestorePointDecision.Cancel:
             default:
+                // Report that Apply was cancelled at the restore-point prompt.
+                onOutput?.Invoke("[!] Restore point cancelled — tweak not applied.");
+                LastStatus = RestorePointStatus.UserCancelled;
                 return false;
         }
     }

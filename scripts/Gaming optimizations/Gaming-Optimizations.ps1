@@ -1,15 +1,10 @@
-# Gaming Optimizations
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File Gaming-Optimizations.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Gaming Optimizations
 #Requires -RunAsAdministrator
 
 param(
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "nvidia-settings-on",
-        "nvidia-settings-default",
         "nvidia-driver-install",
         "amd-driver-install",
         "p0-state-on",
@@ -33,8 +28,6 @@ param(
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 #region Logging Functions
 function Write-PTWLog {
@@ -67,7 +60,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 #endregion
 
@@ -80,34 +74,29 @@ switch ($Action.ToLowerInvariant()) {
         Write-Output "[*] Applying NVIDIA Profile Inspector settings..."
         $drsPath = "$env:ProgramData\NVIDIA Corporation\Drs"
         if (Test-Path $drsPath) { Get-ChildItem -Path $drsPath -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue }
-        $inspectorDir = "$env:TEMP\nvidiaProfileInspector"
-        # Security: always delete any pre-existing extracted dir so a planted EXE in this
-        # predictable temp path can never be reused. This forces the verified-download
-        # (pinned-hash via Get-FileFromWeb) path to always run.
+        $inspectorDir = Get-PTWRuntimePath "nvidiaProfileInspector"
+        $inspectorZip = Get-PTWRuntimePath "nvidiaProfileInspector.zip"
         Remove-Item -Recurse -Force $inspectorDir -ErrorAction SilentlyContinue
         if (-not (Test-Path "$inspectorDir\nvidiaProfileInspector.exe")) {
-            Get-FileFromWeb -URL $PTWDownloadUrls.NvidiaProfileInspector -File "$env:TEMP\nvidiaProfileInspector.zip"
-            Expand-Archive "$env:TEMP\nvidiaProfileInspector.zip" -DestinationPath $inspectorDir -Force
+            Get-FileFromWeb -URL $PTWDownloadUrls.NvidiaProfileInspector -File $inspectorZip
+            Expand-Archive $inspectorZip -DestinationPath $inspectorDir -Force
         }
         $nvidiaConfigPath = Join-Path $PSScriptRoot "reg\nvidia_profile.xml"
-        if (Test-Path $nvidiaConfigPath) {
+        if (Test-PtwFileChecksum -Path $nvidiaConfigPath) {
             Copy-Item -Path $nvidiaConfigPath -Destination "$inspectorDir\Inspector.nip" -Force
         } else {
-            Write-Output "[-] ERROR: nvidia_profile.xml not found"
+            Write-Output "[-] ERROR: nvidia_profile.xml is missing or failed its integrity check"
             exit 1
         }
-        Start-Process -Wait "$inspectorDir\nvidiaProfileInspector.exe" -ArgumentList "$inspectorDir\Inspector.nip"
+        $inspector = Start-Process -FilePath "$inspectorDir\nvidiaProfileInspector.exe" `
+            -ArgumentList "$inspectorDir\Inspector.nip" -Wait -PassThru -ErrorAction Stop
+        if ($inspector.ExitCode -ne 0) {
+            Write-Output "[-] ERROR: NVIDIA Profile Inspector exited with code $($inspector.ExitCode)"
+            exit 1
+        }
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\FTS" -Name "EnableGR535" -Value 0
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535" -Value 0
         Write-Output "[+] SUCCESS: NVIDIA Profile applied"
-        Exit-PTW
-    }
-
-    "nvidia-settings-default" {
-        Write-Output "[*] Resetting NVIDIA settings to default..."
-        Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\FTS" -Name "EnableGR535"
-        Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\FTS" -Name "EnableGR535"
-        Write-Output "[+] SUCCESS: NVIDIA settings reset (restart required)"
         Exit-PTW
     }
 
@@ -118,12 +107,17 @@ switch ($Action.ToLowerInvariant()) {
             Write-Output "[-] ERROR: No NVIDIA GPU detected. Cannot install NVIDIA driver."
             exit 1
         }
-        Remove-Item -Recurse -Force "$env:TEMP\NvidiaDriver.exe" -ErrorAction SilentlyContinue
-        Remove-Item -Recurse -Force "$env:TEMP\NvidiaDriver" -ErrorAction SilentlyContinue
-        # Query NVIDIA API for latest Game Ready driver (psid=131 = GeForce RTX 50 Series, pfid=1066 = RTX 5090)
-        # The returned driver is universal and supports all modern GeForce GPUs (RTX 50/40/30/20, GTX 16)
+        $driverExe = Get-PTWRuntimePath "NvidiaDriver.exe"
+        $driverDir = Get-PTWRuntimePath "NvidiaDriver"
+        Remove-Item -Force $driverExe -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $driverDir -ErrorAction SilentlyContinue
+        # Query NVIDIA's API for the universal Game Ready driver package.
         $uri = 'https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=131&pfid=1066&osID=57&languageCode=1033&isWHQL=1&dch=1&sort1=0&numberOfResults=1'
-        $response = Invoke-WebRequest -Uri $uri -Method GET -UseBasicParsing
+        $response = Invoke-WebRequest -Uri $uri -Method GET -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+        if ($response.RawContentLength -gt 1MB -or $response.Content.Length -gt 1MB) {
+            Write-Output "[-] ERROR: NVIDIA driver API returned an unexpectedly large response."
+            exit 1
+        }
         $payload = $response.Content | ConvertFrom-Json
         $version = $payload.IDS[0].downloadInfo.Version
         $url = $payload.IDS[0].downloadInfo.DownloadURL
@@ -132,27 +126,45 @@ switch ($Action.ToLowerInvariant()) {
             exit 1
         }
         Write-Output "[*] Downloading NVIDIA Driver $version..."
-        Get-FileFromWeb -URL $url -File "$env:TEMP\NvidiaDriver.exe"
-        # Driver URL comes from NVIDIA's API (gfwsl.geforce.com) so the SHA is not pinned —
-        # verify the downloaded installer is genuinely signed by NVIDIA before extracting.
-        Test-SignedFile -Path "$env:TEMP\NvidiaDriver.exe" -PublisherPatterns @('NVIDIA Corporation')
+        # Raise the response cap for large Game Ready driver packages.
+        Get-FileFromWeb -URL $url -File $driverExe -MaxBytes 3GB
+        # Verify the dynamic NVIDIA driver package with Authenticode.
+        Test-SignedFile -Path $driverExe -PublisherPatterns @('NVIDIA Corporation')
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
-            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File "$env:TEMP\7z-setup.exe"
-            Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
+            $sevenZipInstaller = Get-PTWRuntimePath "7z-setup.exe"
+            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File $sevenZipInstaller
+            $sevenZipInstall = Start-Process -FilePath $sevenZipInstaller -ArgumentList "/S" -Wait -PassThru -ErrorAction Stop
+            if ($sevenZipInstall.ExitCode -ne 0) {
+                Write-Output "[-] ERROR: 7-Zip installation failed with exit code $($sevenZipInstall.ExitCode)."
+                exit 1
+            }
         }
-        cmd /c "`"$sevenZip`" x `"$env:TEMP\NvidiaDriver.exe`" -o`"$env:TEMP\NvidiaDriver`" -y" | Out-Null
-        # Re-verify the extracted installer (should carry the same NVIDIA signature)
-        if (Test-Path "$env:TEMP\NvidiaDriver\setup.exe") {
-            Test-SignedFile -Path "$env:TEMP\NvidiaDriver\setup.exe" -PublisherPatterns @('NVIDIA Corporation')
+        if (-not (Test-Path $sevenZip)) {
+            Write-Output "[-] ERROR: 7-Zip installation did not produce $sevenZip."
+            exit 1
         }
-        if (-not (Test-Path "$env:TEMP\NvidiaDriver\setup.exe")) {
+        & $sevenZip x $driverExe "-o$driverDir" -y | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "[-] ERROR: NVIDIA driver extraction failed (7-Zip exit $LASTEXITCODE)."
+            exit 1
+        }
+        $driverSetup = Join-Path $driverDir "setup.exe"
+        if (Test-Path $driverSetup) {
+            Test-SignedFile -Path $driverSetup -PublisherPatterns @('NVIDIA Corporation')
+        }
+        if (-not (Test-Path $driverSetup)) {
             Write-Output "[-] ERROR: NVIDIA driver package did not extract correctly (setup.exe missing). Driver not installed."
             exit 1
         }
-        Start-Process "$env:TEMP\NvidiaDriver\setup.exe"
-        Write-Output "[+] NVIDIA Driver installer launched - follow its prompts to complete installation"
-        Write-Output "[!] NOTE: PleaseTweakWindows does NOT wait for or verify the installation. 'Operation completed' below means the installer was started, not that the driver finished installing."
+        $driverInstall = Start-Process -FilePath $driverSetup -Wait -PassThru -ErrorAction Stop
+        if ($driverInstall.ExitCode -notin @(0, 3010)) {
+            Write-Output "[-] ERROR: NVIDIA installer exited with code $($driverInstall.ExitCode)."
+            exit 1
+        }
+        Remove-Item -LiteralPath $driverExe -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $driverDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Output "[+] SUCCESS: NVIDIA Driver installer completed"
         Exit-PTW
     }
 
@@ -163,8 +175,7 @@ switch ($Action.ToLowerInvariant()) {
             Write-Output "[-] ERROR: No AMD GPU detected. Cannot install AMD driver."
             exit 1
         }
-        # AMD has no public API for driver lookups. Open the official download page
-        # which always offers the latest Auto-Detect installer.
+        # Open AMD's official page for the latest Auto-Detect installer.
         Start-Process "https://www.amd.com/en/support/download/drivers.html"
         Write-Output "[+] SUCCESS: AMD driver download page opened - click 'Download Windows Drivers' to get the latest installer"
         Exit-PTW
@@ -248,7 +259,7 @@ switch ($Action.ToLowerInvariant()) {
         }
 
         $ProgressPreference = 'SilentlyContinue'
-        # Snapshot original service Start values + GameDVR keys so a true restore is possible.
+        # Keep diagnostic .reg snapshots before changing the service and GameDVR values.
         Backup-RegistryPath -Action $Action -Paths @(
             "Registry::HKCU\System\GameConfigStore",
             "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR",
@@ -294,9 +305,7 @@ switch ($Action.ToLowerInvariant()) {
 
     "msi-mode-on" {
         Write-Output "[*] Enabling MSI Mode for GPUs..."
-        # Target only real, present discrete GPUs (NVIDIA VEN_10DE / AMD VEN_1002).
-        # Excludes Microsoft Basic Display Adapter, virtual/RDP adapters, iGPUs and
-        # disabled/ghost devices, which can black-screen on boot if forced to MSI.
+        # Apply MSI mode only to present NVIDIA and AMD discrete GPUs.
         $gpuDevices = Get-PnpDevice -Class Display -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match "VEN_10DE|VEN_1002" }
         $msiPaths = @()
         foreach ($gpu in $gpuDevices) {
@@ -315,14 +324,14 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "msi-mode-off" {
-        Write-Output "[*] Disabling MSI Mode for GPUs..."
+        Write-Output "[*] Removing the GPU MSI Mode override..."
         $gpuDevices = Get-PnpDevice -Class Display -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match "VEN_10DE|VEN_1002" }
         foreach ($gpu in $gpuDevices) {
             $instanceID = $gpu.InstanceId
             if (-not $instanceID) { continue }
-            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported" -Value 0
+            Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" -Name "MSISupported"
         }
-        Write-Output "[+] SUCCESS: MSI Mode disabled (restart required)"
+        Write-Output "[+] SUCCESS: GPU MSI Mode override removed (restart required)"
         Exit-PTW
     }
 
@@ -342,16 +351,43 @@ switch ($Action.ToLowerInvariant()) {
 
     "directx-install" {
         Write-Output "[*] Installing DirectX Runtime..."
-        Get-FileFromWeb -URL "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe" -File "$env:TEMP\DirectX.exe"
+        $directXExe = Get-PTWRuntimePath "DirectX.exe"
+        $directXDir = Get-PTWRuntimePath "DirectX"
+        Get-FileFromWeb -URL "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe" -File $directXExe
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
-            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File "$env:TEMP\7z-setup.exe"
-            Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
+            $sevenZipInstaller = Get-PTWRuntimePath "7z-setup.exe"
+            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File $sevenZipInstaller
+            $sevenZipInstall = Start-Process -FilePath $sevenZipInstaller -ArgumentList "/S" -Wait -PassThru -ErrorAction Stop
+            if ($sevenZipInstall.ExitCode -ne 0) {
+                Write-Output "[-] ERROR: 7-Zip installation failed with exit code $($sevenZipInstall.ExitCode)."
+                exit 1
+            }
         }
-        cmd /c "`"$sevenZip`" x `"$env:TEMP\DirectX.exe`" -o`"$env:TEMP\DirectX`" -y" | Out-Null
-        Start-Process "$env:TEMP\DirectX\DXSETUP.exe"
-        Write-Output "[+] DirectX installer launched - follow its prompts to complete installation"
-        Write-Output "[!] NOTE: PleaseTweakWindows does NOT wait for or verify the installation. 'Operation completed' below means the installer was started, not that DirectX finished installing."
+        if (-not (Test-Path $sevenZip)) {
+            Write-Output "[-] ERROR: 7-Zip installation did not produce $sevenZip."
+            exit 1
+        }
+        Remove-Item -Recurse -Force $directXDir -ErrorAction SilentlyContinue
+        & $sevenZip x $directXExe "-o$directXDir" -y | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "[-] ERROR: DirectX extraction failed (7-Zip exit $LASTEXITCODE)."
+            exit 1
+        }
+        $directXSetup = Join-Path $directXDir "DXSETUP.exe"
+        if (-not (Test-Path $directXSetup)) {
+            Write-Output "[-] ERROR: DirectX setup was not found after extraction."
+            exit 1
+        }
+        Test-SignedFile -Path $directXSetup -PublisherPatterns @('Microsoft Corporation')
+        $directXInstall = Start-Process -FilePath $directXSetup -Wait -PassThru -ErrorAction Stop
+        if ($directXInstall.ExitCode -notin @(0, 3010)) {
+            Write-Output "[-] ERROR: DirectX setup exited with code $($directXInstall.ExitCode)."
+            exit 1
+        }
+        Remove-Item -LiteralPath $directXExe -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $directXDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Output "[+] SUCCESS: DirectX Runtime installer completed"
         Exit-PTW
     }
 
@@ -391,11 +427,10 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "hags-off" {
-        Write-Output "[*] Disabling Hardware-Accelerated GPU Scheduling..."
+        Write-Output "[*] Restoring Hardware-Accelerated GPU Scheduling to the Windows default..."
         try {
-            Backup-RegistryPath -Action $Action -Paths @("Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers")
-            Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 1
-            Write-Output "[+] SUCCESS: Hardware-Accelerated GPU Scheduling disabled (restart required)"
+            Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode"
+            Write-Output "[+] SUCCESS: Hardware-Accelerated GPU Scheduling override removed (restart required)"
             Exit-PTW
         } catch {
             Write-Output "[-] ERROR: Could not disable Hardware-Accelerated GPU Scheduling: $($_.Exception.Message)"
@@ -418,12 +453,11 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "game-mode-off" {
-        Write-Output "[*] Disabling Windows Game Mode..."
+        Write-Output "[*] Restoring the Windows 11 Game Mode default..."
         try {
-            Backup-RegistryPath -Action $Action -Paths @("Registry::HKCU\Software\Microsoft\GameBar")
-            Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled" -Value 0
-            Set-RegDword -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -Value 0
-            Write-Output "[+] SUCCESS: Windows Game Mode disabled"
+            Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AutoGameModeEnabled"
+            Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\GameBar" -Name "AllowAutoGameMode"
+            Write-Output "[+] SUCCESS: Windows Game Mode overrides removed"
             Exit-PTW
         } catch {
             Write-Output "[-] ERROR: Could not disable Windows Game Mode: $($_.Exception.Message)"
@@ -432,7 +466,7 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

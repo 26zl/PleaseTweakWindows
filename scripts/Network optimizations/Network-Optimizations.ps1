@@ -1,8 +1,4 @@
-# Network Optimizations
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File Network-Optimizations.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Network Optimizations
 #Requires -RunAsAdministrator
 
 param(
@@ -12,12 +8,11 @@ param(
         "adapter-default",
         "smart-optimize",
         "smart-optimize-aggressive",
+        "smart-optimize-revert",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 #region Logging
 function Write-PTWLog {
@@ -43,14 +38,14 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 #region Helper Functions
 
 function Get-PTWNicBackupDir {
-    $logDir = if ($env:PTW_LOG_DIR) { $env:PTW_LOG_DIR } else { Join-Path $env:TEMP 'PleaseTweakWindows' }
-    $backupDir = Join-Path $logDir 'nic-backups'
+    $backupDir = Get-PTWStatePath 'nic-backups'
     if (-not (Test-Path $backupDir)) {
         try { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
         catch { Write-Output "[!] Could not create NIC backup dir ${backupDir}: $($_.Exception.Message)"; return $null }
@@ -88,9 +83,7 @@ function Set-AdapterBinding {
             foreach ($id in $bindingPlan.Enable) {
                 try { Enable-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction Stop }
                 catch {
-                    # Count as a real failure only if the component IS present on this adapter
-                    # but did not end up enabled. A component that simply isn't bound to this
-                    # adapter type is N/A, not a failure (avoids false exit-1 reports).
+                    # Ignore components that do not apply to the adapter type.
                     $b = Get-NetAdapterBinding -Name $adapter -ComponentID $id -ErrorAction SilentlyContinue
                     if ($null -ne $b -and -not $b.Enabled) {
                         $failed++; Write-Output "[!] Could not enable binding '$id' on '$adapter': $($_.Exception.Message)"
@@ -124,7 +117,7 @@ function Invoke-SmartNetworkOptimization {
         Write-Output "[!] Aggressive adapter tweaks enabled (Flow Control, Jumbo Frames, Interrupt Moderation)"
         Write-Output "[!] WARNING: Disabling Flow Control can cause packet loss/throughput drops on some NICs and"
         Write-Output "    switches, and forcing Interrupt Moderation changes latency behaviour. Original adapter"
-        Write-Output "    values are snapshotted and can be restored with the network revert action."
+        Write-Output "    values are snapshotted and can be restored with Restore Smart Network Defaults."
     } else {
         Write-Output "[i] Aggressive adapter tweaks disabled by default."
         Write-Output "    Set PTW_NET_AGGRESSIVE=1 or use smart-optimize-aggressive to enable them."
@@ -133,20 +126,26 @@ function Invoke-SmartNetworkOptimization {
     # Registry Fixes
     Write-Output "[*] Applying Registry Tweaks..."
     $RegKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
+    $errorsBeforeRegistry = $script:PTWErrorCount
     try {
         Set-RegDword -Path $RegKey -Name "NetworkThrottlingIndex" -Value 0xFFFFFFFF
         Set-RegDword -Path $RegKey -Name "SystemResponsiveness" -Value 0
-        Write-Output "[+] Network Throttling Removed"
+        if ($script:PTWErrorCount -eq $errorsBeforeRegistry) {
+            Write-Output "[+] Network Throttling Removed"
+        } else {
+            Write-Output "[-] One or more network throttling values could not be applied"
+        }
         Write-Output "[!] NOTE: NetworkThrottlingIndex is fully disabled and SystemResponsiveness is set to 0."
         Write-Output "    This favours raw network throughput over multimedia and removes the MMCSS CPU reserve"
         Write-Output "    that protects audio/video; some systems may see audio glitches/stutter under heavy"
-        Write-Output "    network load. Revert restores the Windows defaults (NetworkThrottlingIndex=10,"
+        Write-Output "    network load. Restore Smart Network Defaults restores NetworkThrottlingIndex=10,"
         Write-Output "    SystemResponsiveness=20)."
     } catch {
         Write-Output "[-] Could not remove throttling: $($_.Exception.Message)"
+        $script:PTWErrorCount++
     }
 
-    # Snapshot adapter state so revert-network.ps1 can restore it (reversibility).
+    # Snapshot adapter state so the restore action can reconstruct driver settings.
     $nicSnapshot = @()
 
     # Driver Tweaks
@@ -155,6 +154,7 @@ function Invoke-SmartNetworkOptimization {
 
     if (!$Adapters) {
         Write-Warning "No active physical adapters found."
+        $script:PTWErrorCount++
     } else {
         foreach ($Adapter in $Adapters) {
             Write-Output "  Processing: $($Adapter.InterfaceDescription)"
@@ -172,6 +172,7 @@ function Invoke-SmartNetworkOptimization {
                 Write-Output "    - Windows Power Saving: Disabled"
             } catch {
                 Write-Output "    - Could not disable power management"
+                $script:PTWErrorCount++
             }
 
             $AdvancedProperties = Get-NetAdapterAdvancedProperty -Name $Adapter.Name -ErrorAction SilentlyContinue
@@ -204,7 +205,10 @@ function Invoke-SmartNetworkOptimization {
                             }
                             Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName $Prop.DisplayName -DisplayValue $TargetValue -ErrorAction Stop
                             Write-Output "    - Optimized: '$($Prop.DisplayName)' -> $TargetValue"
-                        } catch { Write-Verbose "Could not set $($Prop.DisplayName): $($_.Exception.Message)" }
+                        } catch {
+                            Write-Output "    - Could not set '$($Prop.DisplayName)': $($_.Exception.Message)"
+                            $script:PTWErrorCount++
+                        }
                     }
                 }
 
@@ -216,8 +220,13 @@ function Invoke-SmartNetworkOptimization {
                         DisplayName     = $Prop.DisplayName
                         DisplayValue    = $Prop.DisplayValue
                     }
-                    Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName $Prop.DisplayName -DisplayValue "Enabled" -ErrorAction SilentlyContinue
-                    Write-Output "    - Aggressive: Interrupt Moderation -> Enabled"
+                    try {
+                        Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName $Prop.DisplayName -DisplayValue "Enabled" -ErrorAction Stop
+                        Write-Output "    - Aggressive: Interrupt Moderation -> Enabled"
+                    } catch {
+                        Write-Output "    - Could not enable Interrupt Moderation: $($_.Exception.Message)"
+                        $script:PTWErrorCount++
+                    }
                 }
             }
             Write-Output "    - Restarting Adapter..."
@@ -230,7 +239,7 @@ function Invoke-SmartNetworkOptimization {
         }
     }
 
-    # Persist the snapshot so revert-network.ps1 can fully undo the adapter changes.
+    # Persist the snapshot so the restore action can reconstruct the adapter changes.
     if ($nicSnapshot.Count -gt 0) {
         $backupDir = Get-PTWNicBackupDir
         if ($backupDir) {
@@ -238,14 +247,83 @@ function Invoke-SmartNetworkOptimization {
             $snapshotFile = Join-Path $backupDir "smart-optimize_${stamp}.json"
             try {
                 $nicSnapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath $snapshotFile -Encoding UTF8 -Force
-                Write-Output "[+] Adapter settings snapshot saved for revert: $snapshotFile"
+                Write-Output "[+] Adapter settings snapshot saved for restore: $snapshotFile"
+
+                # Keep enough history for interrupted/repeated runs without retaining state forever.
+                Get-ChildItem -LiteralPath $backupDir -Filter 'smart-optimize_*.json' -File -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTime -Descending |
+                    Select-Object -Skip 5 |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
             } catch {
-                Write-Output "[!] Could not save adapter snapshot (revert may need manual reset): $($_.Exception.Message)"
+                Write-Output "[!] Could not save adapter snapshot (restore may need manual reset): $($_.Exception.Message)"
+                $script:PTWErrorCount++
             }
         }
     }
 
     Write-Output "[+] Smart Optimization Complete!"
+}
+
+function Restore-SmartNetworkOptimization {
+    Write-Output "[*] Restoring Smart Network Optimization defaults..."
+    $regKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
+    Set-RegDword -Path $regKey -Name "NetworkThrottlingIndex" -Value 10
+    Set-RegDword -Path $regKey -Name "SystemResponsiveness" -Value 20
+
+    $backupDir = Get-PTWNicBackupDir
+    $snapshot = if ($backupDir) {
+        Get-ChildItem -Path $backupDir -Filter 'smart-optimize_*.json' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+    }
+    if (-not $snapshot) {
+        Write-Output "[-] ERROR: No adapter snapshot was found. Registry defaults were restored, but adapter properties need manual review."
+        $script:PTWErrorCount++
+        return
+    }
+
+    try {
+        $entries = @(Get-Content -LiteralPath $snapshot.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop)
+    } catch {
+        Write-Output "[-] ERROR: Could not read adapter snapshot: $($_.Exception.Message)"
+        $script:PTWErrorCount++
+        return
+    }
+
+    $knownAdapters = @(Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+    $restored = 0
+    $errorsBeforeRestore = $script:PTWErrorCount
+    foreach ($entry in $entries) {
+        if ($knownAdapters -notcontains [string]$entry.Adapter) {
+            Write-Output "[!] Snapshot adapter '$($entry.Adapter)' no longer exists; skipped."
+            $script:PTWErrorCount++
+            continue
+        }
+        try {
+            if ($entry.Type -eq 'PowerManagement') {
+                Enable-NetAdapterPowerManagement -Name $entry.Adapter -ErrorAction Stop
+            } elseif ($entry.Type -eq 'AdvancedProperty') {
+                $property = Get-NetAdapterAdvancedProperty -Name $entry.Adapter -DisplayName $entry.DisplayName -ErrorAction Stop
+                if ($property.ValidDisplayValues -notcontains [string]$entry.DisplayValue) {
+                    throw "saved value '$($entry.DisplayValue)' is not valid for this adapter"
+                }
+                Set-NetAdapterAdvancedProperty -Name $entry.Adapter -DisplayName $entry.DisplayName `
+                    -DisplayValue $entry.DisplayValue -ErrorAction Stop
+            } else {
+                throw "unknown snapshot entry type '$($entry.Type)'"
+            }
+            $restored++
+        } catch {
+            Write-Output "[!] Could not restore '$($entry.DisplayName)' on '$($entry.Adapter)': $($_.Exception.Message)"
+            $script:PTWErrorCount++
+        }
+    }
+    Write-Output "[+] Restored $restored adapter setting(s) from $($snapshot.Name)"
+    if ($script:PTWErrorCount -eq $errorsBeforeRestore) {
+        Remove-Item -LiteralPath $snapshot.FullName -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Output "[!] The snapshot was retained because one or more adapter settings could not be restored."
+    }
 }
 
 #endregion
@@ -280,8 +358,13 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "smart-optimize-revert" {
+        Restore-SmartNetworkOptimization
+        Exit-PTW
+    }
+
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

@@ -17,7 +17,7 @@ public class DialogServiceTests
     [Theory]
     [InlineData("bloatware-remove", true)]
     [InlineData("services-disable", true)]
-    [InlineData("driver-clean", true)]
+    [InlineData("ddu-install", true)]
     [InlineData("tls-hardening", true)]
     [InlineData("firewall-hardening", true)]
     [InlineData("smart-optimize-aggressive", true)]
@@ -25,6 +25,8 @@ public class DialogServiceTests
     [InlineData("security-smb-modern-enforce", true)]
     [InlineData("copilot-disable", true)]
     [InlineData("amd-driver-install", true)]
+    [InlineData("nvidia-driver-install", true)]
+    [InlineData("ooshutup-apply", true)]
     [InlineData("network-all-private", true)]
     [InlineData("bloatware-persist-on", true)]
     [InlineData("wu-disable", true)]
@@ -42,9 +44,11 @@ public class DialogServiceTests
     [InlineData("security-smartscreen-enforce", false)]
     [InlineData("wu-default", false)]
     [InlineData("theme-dark", false)]
-    [InlineData("nvidia-settings-on", false)]
+    [InlineData("nvidia-settings-on", true)]
     [InlineData("store-install", false)]
     [InlineData("power-plan-on", false)]
+    [InlineData("power-plan-default", true)]
+    [InlineData("security-defender-cfa-enable-revert", true)]
     [InlineData("unknown-action", false)]
     public void RequiresConfirmation_IdentifiesDestructiveActions(string action, bool expected)
     {
@@ -53,7 +57,7 @@ public class DialogServiceTests
 
     [Theory]
     [InlineData("services-disable", true)]
-    [InlineData("driver-clean", true)]
+    [InlineData("ddu-install", false)]
     [InlineData("tls-hardening", true)]
     [InlineData("firewall-hardening", true)]
     [InlineData("smart-optimize-aggressive", true)]
@@ -66,15 +70,18 @@ public class DialogServiceTests
     [InlineData("wu-disable", true)]
     [InlineData("security-uac-silent-elevation", true)]
     [InlineData("security-hvci-enable", true)]
+    [InlineData("security-hvci-enable-revert", true)]
     [InlineData("security-block-lolbins", true)]
     [InlineData("country-ip-block", true)]
     [InlineData("security-secure-launch", true)]
     [InlineData("block-ms-account", true)]
     [InlineData("security-rdp-nla", true)]
     [InlineData("security-wsh-disable", false)]
-    [InlineData("security-asr-rules-enable", false)]
+    [InlineData("security-asr-rules-enable", true)]
     [InlineData("edge-hardcore", false)]
-    [InlineData("bloatware-remove", false)]
+    [InlineData("bloatware-remove", true)]
+    [InlineData("nvidia-driver-install", true)]
+    [InlineData("ooshutup-apply", true)]
     [InlineData("copilot-disable", false)]
     [InlineData("wu-pause-updates", false)]
     [InlineData("nvidia-settings-on", false)]
@@ -100,11 +107,23 @@ public class DialogServiceTests
     }
 
     [Fact]
+    public void GetActionWarning_RevertExplainsRestoreDefaultSemantics()
+    {
+        var warning = _service.GetActionWarning(
+            "security-defender-cfa-enable-revert", "Controlled Folder Access");
+
+        warning.Should().Contain("Windows default");
+        warning.Should().Contain("not an exact undo");
+        warning.Should().Contain("organization-managed");
+    }
+
+    [Fact]
     public void GetActionWarning_CoversMajorDestructiveActions()
     {
         var actionsWithSpecificWarnings = new[]
         {
-            "bloatware-remove", "services-disable", "driver-clean",
+            "bloatware-remove", "services-disable", "ddu-install",
+            "nvidia-driver-install", "nvidia-settings-on", "ooshutup-apply",
             "tls-hardening", "firewall-hardening", "security-improve-network",
             "security-spectre-meltdown-enable", "smart-optimize-aggressive",
             "security-smb-modern-enforce", "run-all-batch-high-risk"

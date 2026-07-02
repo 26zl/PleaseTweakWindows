@@ -18,7 +18,32 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        ConfigureLogging();
+        // Require Windows 11 build 22000 or newer.
+        if (Environment.OSVersion.Version.Build < 22000)
+        {
+            MessageBox.Show(
+                "PleaseTweakWindows requires Windows 11 (build 22000 or newer). Windows 10 is not supported.",
+                AppPaths.ProductName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
+
+        try
+        {
+            ConfigureLogging();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "PleaseTweakWindows could not initialize logging: " + ex.Message,
+                AppPaths.ProductName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
 
         DispatcherUnhandledException += (s, ex) =>
         {
@@ -27,12 +52,14 @@ public partial class App : Application
             try
             {
                 MessageBox.Show(
-                    "An unexpected error occurred. The action may not have completed. See the log for details.",
+                    "An unexpected error occurred. The action may not have completed. " +
+                    "The application will close; see the log for details.",
                     AppPaths.ProductName,
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
             catch { }
+            Shutdown(1);
         };
         AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
             Log.Fatal(ex.ExceptionObject as Exception, "Unhandled domain exception");
@@ -42,34 +69,54 @@ public partial class App : Application
             ex.SetObserved();
         };
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        _serviceProvider = services.BuildServiceProvider();
-        Services = _serviceProvider;
+        // Surface startup failures before the main window is available.
+        try
+        {
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+            _serviceProvider = services.BuildServiceProvider();
+            Services = _serviceProvider;
 
-        var mainVm = _serviceProvider.GetRequiredService<MainWindowViewModel>();
-        var mainWindow = new MainWindow { DataContext = mainVm };
-        MainWindow = mainWindow;
-        mainWindow.Show();
+            var mainVm = _serviceProvider.GetRequiredService<MainWindowViewModel>();
+            var mainWindow = new MainWindow { DataContext = mainVm };
+            MainWindow = mainWindow;
+            mainWindow.Show();
 
-        _ = mainVm.InitializeAsync();
+            _ = mainVm.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex, "Startup failed");
+            MessageBox.Show(
+                "PleaseTweakWindows failed to start: " + ex.Message,
+                AppPaths.ProductName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (_serviceProvider != null)
+        try
         {
-            Log.Information("Shutting down PleaseTweakWindows.");
-            try
+            if (_serviceProvider != null)
             {
-                var executor = _serviceProvider.GetRequiredService<IScriptExecutor>();
-                executor.Shutdown();
-                var extractor = _serviceProvider.GetRequiredService<ResourceExtractor>();
-                extractor.Cleanup();
+                Log.Information("Shutting down PleaseTweakWindows.");
+                try
+                {
+                    var executor = _serviceProvider.GetRequiredService<IScriptExecutor>();
+                    executor.Shutdown();
+                    var extractor = _serviceProvider.GetRequiredService<ResourceExtractor>();
+                    extractor.Cleanup();
+                }
+                catch (Exception ex) { Log.Warning(ex, "Shutdown cleanup failed"); }
+                _serviceProvider.Dispose();
             }
-            catch (Exception ex) { Log.Warning(ex, "Shutdown cleanup failed"); }
+        }
+        finally
+        {
             Log.CloseAndFlush();
-            _serviceProvider.Dispose();
         }
         base.OnExit(e);
     }
@@ -95,9 +142,9 @@ public partial class App : Application
                 fileSizeLimitBytes: 10 * 1024 * 1024,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.SSS} [{Level:u5}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
             .WriteTo.Logger(lc => lc
-                .Filter.ByIncludingOnly(ev => ev.Properties.ContainsKey("Telemetry"))
+                .Filter.ByIncludingOnly(ev => ev.Properties.ContainsKey("LocalActivity"))
                 .WriteTo.File(
-                    Path.Combine(logDir, $"{AppPaths.ProductName}-telemetry.log"),
+                    Path.Combine(logDir, $"{AppPaths.ProductName}-activity.log"),
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: 14,
                     fileSizeLimitBytes: 5 * 1024 * 1024,

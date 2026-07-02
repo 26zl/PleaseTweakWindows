@@ -40,8 +40,7 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel vm)
         {
-            // If there are active operations, cancel the default close
-            // and route through the VM to prompt the user.
+            // Route closing through the view model while operations are active.
             var services = App.Services;
             if (services != null)
             {

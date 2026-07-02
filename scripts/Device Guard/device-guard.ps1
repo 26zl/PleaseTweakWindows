@@ -1,8 +1,4 @@
-# Device Guard Tweaks
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File device-guard.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-21
+﻿# Device Guard Tweaks
 #Requires -RunAsAdministrator
 
 param(
@@ -15,12 +11,11 @@ param(
         "security-wdigest-disable",
         "security-hvci-mandatory",
         "security-secure-launch",
+        "security-kernel-dma-protection",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 function Write-PTWLog {
     param([string]$Message, [string]$Level = "INFO")
@@ -44,7 +39,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 function Set-LsaProtection {
@@ -52,7 +48,7 @@ function Set-LsaProtection {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enable LSA protection (RunAsPPL)")) { return }
     Write-Output "[*] Enabling LSA protection (RunAsPPL) to block credential theft from LSASS memory..."
-    Write-Output "[!] WARNING: requires a REBOOT. Rare legacy authentication providers, smartcard middleware or SSO plugins that inject into LSASS may stop working; revert and reboot if so."
+    Write-Output "[!] WARNING: requires a REBOOT. Rare legacy authentication providers, smartcard middleware or SSO plugins that inject into LSASS may stop working; use Restore Default and reboot if so."
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPL' -Value 1
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPLBoot' -Value 1
     Write-Output "[+] SUCCESS: LSA protection enabled (reboot required)"
@@ -63,13 +59,12 @@ function Set-HvciEnable {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enable Memory Integrity (HVCI)")) { return }
     Write-Output "[*] Enabling Virtualization-Based Security + Memory Integrity (HVCI)..."
-    Write-Output "[!] WARNING: requires a REBOOT and CPU virtualization/SLAT support. HVCI blocks unsigned and incompatible kernel drivers (some anti-cheat, old hardware drivers, virtualization tools). If a driver is incompatible it will be blocked. This is NOT Mandatory mode, so revert + reboot restores it."
+    Write-Output "[!] WARNING: requires a REBOOT and CPU virtualization/SLAT support. HVCI blocks unsigned and incompatible kernel drivers (some anti-cheat, old hardware drivers, virtualization tools). If a driver is incompatible it will be blocked. This is NOT Mandatory mode, so Restore Default plus a reboot removes it."
     $dg = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
     Set-RegDword -Path $dg -Name 'EnableVirtualizationBasedSecurity' -Value 1
     Set-RegDword -Path $dg -Name 'RequirePlatformSecurityFeatures' -Value 1
     Set-RegDword -Path "$dg\Scenarios\HypervisorEnforcedCodeIntegrity" -Name 'Enabled' -Value 1
-    # WasEnabledBy=2 keeps the Windows Security > Core Isolation > Memory Integrity toggle
-    # user-controllable (0 greys it out as "managed by your administrator").
+    # Keep the Memory Integrity toggle user-controllable with WasEnabledBy=2.
     Set-RegDword -Path "$dg\Scenarios\HypervisorEnforcedCodeIntegrity" -Name 'WasEnabledBy' -Value 2
     Write-Output "[+] SUCCESS: Memory Integrity (HVCI) enabled (reboot required)"
 }
@@ -108,25 +103,54 @@ function Set-WDigestDisable {
     Write-Output "[+] SUCCESS: WDigest plaintext credential caching disabled"
 }
 
+function Test-HvciRunning {
+    try {
+        $deviceGuard = Get-CimInstance -ClassName Win32_DeviceGuard `
+            -Namespace root\Microsoft\Windows\DeviceGuard -ErrorAction Stop
+        return @($deviceGuard.SecurityServicesRunning) -contains 2
+    } catch {
+        Write-Output "[-] ERROR: Could not verify the running Memory Integrity state: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Set-HvciMandatory {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Lock Memory Integrity (HVCI) as Mandatory (UEFI-locked)")) { return }
-    Write-Output "[*] Locking Memory Integrity (HVCI) as Mandatory via UEFI lock..."
-    Write-Output "[!] WARNING: this UEFI-LOCKS HVCI so it can no longer be turned off from Windows without physically clearing the lock in firmware. If an installed kernel driver is incompatible with HVCI, the machine can fail to boot (boot-brick risk). Only enable after HVCI has been on and stable across reboots."
+    if (-not $PSCmdlet.ShouldProcess("System", "UEFI-lock Memory Integrity (HVCI)")) { return }
+    if (-not (Test-HvciRunning)) {
+        Write-Output "[-] ERROR: Memory Integrity is not confirmed running. Enable it, reboot, verify it is active, and try again."
+        exit 1
+    }
+    Write-Output "[*] Applying the Memory Integrity UEFI lock..."
+    Write-Output "[!] WARNING: this prevents Memory Integrity from being turned off from Windows until the UEFI lock is cleared. Apply it only after Memory Integrity has run stably across reboots."
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -Name 'Locked' -Value 1
-    Write-Output "[+] SUCCESS: Memory Integrity locked as Mandatory (reboot required)"
+    Write-Output "[+] SUCCESS: Memory Integrity UEFI lock configured (reboot required)"
 }
 
 function Set-SecureLaunch {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enable System Guard Secure Launch (DRTM)")) { return }
+    if (-not (Test-HvciRunning)) {
+        Write-Output "[-] ERROR: Memory Integrity is not confirmed running. Enable it, reboot, verify it is active, and try again."
+        exit 1
+    }
     Write-Output "[*] Enabling System Guard Secure Launch (Dynamic Root of Trust for Measurement)..."
     Write-Output "[!] WARNING: requires a DRTM-capable CPU and firmware. On incompatible hardware this can prevent the machine from booting. Requires a REBOOT."
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\SystemGuard' -Name 'Enabled' -Value 1
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' -Name 'ConfigureSystemGuardLaunch' -Value 1
     Write-Output "[+] SUCCESS: System Guard Secure Launch enabled (reboot required)"
+}
+
+function Set-KernelDmaProtection {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Block external DMA-capable devices (Kernel DMA Protection)")) { return }
+    Write-Output "[*] Blocking newly-enumerated external DMA-capable devices incompatible with Kernel DMA remapping (DeviceEnumerationPolicy=0)..."
+    Write-Output "[!] WARNING: requires Kernel DMA Protection hardware support (UEFI + IOMMU). External Thunderbolt/PCIe peripherals that don't support DMA remapping will be blocked while the screen is locked / before sign-in. Restore Default removes the policy."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Kernel DMA Protection' -Name 'DeviceEnumerationPolicy' -Value 0
+    Write-Output "[+] SUCCESS: Kernel DMA Protection enumeration policy set to Block All"
 }
 
 switch ($Action.ToLowerInvariant()) {
@@ -179,8 +203,14 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "security-kernel-dma-protection" {
+        Backup-RegistryPath -Action $Action -Paths @('HKLM:\SOFTWARE\Policies\Microsoft\Windows\Kernel DMA Protection')
+        Set-KernelDmaProtection
+        Exit-PTW
+    }
+
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

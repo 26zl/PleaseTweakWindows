@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # FluentAssertions 8+ requires a paid Xceed license; this MIT project stays on 7.x.
+    ignore:
+      - dependency-name: "FluentAssertions"
+        versions: [">=8.0.0"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

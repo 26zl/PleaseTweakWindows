@@ -10,8 +10,8 @@ public sealed partial class TweakRegistry
         [
             new SubTweak("Default (Microsoft-managed updates)", "wu-default",
                 "Restore normal automatic Windows Update — clears any mode set below"),
-            new SubTweak("Security Updates Only", "wu-security-only",
-                "Defer feature updates up to 365 days while quality/security updates keep flowing"),
+            new SubTweak("Defer Feature Updates", "wu-security-only",
+                "Defer feature updates up to 365 days while quality/security and other applicable updates keep flowing"),
             new SubTweak("Pause Updates (long)", "wu-pause-updates",
                 "Pause all updates into the far future. Use Default to resume")
             {

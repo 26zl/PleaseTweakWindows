@@ -29,8 +29,10 @@ public class RestorePointGuardTests
         SetupScriptExit(0);
         var guard = Build();
 
-        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null);
-        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null);
+        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
+        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         first.Should().BeTrue();
         second.Should().BeTrue();
@@ -45,13 +47,15 @@ public class RestorePointGuardTests
         SetupScriptExit(1);
         var guard = Build();
 
-        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null);
+        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         first.Should().BeFalse("restore point creation failed — destructive tweak must be blocked");
 
         // Reset the executor mock so a subsequent attempt can succeed.
         SetupScriptExit(0);
-        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null);
+        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         second.Should().BeTrue();
         _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Exactly(2),
@@ -66,7 +70,8 @@ public class RestorePointGuardTests
         var guard = Build();
         var output = new List<string>();
 
-        await guard.EnsureRestorePointAsync("C:\\scripts", line => output.Add(line));
+        await guard.EnsureRestorePointAsync("C:\\scripts", line => output.Add(line),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         output.Should().Contain(s => s.Contains("Restore point creation failed", StringComparison.OrdinalIgnoreCase));
     }
@@ -77,8 +82,10 @@ public class RestorePointGuardTests
         SetupPrompt(RestorePointDecision.Skip);
         var guard = Build();
 
-        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null);
-        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null);
+        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
+        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         first.Should().BeTrue();
         second.Should().BeTrue();
@@ -95,19 +102,22 @@ public class RestorePointGuardTests
         var guard = Build();
 
         // Low-risk skip is honoured for low-risk work...
-        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: false)).Should().BeTrue();
-        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: false)).Should().BeTrue();
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: false,
+            cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: false,
+            cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
         _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Once,
             "a low-risk skip should cache for subsequent low-risk tweaks");
 
         // ...but the FIRST high-risk tweak after a low-risk skip must re-prompt.
-        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: true)).Should().BeTrue();
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: true,
+            cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
         _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Exactly(2),
             "a casual low-risk skip must not silently carry into a high-risk change");
 
-        // Once the user has skipped in a high-risk context, further high-risk tweaks
-        // are not re-prompted (no infinite nagging).
-        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: true)).Should().BeTrue();
+        // Honour a high-risk skip for later high-risk tweaks.
+        (await guard.EnsureRestorePointAsync("C:\\scripts", null, isHighRisk: true,
+            cancellationToken: TestContext.Current.CancellationToken)).Should().BeTrue();
         _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Exactly(2),
             "after acknowledging a high-risk skip, further high-risk tweaks should not re-prompt");
     }
@@ -118,8 +128,10 @@ public class RestorePointGuardTests
         SetupPrompt(RestorePointDecision.Cancel);
         var guard = Build();
 
-        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null);
-        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null);
+        var first = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
+        var second = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         first.Should().BeFalse();
         second.Should().BeFalse();
@@ -133,7 +145,8 @@ public class RestorePointGuardTests
         var guard = Build();
         guard.MarkCreated();
 
-        var result = await guard.EnsureRestorePointAsync("C:\\scripts", null);
+        var result = await guard.EnsureRestorePointAsync("C:\\scripts", null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().BeTrue();
         _dialog.Verify(d => d.ShowRestorePointPromptAsync(), Times.Never);

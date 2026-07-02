@@ -7,10 +7,7 @@ namespace PleaseTweakWindows.Services;
 
 public sealed class DialogService : IDialogService
 {
-    // Batch pseudo-actions are not SubTweaks (they cover a whole Run-All / import sweep),
-    // and network-all-private is the Revert side of the "Set all networks to Public" toggle
-    // (its risk + warning differ from the Apply action), so neither is projected from the
-    // tweak model — they are declared here as the single source for those ids.
+    // Batch pseudo-actions and the riskier network-profile revert are not apply-side SubTweaks.
     private const string RunAllBatchWarning =
         "'{0}' will apply multiple tweaks in sequence.\n\n" +
         "The app stops on the first failed tweak so you can inspect the output before continuing.";
@@ -24,9 +21,12 @@ public sealed class DialogService : IDialogService
     private const string GenericWarning =
         "'{0}' will make changes to your system.\n\n" +
         "Are you sure you want to proceed?";
+    private const string RestoreDefaultsWarning =
+        "'{0}' will restore the Windows default for this setting.\n\n" +
+        "This is not an exact undo: any custom or organization-managed value that existed before PleaseTweakWindows may be overwritten. " +
+        "Continue only if restoring the Windows default is what you intend.";
 
-    // Projected once from the tweak model: an action requires confirmation when its
-    // SubTweak.Risk is Confirm or High, and is high-risk when its Risk is High.
+    // Derive confirmation and high-risk actions from the tweak model.
     private readonly HashSet<string> _destructiveActions;
     private readonly HashSet<string> _highRiskActions;
     private readonly Dictionary<string, string> _warningTemplates;
@@ -49,12 +49,18 @@ public sealed class DialogService : IDialogService
                 _highRiskActions.Add(sub.ApplyAction);
             if (sub.Warning != null)
                 _warningTemplates[sub.ApplyAction] = sub.Warning;
+
+            // Restore actions require explicit confirmation and inherit apply-side risk.
+            if (!string.IsNullOrWhiteSpace(sub.RevertAction))
+            {
+                _destructiveActions.Add(sub.RevertAction);
+                if (sub.Risk == SubTweakRisk.High)
+                    _highRiskActions.Add(sub.RevertAction);
+                _warningTemplates[sub.RevertAction] = RestoreDefaultsWarning;
+            }
         }
 
-        // Overlay the non-SubTweak ids. run-all-batch is only ever passed to
-        // ShowConfirmationAsync directly (never RequiresConfirmation), so it is neither
-        // destructive nor high-risk but still carries a warning. run-all-batch-high-risk is
-        // high-risk. network-all-private (a Revert id) is destructive + high-risk.
+        // Add batch actions and the high-risk network-profile revert.
         _highRiskActions.Add("run-all-batch-high-risk");
         _destructiveActions.Add("network-all-private");
         _highRiskActions.Add("network-all-private");
@@ -168,9 +174,7 @@ public sealed class DialogService : IDialogService
 
     private static Task<T> ShowDialogOnUiAsync<T>(Func<T> show)
     {
-        // Fail fast rather than return default(T). Returning default silently would map
-        // RestorePointDecision to Create (the first enum value) and cause destructive
-        // tweaks to proceed as if the user had approved a restore point.
+        // Throw without a WPF context to avoid returning an unsafe default dialog result.
         var app = System.Windows.Application.Current
             ?? throw new InvalidOperationException(
                 "DialogService called with no WPF Application context. This helper requires an active UI dispatcher.");

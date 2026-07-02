@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -14,7 +16,8 @@ permissions:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  # Avoid interrupting a release while its tag and assets are being published.
+  cancel-in-progress: false
 
 jobs:
   validate-scripts:
@@ -54,10 +57,6 @@ jobs:
             "scripts/Device Guard/revert-device-guard.ps1",
             "scripts/Network Security/revert-network-security.ps1",
             "scripts/System Security/revert-system-security.ps1",
-            "scripts/Gaming optimizations/revert-gaming.ps1",
-            "scripts/Performance/revert-performance.ps1",
-            "scripts/Network optimizations/revert-network.ps1",
-            "scripts/Debloat/revert-debloat.ps1",
             "scripts/create_restore_point.ps1",
             "scripts/CommonFunctions.ps1"
           )
@@ -116,12 +115,6 @@ jobs:
               exit 1
             }
 
-            # Verify version metadata
-            if ($content -notmatch '\$script:ScriptVersion') {
-              Write-Error "Missing version metadata in $script"
-              exit 1
-            }
-
             # Verify logging function available (defined locally or via CommonFunctions.ps1)
             if ($content -notmatch 'function Write-PTWLog' -and $content -notmatch 'CommonFunctions\.ps1') {
               Write-Error "Missing Write-PTWLog function or CommonFunctions.ps1 import in $script"
@@ -129,7 +122,7 @@ jobs:
             }
 
             # Verify NO Read-Host (non-interactive) — (?m) makes ^ match start of each line
-            if ($content -match '(?m)^\s*Read-Host' -and $content -notmatch '(?m)^\s*#.*Read-Host') {
+            if ($content -match '(?m)^\s*(?:\$\w+\s*=\s*)?Read-Host') {
               Write-Error "Script should be non-interactive (no Read-Host): $script"
               exit 1
             }
@@ -149,9 +142,7 @@ jobs:
 
           $indexContent = Get-Content $indexFile | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 
-          # Forward check (derived, not hand-maintained): every file shipped under scripts/
-          # — every .ps1, .reg, .cfg, .xml, etc. except index.txt itself — must be listed in
-          # index.txt, or ResourceExtractor fails to extract it at runtime (hard crash).
+          # Every file under scripts/ (except index.txt) must be listed in index.txt or ResourceExtractor can't extract it.
           $scriptsRoot = (Resolve-Path "scripts").Path
           $actual = Get-ChildItem -Path "scripts" -Recurse -File |
             Where-Object { $_.Name -ne 'index.txt' } |
@@ -179,9 +170,7 @@ jobs:
 
       - name: Verify script checksums are current
         run: |
-          # Catch scripts edited without updating scripts/file-checksums.json. The "scripts"
-          # section must match the shipped files; a stale entry means the manifest no longer
-          # attests to what actually ships. Regenerate with the command in the manifest notes.
+          # Every shipped file's hash must match file-checksums.json (regenerate with the command in the manifest notes).
           $manifest = Get-Content "scripts/file-checksums.json" -Raw | ConvertFrom-Json
           $bad = 0
           foreach ($prop in $manifest.scripts.PSObject.Properties) {
@@ -201,7 +190,18 @@ jobs:
             Write-Error "$bad script checksum(s) stale or missing. Regenerate file-checksums.json."
             exit 1
           }
-          Write-Host "[+] All script checksums current"
+
+          # Every indexed payload must be attested, regardless of file extension.
+          $shipped = Get-Content "scripts/index.txt" | ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and $_ -ne 'file-checksums.json' -and $_ -ne 'index.txt' }
+          $keys = $manifest.scripts.PSObject.Properties.Name
+          $unattested = $shipped | Where-Object { $keys -notcontains $_ }
+          if ($unattested) {
+            Write-Error "Shipped files missing from file-checksums.json: $($unattested -join ', '). Add them with their SHA256."
+            exit 1
+          }
+
+          Write-Host "[+] All script checksums current and every payload is attested"
         shell: pwsh
 
   functional-testing:
@@ -222,15 +222,21 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/Documents/PowerShell/Modules/PSScriptAnalyzer
-          key: psscriptanalyzer-windows-latest
+          key: psscriptanalyzer-windows-1.22.0
 
       - name: Run PSScriptAnalyzer
         run: |
-          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          # Keep this version in sync with the cache key.
+          $psaVersion = '1.22.0'
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer | Where-Object { $_.Version -eq $psaVersion })) {
+            Install-Module -Name PSScriptAnalyzer -RequiredVersion $psaVersion -Force -Scope CurrentUser
           }
+          Import-Module PSScriptAnalyzer -RequiredVersion $psaVersion
 
-          $scripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
+          $scripts = @(
+            Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
+            Get-ChildItem -Path "tools" -Filter "*.ps1" -Recurse
+          )
           Write-Host "Analyzing $($scripts.Count) PowerShell scripts..."
 
           $excludeRules = @(
@@ -260,12 +266,22 @@ jobs:
           Write-Host ""
           Write-Host "[*] PSScriptAnalyzer: $errors errors, $warnings warnings"
 
-          if ($errors -gt 0) {
-            Write-Error "PSScriptAnalyzer found $errors errors. Fix before merging."
+          if (($errors + $warnings) -gt 0) {
+            Write-Error "PSScriptAnalyzer found $errors errors and $warnings warnings. Fix before merging."
             exit 1
           }
 
           Write-Host "[+] PSScriptAnalyzer passed"
+        shell: pwsh
+
+      - name: Verify dynamic vendor download signatures
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: ./tools/Test-DynamicDownloadSignatures.ps1
+        shell: pwsh
+
+      - name: Verify dynamic vendor download map is in sync (no downloads)
+        # Always-on gate: confirms the download map matches the scripts without fetching anything.
+        run: ./tools/Test-DynamicDownloadSignatures.ps1 -MapSyncOnly
         shell: pwsh
 
       - name: Verify non-interactive script architecture
@@ -311,14 +327,8 @@ jobs:
               exit 1
             }
 
-            # Verify version metadata
-            if ($content -notmatch '\$script:ScriptVersion') {
-              Write-Error "Missing version metadata in $scriptPath"
-              exit 1
-            }
-
             # Verify NO Read-Host (non-interactive) — (?m) makes ^ match start of each line
-            if ($content -match '(?m)^\s*Read-Host') {
+            if ($content -match '(?m)^\s*(?:\$\w+\s*=\s*)?Read-Host') {
               Write-Error "Script should be non-interactive (no Read-Host): $scriptPath"
               exit 1
             }
@@ -327,46 +337,34 @@ jobs:
           }
 
           Write-Host "[+] All scripts have correct non-interactive architecture"
+
+          # Scan every script separately since revert scripts use a different dispatch pattern.
+          $allPs1 = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse |
+            Where-Object { $_.Name -ne 'CommonFunctions.ps1' }
+          foreach ($f in $allPs1) {
+            if ((Get-Content $f.FullName -Raw) -match '(?m)^\s*(?:\$\w+\s*=\s*)?Read-Host') {
+              Write-Error "Interactive Read-Host found (scripts must be non-interactive): $($f.Name)"
+              exit 1
+            }
+          }
+          Write-Host "[+] No interactive Read-Host in any script (CommonFunctions is PTW_EMBEDDED-guarded)"
+        shell: pwsh
+
+      - name: Verify protected download destinations
+        run: |
+          $violations = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse |
+            Select-String -Pattern 'Get-FileFromWeb.*\$env:(?:TEMP|TMP)'
+          if ($violations) {
+            $violations | ForEach-Object {
+              Write-Error "$($_.Path):$($_.LineNumber): privileged download uses a user-writable temp path"
+            }
+            exit 1
+          }
+          Write-Host "[+] Privileged downloads use the ACL-protected runtime directory"
         shell: pwsh
 
       - name: Verify C# action IDs match PowerShell cases
-        run: |
-          Write-Host "Verifying C# action IDs match PowerShell switch cases..."
-
-          $csFile = "src/PleaseTweakWindows/Services/TweakRegistry.cs"
-          if (-not (Test-Path $csFile)) {
-            Write-Error "TweakRegistry.cs not found at $csFile"
-            exit 1
-          }
-          $csContent = Get-Content $csFile -Raw
-
-          # Extract action IDs from C# string literals (exclude revert IDs - handled by revert scripts)
-          $csActions = [regex]::Matches($csContent, '"([a-z][a-z0-9]+-[a-z0-9-]+)"') |
-            ForEach-Object { $_.Groups[1].Value } |
-            Where-Object { $_ -notmatch '-revert$' } |
-            Sort-Object -Unique
-
-          Write-Host "Found $($csActions.Count) non-revert action IDs in C#"
-
-          # Get all PS scripts content (excluding revert scripts, CommonFunctions, restore point)
-          $psScripts = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse |
-            Where-Object { $_.Name -notlike "revert-*" -and $_.Name -ne "CommonFunctions.ps1" -and $_.Name -ne "create_restore_point.ps1" }
-
-          $psContent = $psScripts | ForEach-Object { Get-Content $_.FullName -Raw } | Out-String
-
-          $missing = @()
-          foreach ($action in $csActions) {
-            if ($psContent -notmatch "`"$action`"") {
-              $missing += $action
-            }
-          }
-
-          if ($missing.Count -gt 0) {
-            Write-Error "Missing PowerShell handlers for actions: $($missing -join ', ')"
-            exit 1
-          }
-
-          Write-Host "[+] All $($csActions.Count) non-revert C# action IDs have PowerShell handlers"
+        run: ./tools/Test-ActionRouting.ps1
         shell: pwsh
 
       - name: Test create_restore_point script
@@ -414,11 +412,7 @@ jobs:
             "scripts/Exploit Protection/revert-exploit-protection.ps1",
             "scripts/Device Guard/revert-device-guard.ps1",
             "scripts/Network Security/revert-network-security.ps1",
-            "scripts/System Security/revert-system-security.ps1",
-            "scripts/Gaming optimizations/revert-gaming.ps1",
-            "scripts/Performance/revert-performance.ps1",
-            "scripts/Network optimizations/revert-network.ps1",
-            "scripts/Debloat/revert-debloat.ps1"
+            "scripts/System Security/revert-system-security.ps1"
           )
 
           foreach ($scriptPath in $revertScripts) {
@@ -440,12 +434,6 @@ jobs:
             # Verify admin check
             if ($content -notmatch '#Requires -RunAsAdministrator') {
               Write-Error "Missing admin requirement in $scriptPath"
-              exit 1
-            }
-
-            # Verify version metadata
-            if ($content -notmatch '\$script:ScriptVersion') {
-              Write-Error "Missing version metadata in $scriptPath"
               exit 1
             }
 
@@ -478,10 +466,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Cache NuGet packages
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -491,24 +479,50 @@ jobs:
           restore-keys: ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        # --locked-mode fails the build if packages.lock.json is out of date, so the
-        # committed lock file is the source of truth for a reproducible restore.
+        # --locked-mode fails the build if packages.lock.json is out of date.
         run: dotnet restore PleaseTweakWindows.sln --locked-mode
 
       - name: Run tests
-        run: dotnet test PleaseTweakWindows.sln -c Release --no-restore --verbosity normal
+        run: dotnet test PleaseTweakWindows.sln -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Upload test coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-coverage
+          path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: error
+
+      - name: Enforce test coverage floor
+        run: |
+          $reports = @(Get-ChildItem "TestResults" -Recurse -Filter "coverage.cobertura.xml")
+          # Fail on zero or multiple reports so a second test project can't hide low coverage.
+          if ($reports.Count -ne 1) {
+            Write-Error "Expected exactly one coverage report, found $($reports.Count)."
+            exit 1
+          }
+          $coverageFile = $reports[0]
+          [xml]$coverage = Get-Content $coverageFile.FullName
+          $lineRate = [double]::Parse(
+            $coverage.coverage.'line-rate',
+            [Globalization.CultureInfo]::InvariantCulture)
+          $minimum = 0.25
+          Write-Host ("Line coverage: {0:P2} (minimum {1:P0})" -f $lineRate, $minimum)
+          if ($lineRate -lt $minimum) {
+            Write-Error ("Line coverage {0:P2} is below the {1:P0} floor." -f $lineRate, $minimum)
+            exit 1
+          }
+        shell: pwsh
 
       - name: Publish single-file EXE
         run: |
-          # Not locked: single-file publish adds SDK-version-tied tooling (ILLink.Tasks)
-          # that the committed lock file does not (and should not) pin. Dependency pinning is
-          # enforced by the solution restore step above.
           dotnet publish src/PleaseTweakWindows/PleaseTweakWindows.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
+            --no-restore `
             -o publish
         shell: pwsh
 
@@ -527,9 +541,7 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         run: |
-          # The release EXE is not Authenticode-signed, so the supply-chain artifacts are the
-          # SHA256SUMS (integrity) and this CycloneDX SBOM (dependency inventory). Written next
-          # to the EXE so it travels in the same build artifact.
+          # Written next to the EXE so the dependency inventory travels in the same artifact.
           dotnet tool install --global CycloneDX --version 6.2.0
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           # CycloneDX 6.x: JSON output is --json (the old -j short flag was removed).
@@ -541,13 +553,61 @@ jobs:
           Write-Host "[+] SBOM generated: publish/bom.json"
         shell: pwsh
 
+      - name: Collect redistributed dependency licenses
+        run: |
+          $licenseRoot = "publish/licenses"
+          New-Item -ItemType Directory -Path $licenseRoot -Force | Out-Null
+          Copy-Item "licenses/Apache-2.0.txt" (Join-Path $licenseRoot "Apache-2.0.txt")
+
+          $dotnetRoot = Split-Path (Get-Command dotnet).Source
+          foreach ($name in @("LICENSE.txt", "ThirdPartyNotices.txt")) {
+            $source = Join-Path $dotnetRoot $name
+            if (-not (Test-Path $source)) {
+              Write-Error "Required .NET redistribution notice not found: $source"
+              exit 1
+            }
+            Copy-Item $source (Join-Path $licenseRoot "dotnet-$name")
+          }
+
+          $packageIds = @(
+            "communitytoolkit.mvvm",
+            "microsoft.extensions.dependencyinjection",
+            "microsoft.extensions.dependencyinjection.abstractions",
+            "microsoft.extensions.logging",
+            "microsoft.extensions.logging.abstractions",
+            "microsoft.extensions.options",
+            "microsoft.extensions.primitives"
+          )
+          foreach ($id in $packageIds) {
+            $packageRoot = Join-Path $env:USERPROFILE ".nuget\packages\$id"
+            $resolvedPackage = Get-ChildItem $packageRoot -Directory -ErrorAction SilentlyContinue |
+              Sort-Object { [version]$_.Name } -Descending |
+              Select-Object -First 1
+            if (-not $resolvedPackage) {
+              Write-Error "Restored package directory not found for $id"
+              exit 1
+            }
+            $licenseFiles = Get-ChildItem $resolvedPackage.FullName -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '^(license|notice|third-party)' }
+            if (-not $licenseFiles) {
+              Write-Error "No license/notice file found for redistributed package $id"
+              exit 1
+            }
+            $target = Join-Path $licenseRoot $id
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            foreach ($file in $licenseFiles) {
+              Copy-Item $file.FullName (Join-Path $target $file.Name) -Force
+            }
+          }
+          Write-Host "[+] Redistribution licenses collected"
+        shell: pwsh
+
       - name: Verify scripts are included in resources
         run: |
           $requiredScripts = @(
             "Gaming optimizations/Gaming-Optimizations.ps1",
             "Network optimizations/Network-Optimizations.ps1",
             "Performance/performance.ps1",
-            "Performance/revert-performance.ps1",
             "Privacy Security/privacy.ps1",
             "Privacy Security/revert-privacy.ps1",
             "Defender/defender.ps1",
@@ -561,7 +621,6 @@ jobs:
             "System Security/system-security.ps1",
             "System Security/revert-system-security.ps1",
             "Debloat/debloat.ps1",
-            "Debloat/revert-debloat.ps1",
             "Maintenance/maintenance.ps1",
             "create_restore_point.ps1"
           )
@@ -595,7 +654,6 @@ jobs:
       - name: Verify scripts embedded in assembly
         run: |
           # Load the main DLL (not the single-file wrapper) to inspect embedded resources.
-          # The main assembly lives in the Release output next to the publish build.
           $dll = Get-ChildItem -Path "src/PleaseTweakWindows/bin/Release" -Filter "PleaseTweakWindows.dll" -Recurse |
             Where-Object { $_.FullName -notmatch 'publish' } |
             Select-Object -First 1
@@ -609,10 +667,9 @@ jobs:
           $scriptResources = $asm.GetManifestResourceNames() | Where-Object { $_ -like '*Scripts*' }
 
           Write-Host "Embedded script resources: $($scriptResources.Count)"
-          # Current inventory: 26 .ps1 + index.txt + file-checksums.json + 4 .reg + nvidia_profile.xml + ooshutup10.cfg = 34.
-          # Tightening the threshold means a silently removed script file fails CI instead of sliding in.
-          if ($scriptResources.Count -lt 34) {
-            Write-Error "Expected at least 34 embedded script resources, found $($scriptResources.Count)"
+          # Inventory: 22 .ps1 + index.txt + file-checksums.json + 4 .reg + nvidia_profile.xml + ooshutup10.cfg = 30.
+          if ($scriptResources.Count -lt 30) {
+            Write-Error "Expected at least 30 embedded script resources, found $($scriptResources.Count)"
             exit 1
           }
           Write-Host "[+] Scripts are embedded in the assembly"
@@ -622,17 +679,22 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: please-tweak-windows-exe
-          # Both paths live under publish/, so the artifact root stays flat
-          # (PleaseTweakWindows.exe + bom.json) and the download path is unchanged.
+          # Both paths live under publish/ so the artifact root stays flat.
           path: |
             publish/PleaseTweakWindows.exe
             publish/bom.json
+            publish/licenses
 
   create-release:
     name: Create Release
     runs-on: windows-latest
     needs: build-exe
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    environment: release
+    # Never overlap or cancel a release while assets are being published.
+    concurrency:
+      group: release
+      cancel-in-progress: false
     permissions:
       contents: write
 
@@ -650,9 +712,7 @@ jobs:
       - name: Determine release version
         id: version
         run: |
-          # Source of truth is <Version> in the main csproj. The release tag must match
-          # the assembly version that actually ships, otherwise the release name drifts
-          # from PleaseTweakWindows.exe's reported version.
+          # The release tag must match <Version> in the main csproj.
           $csprojPath = 'src/PleaseTweakWindows/PleaseTweakWindows.csproj'
           $xml = [xml](Get-Content $csprojPath)
           $version = $xml.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
@@ -663,16 +723,17 @@ jobs:
           $tag = "v$version"
           Write-Host "csproj <Version>: $version → tag: $tag"
 
-          # If this tag already exists, skip the release. Bump <Version> in csproj to publish
-          # a new release. Prevents duplicate v2.1.1 releases from re-pushes.
-          $existing = git tag -l $tag
-          if ([string]::IsNullOrWhiteSpace($existing)) {
-            Write-Host "Tag $tag is new — release will be created."
-            "release=true" | Out-File -Append $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "Tag $tag already exists — skipping release. Bump <Version> in csproj to publish."
-            "release=false" | Out-File -Append $env:GITHUB_OUTPUT
+          if ($env:GITHUB_REF_NAME -ne $tag) {
+            Write-Error "Pushed tag '$env:GITHUB_REF_NAME' does not match csproj version '$tag'."
+            exit 1
           }
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Release tag must point to a commit contained in protected main."
+            exit 1
+          }
+          "release=true" | Out-File -Append $env:GITHUB_OUTPUT
           "version=$tag" | Out-File -Append $env:GITHUB_OUTPUT
         shell: pwsh
 
@@ -682,6 +743,45 @@ jobs:
         with:
           name: please-tweak-windows-exe
           path: ./artifacts
+
+      - name: Sign release EXE (Authenticode)
+        if: steps.version.outputs.release == 'true'
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CODE_SIGN_PFX_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:CODE_SIGN_PASSWORD)) {
+            Write-Error "The protected release environment must provide CODE_SIGN_PFX_BASE64 and CODE_SIGN_PASSWORD."
+            exit 1
+          }
+
+          $pfx = Join-Path $env:RUNNER_TEMP 'ptw-codesign.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CODE_SIGN_PFX_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -Last 1
+            if (-not $signtool) { throw "signtool.exe not found on the runner" }
+
+            & $signtool.FullName sign /f $pfx /p $env:CODE_SIGN_PASSWORD /fd SHA256 `
+              /tr http://timestamp.digicert.com /td SHA256 "./artifacts/PleaseTweakWindows.exe"
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed (exit $LASTEXITCODE)" }
+          }
+          finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+        env:
+          CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+          CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
+        shell: pwsh
+
+      - name: Verify release signature
+        if: steps.version.outputs.release == 'true'
+        run: |
+          $signature = Get-AuthenticodeSignature "./artifacts/PleaseTweakWindows.exe"
+          if ($signature.Status -ne 'Valid') {
+            Write-Error "Release EXE is not validly Authenticode-signed: $($signature.StatusMessage)"
+            exit 1
+          }
+          Write-Host "[+] Valid release signature: $($signature.SignerCertificate.Subject)"
+        shell: pwsh
 
       - name: Create distribution package
         if: steps.version.outputs.release == 'true'
@@ -693,13 +793,26 @@ jobs:
           if (Test-Path "LICENSE") {
             Copy-Item "LICENSE" "dist/"
           } else {
-            Write-Warning "LICENSE file not found — release will ship without it"
+            Write-Error "LICENSE file not found — refusing to publish"
+            exit 1
+          }
+          if (Test-Path "THIRD-PARTY-NOTICES.md") {
+            Copy-Item "THIRD-PARTY-NOTICES.md" "dist/"
+          } else {
+            Write-Error "THIRD-PARTY-NOTICES.md not found — refusing to publish"
+            exit 1
           }
           if (Test-Path "./artifacts/bom.json") {
             Copy-Item "./artifacts/bom.json" "dist/SBOM.json"
           } else {
             # The README promises an SBOM with every release, so refuse to publish without one.
             Write-Error "SBOM (bom.json) not found in build artifact — refusing to publish a release without the promised SBOM"
+            exit 1
+          }
+          if (Test-Path "./artifacts/licenses") {
+            Copy-Item "./artifacts/licenses" "dist/licenses" -Recurse
+          } else {
+            Write-Error "Dependency license bundle not found — refusing to publish"
             exit 1
           }
           # The EXE embeds all scripts; no loose scripts folder is shipped.
@@ -720,8 +833,7 @@ jobs:
       - name: Generate SHA256SUMS
         if: steps.version.outputs.release == 'true'
         run: |
-          # The EXE is not Authenticode-signed, so publish a checksum users can verify
-          # the download against (Get-FileHash on the .zip should match this value).
+          # Publish an archive checksum in addition to the EXE's Authenticode signature.
           $h = (Get-FileHash -Algorithm SHA256 -Path "PleaseTweakWindows.zip").Hash
           "$h  PleaseTweakWindows.zip" | Out-File -Encoding ascii -FilePath "SHA256SUMS.txt"
           Get-Content "SHA256SUMS.txt"

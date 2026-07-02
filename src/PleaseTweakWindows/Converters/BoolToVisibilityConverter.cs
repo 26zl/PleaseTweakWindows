@@ -32,11 +32,7 @@ public sealed class StringNotEmptyToVisibilityConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>
-/// MultiBinding converter that returns <c>false</c> when ANY bound bool is true,
-/// otherwise <c>true</c>. Used to disable a control while either the local run flag
-/// or the global run flag is set: IsEnabled = !(IsRunning || IsGloballyRunning).
-/// </summary>
+/// <summary>Returns false when any bound Boolean value is true.</summary>
 public sealed class NotAnyTrueConverter : IMultiValueConverter
 {
     public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)

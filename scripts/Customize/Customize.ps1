@@ -1,8 +1,4 @@
-# Customize (Shell & UX)
-# Purpose: Non-interactive action dispatcher for per-item, reversible shell/UX tweaks.
-# Usage: powershell -File Customize.ps1 -Action "<action-id>"
-# Version: 2.2.0
-# Last Updated: 2026-06-24
+﻿# Customize (Shell & UX)
 #Requires -RunAsAdministrator
 
 param(
@@ -37,8 +33,6 @@ param(
     [string]$Action = "Menu"
 )
 
-$script:ScriptVersion = "2.2.0"
-
 #region Logging
 function Write-PTWLog {
     param([string]$Message, [string]$Level = "INFO")
@@ -63,12 +57,11 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
-# Explorer-visible settings (Advanced/Themes/Search) only repaint after the shell
-# re-reads them. We do NOT auto-restart explorer here: during a "Run All" sweep that
-# would restart the shell once per toggle. Print a single hint instead.
+# Prompt for one manual Explorer restart after shell settings change.
 $ExplorerHint = "[i] Sign out (or restart Explorer) for this change to fully apply."
 
 $AdvancedKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
@@ -250,9 +243,8 @@ switch ($Action.ToLowerInvariant()) {
 
     "lockscreen-enable" {
         Write-Output "[*] Enabling Lock Screen..."
-        Remove-Item -Force "C:\Windows\Black.jpg" -ErrorAction SilentlyContinue
-        # Only remove the two values we set — do not delete the whole PersonalizationCSP
-        # key, which may contain MDM/Intune-pushed policy.
+        Remove-Item -Force "$env:SystemRoot\Black.jpg" -ErrorAction SilentlyContinue
+        # Preserve unrelated PersonalizationCSP policy values.
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath"
         Remove-RegValue -Path "Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImageStatus"
         Write-Output "[+] SUCCESS: Lock Screen enabled (restart required)"
@@ -261,6 +253,7 @@ switch ($Action.ToLowerInvariant()) {
 
     "startmenu-clean" {
         Write-Output "[*] Cleaning Start Menu and Taskbar..."
+        Backup-RegistryPath -Action $Action -Paths @("Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband")
         Remove-RegKey -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband"
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 0
@@ -291,11 +284,8 @@ switch ($Action.ToLowerInvariant()) {
 
     "keyboard-disable" {
         Write-Output "[*] Disabling Keyboard Shortcuts..."
-        # Do NOT touch hidserv — disabling it breaks every HID device on the machine
-        # including laptop keyboards and touchpads; users without PS/2 get locked out.
-        # The policy keys below are the actual mechanism for disabling Win-key shortcuts.
+        # Disable Windows-key shortcuts through policy without changing hidserv.
         Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoWinKeys" -Value 1
-        Set-RegDword -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys" -Value 1
         Write-Output "[+] SUCCESS: Keyboard shortcuts disabled (restart required)"
         Exit-PTW
     }
@@ -304,7 +294,6 @@ switch ($Action.ToLowerInvariant()) {
         Write-Output "[*] Enabling Keyboard Shortcuts..."
         Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoWinKeys"
         Remove-RegValue -Path "Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisabledHotkeys"
-        Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map"
         Write-Output "[+] SUCCESS: Keyboard shortcuts enabled (restart required)"
         Exit-PTW
     }

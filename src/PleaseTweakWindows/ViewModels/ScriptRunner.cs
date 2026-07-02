@@ -8,16 +8,17 @@ internal enum ScriptRunOutcome
     Applied,
     /// <summary>User declined the restore-point prompt.</summary>
     RestorePointCancelled,
+    /// <summary>Restore point creation was requested but failed; the run was blocked.</summary>
+    RestorePointFailed,
     /// <summary>User declined the confirmation dialog.</summary>
     ConfirmationCancelled,
+    /// <summary>The running script was cancelled by the user (Stop) — not a failure.</summary>
+    Cancelled,
 }
 
 internal readonly record struct ScriptRunResult(ScriptRunOutcome Outcome, int ExitCode);
 
-/// <summary>
-/// Shared script-execution flow: ensure restore point → confirm if destructive → run.
-/// Used by both per-action (SubTweakViewModel) and per-category (TweakCategoryViewModel) flows.
-/// </summary>
+/// <summary>Coordinates restore-point checks, confirmation, and script execution.</summary>
 internal static class ScriptRunner
 {
     public static async Task<ScriptRunResult> RunAsync(
@@ -39,11 +40,14 @@ internal static class ScriptRunner
             var proceed = await restorePointGuard.EnsureRestorePointAsync(
                 scriptDirectory, onOutput, isHighRisk: dialogService.IsHighRisk(action));
             if (!proceed)
-                return new ScriptRunResult(ScriptRunOutcome.RestorePointCancelled, -1);
+                // Report only restore-point creation failures as RestorePointFailed.
+                return new ScriptRunResult(
+                    restorePointGuard.LastStatus == RestorePointStatus.Failed
+                        ? ScriptRunOutcome.RestorePointFailed
+                        : ScriptRunOutcome.RestorePointCancelled, -1);
         }
 
-        // When the caller already confirmed the whole batch (Run All), skip the
-        // per-action confirmation dialog so the user isn't prompted N times.
+        // Skip per-action confirmation after the caller confirms a batch.
         if (!skipConfirmation && dialogService.RequiresConfirmation(action))
         {
             var confirmed = await dialogService.ShowConfirmationAsync(action, actionName);
@@ -52,6 +56,8 @@ internal static class ScriptRunner
         }
 
         var exit = await executor.RunScriptAsync(scriptPath, action, onOutput);
+        if (exit == ScriptExecutor.CancelledExitCode)
+            return new ScriptRunResult(ScriptRunOutcome.Cancelled, exit);
         return new ScriptRunResult(ScriptRunOutcome.Applied, exit);
     }
 }

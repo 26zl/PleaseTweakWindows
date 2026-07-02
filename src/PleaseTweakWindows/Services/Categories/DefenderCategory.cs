@@ -54,7 +54,7 @@ public sealed partial class TweakRegistry
                 "security-asr-rules-enable", "security-asr-rules-enable-revert",
                 "Enable all 19 Defender ASR rules (17 Block, 2 Warn): block Office/Adobe child processes, LSASS credential theft, script/macro abuse, untrusted USB executables, ransomware. WARNING: can block some legitimate installers/macros. Requires Defender; needs Tamper Protection off")
             {
-                Risk = SubTweakRisk.Confirm,
+                Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' enables all Defender Attack Surface Reduction rules.\n\n" +
                     "Blocks Office/Adobe child processes, LSASS credential theft, untrusted USB executables, script abuse and more. " +
@@ -62,7 +62,7 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Defender maximum protection", SubTweakType.Toggle,
                 "security-defender-max-protection", "security-defender-max-protection-revert",
-                "Push Defender to maximum: ZeroTolerance cloud blocking, full sample submission, deep scan + signature scheduling, aggressive threat remediation, brute-force/remote-encryption protection. Needs Tamper Protection off. Revert resets toward Windows defaults")
+                "Push Defender to maximum: assert real-time/behavior/script scanning ON, ZeroTolerance cloud blocking, full sample submission, deep scan + signature scheduling, aggressive threat remediation, brute-force/remote-encryption protection. Needs Tamper Protection off. Restore Default resets toward Windows defaults")
             {
                 Risk = SubTweakRisk.Confirm,
                 Warning =

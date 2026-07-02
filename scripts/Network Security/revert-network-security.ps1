@@ -1,10 +1,4 @@
-# Network Security Revert Script
-# Purpose: Reverts the changes made by network-security.ps1 (v2.1.0) back to Windows defaults where possible.
-# Usage:
-#   powershell -File revert-network-security.ps1 -Mode <Revert|Repair|RevertAndRepair> [-Action "<action-id>"]
-# Notes:
-#   - Revert: removes policy/override registry values created by the security hardening actions (returns to "not configured"/defaults).
-#   - Repair: re-enables optional features/capabilities/services that the hardening actions may have disabled/removed.
+﻿# Network Security Revert Script
 
 #Requires -RunAsAdministrator
 
@@ -18,15 +12,14 @@ param(
     [string]$Action = ''
 )
 
-$script:ScriptVersion = "2.1.0"
-
 # Dot-source common functions
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-Output "[!] CommonFunctions.ps1 not found - some features may not work"
+    Write-Output "[-] CommonFunctions.ps1 not found; refusing to continue"
+    exit 1
 }
 
 # Admin check (kept explicit for nicer message)
@@ -53,8 +46,7 @@ function Restore-FirewallBaseline {
         }
     }
 
-    # If the policy key is now empty, remove it (best-effort).
-    # (We do NOT touch non-empty keys to avoid deleting unrelated admin policy settings.)
+    # Remove the policy key only when it is empty.
     try {
         if (Test-Path $base) {
             $sub = Get-ChildItem -Path $base -ErrorAction SilentlyContinue
@@ -165,8 +157,13 @@ function Restore-ImproveNetworkSecurity {
         $sc = Get-Command sc.exe -ErrorAction SilentlyContinue
         if ($sc) {
             & $sc.Path config lanmanworkstation depend= bowser/mrxsmb10/mrxsmb20/nsi | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                $script:PTWErrorCount++
+                Write-PTWLog "LanmanWorkstation dependency restore failed (code: $LASTEXITCODE)" "WARNING"
+            }
         }
     } catch {
+        $script:PTWErrorCount++
         Write-PTWLog "Failed to restore LanmanWorkstation dependencies: $($_.Exception.Message)" "WARNING"
     }
 
@@ -178,24 +175,7 @@ function Repair-ImproveNetworkSecurity {
     param()
     if (-not $PSCmdlet.ShouldProcess("Windows Features/Capabilities", "Repair removed/disabled networking components")) { return }
 
-    # Re-enable optional features that security.ps1 disabled
-    Enable-OptionalFeaturesSafe -Names @(
-        'SMB1Protocol',
-        'SMB1Protocol-Client',
-        'SMB1Protocol-Server',
-        'TelnetClient',
-        'WCF-TCP-PortSharing45',
-        'SmbDirect',
-        'TFTP'
-    )
-
-    # Re-add capabilities that security.ps1 may have removed
-    Add-WindowsCapabilitiesSafe -Patterns @(
-        'RasCMAK.Client*',
-        'RIP.Listener*',
-        'SNMP.Client*',
-        'WMI-SNMP-Provider.Client*'
-    )
+    # Do not install legacy features absent from a default Windows 11 system.
 
     # Re-enable SMB1 driver service start type back to default (3 = Manual) if it was forced to Disabled (4).
     try {
@@ -313,8 +293,7 @@ function Restore-MssHardening {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert MSS legacy TCP/IP hardening")) { return }
-    # Restore Windows defaults: DisableIPSourceRouting default is 1, EnableICMPRedirect default 1,
-    # NoNameReleaseOnDemand is not set by default, SafeDllSearchMode default is 1.
+    # Restore the documented Windows defaults for the MSS TCP/IP values.
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'DisableIPSourceRouting' -Type 'DWord' -Value 1
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters' -Name 'DisableIPSourceRouting' -Type 'DWord' -Value 1
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'EnableICMPRedirect' -Type 'DWord' -Value 1
@@ -346,10 +325,11 @@ function Restore-RdpNla {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert RDP Network Level Authentication requirement")) { return }
     $rdp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-    Set-RegValueSafe -Path $rdp -Name 'UserAuthentication' -Type 'DWord' -Value 0
+    # Restore the Windows default that requires NLA for RDP.
+    Set-RegValueSafe -Path $rdp -Name 'UserAuthentication' -Type 'DWord' -Value 1
     Remove-RegValueSafe -Path $rdp -Name 'SecurityLayer'
     Remove-RegValueSafe -Path $rdp -Name 'MinEncryptionLevel'
-    Write-PTWLog "Reverted RDP NLA requirement (UserAuthentication=0; SecurityLayer/MinEncryptionLevel removed)" "SUCCESS"
+    Write-PTWLog "Reverted RDP NLA tweak (UserAuthentication restored to default 1; SecurityLayer/MinEncryptionLevel removed)" "SUCCESS"
 }
 
 function Restore-WinRmHarden {
@@ -364,23 +344,68 @@ function Restore-WinRmHarden {
     Write-PTWLog "Reverted WinRM / RPC remote-access hardening (policy overrides removed)" "SUCCESS"
 }
 
+function Restore-SmbGuestDisable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Re-allow insecure SMB guest logons")) { return }
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation' -Name 'AllowInsecureGuestAuth'
+    Write-PTWLog "Reverted insecure SMB guest logon restriction (policy override removed)" "SUCCESS"
+}
+
+function Restore-NtlmSessionSecurity {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Revert NTLM minimum session security")) { return }
+    Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0' -Name 'NTLMMinClientSec'
+    Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0' -Name 'NTLMMinServerSec'
+    Write-PTWLog "Reverted NTLM minimum session security (overrides removed)" "SUCCESS"
+}
+
+function Restore-RestrictRemoteSam {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Revert remote SAM enumeration restriction")) { return }
+    Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RestrictRemoteSAM'
+    Write-PTWLog "Reverted remote SAM enumeration restriction (override removed)" "SUCCESS"
+}
+
+function Restore-SpoolerRpcDisable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Re-enable the Print Spooler inbound remote RPC endpoint")) { return }
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers' -Name 'RegisterSpoolerRemoteRpcEndPoint'
+    Write-PTWLog "Reverted Print Spooler remote RPC endpoint restriction (override removed)" "SUCCESS"
+}
+
 function Restore-NetworkAllPrivate {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Restore all network profiles to Private")) { return }
     Write-Output "[*] Setting all network profiles to Private..."
     try {
-        Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+        $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
+        if ($profiles.Count -eq 0) {
+            # Treat an offline system as a successful no-op.
+            Write-Output "[i] No active network profiles found; nothing to set to Private."
+            return
+        }
+        $failures = 0
+        $profiles | ForEach-Object {
             try {
                 Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
                 Write-Output "  [+] $($_.Name) -> Private"
             } catch {
+                $failures++
                 Write-Warning "  [WARN] Could not set $($_.Name) to Private: $($_.Exception.Message)"
             }
         }
+        if ($failures -gt 0) {
+            throw "$failures of $($profiles.Count) network profile(s) could not be changed."
+        }
         Write-PTWLog "All network profiles restored to Private" "SUCCESS"
     } catch {
-        Write-PTWLog "Failed to enumerate network profiles: $($_.Exception.Message)" "WARNING"
+        $script:PTWErrorCount++
+        Write-PTWLog "Could not restore all network profiles: $($_.Exception.Message)" "ERROR"
     }
 }
 
@@ -389,8 +414,20 @@ function Restore-CountryIpUnblock {
     param()
     if (-not $PSCmdlet.ShouldProcess("Windows Firewall", "Remove country IP block rules")) { return }
     Write-Output "[*] Removing country IP block firewall rules..."
-    Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
-    Write-PTWLog "Country IP block rules removed" "SUCCESS"
+    try {
+        $rules = @(Get-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue)
+        if ($rules.Count -gt 0) {
+            $rules | Remove-NetFirewallRule -ErrorAction Stop
+        }
+        $remaining = @(Get-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue)
+        if ($remaining.Count -gt 0) {
+            throw "$($remaining.Count) firewall rule(s) remain."
+        }
+        Write-PTWLog "Country IP block rules removed" "SUCCESS"
+    } catch {
+        $script:PTWErrorCount++
+        Write-PTWLog "Country IP block removal failed: $($_.Exception.Message)" "ERROR"
+    }
 }
 
 $actionMap = @{
@@ -410,10 +447,13 @@ $actionMap = @{
     'security-mss-hardening'                = @{ Revert = { Restore-MssHardening } ; Repair = { } }
     'security-mdns-disable'                 = @{ Revert = { Restore-MdnsDisable } ; Repair = { } }
     'security-print-nightmare'              = @{ Revert = { Restore-PrintNightmareHardening } ; Repair = { } }
+    'security-spooler-rpc-disable'          = @{ Revert = { Restore-SpoolerRpcDisable } ; Repair = { } }
     'security-rdp-nla'                      = @{ Revert = { Restore-RdpNla } ; Repair = { } }
     'security-winrm-harden'                 = @{ Revert = { Restore-WinRmHarden } ; Repair = { } }
-    # Moved Network toggles: revert IDs are the literal "off" action (no -revert suffix),
-    # so they are keyed by their own name and dispatch directly (the strip leaves them as-is).
+    'security-smb-guest-disable'            = @{ Revert = { Restore-SmbGuestDisable } ; Repair = { } }
+    'security-ntlm-session-security'        = @{ Revert = { Restore-NtlmSessionSecurity } ; Repair = { } }
+    'security-restrict-remote-sam'          = @{ Revert = { Restore-RestrictRemoteSam } ; Repair = { } }
+    # Dispatch literal Network off-actions without a -revert suffix.
     'network-all-private'                   = @{ Revert = { Restore-NetworkAllPrivate } ; Repair = { } }
     'country-ip-unblock'                    = @{ Revert = { Restore-CountryIpUnblock } ; Repair = { } }
 }
@@ -430,7 +470,7 @@ function Invoke-Mode {
     }
 }
 
-Write-PTWLog "Note: revert restores Windows DEFAULTS, not any prior custom/hardened values you may have had on shared SYSTEM keys (e.g. LmCompatibilityLevel, restrictanonymous, AutoShareWks, NetbiosOptions). Original values are captured in the registry-backup .reg files under the registry-backups folder of PTW_LOG_DIR if you need to restore them manually." "INFO"
+Write-PTWLog "Restore Default applies Windows defaults; it does not reconstruct prior custom or organization-managed values." "INFO"
 
 if ([string]::IsNullOrWhiteSpace($Action)) {
     Write-PTWLog "No -Action provided; running Mode=$Mode for all security revert actions." "INFO"
@@ -452,15 +492,18 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
     Invoke-Mode -RevertBlock { Restore-MssHardening } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-MdnsDisable } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-PrintNightmareHardening } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-SpoolerRpcDisable } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-RdpNla } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-WinRmHarden } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-SmbGuestDisable } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-NtlmSessionSecurity } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-RestrictRemoteSam } -RepairBlock { }
 
     Write-PTWLog "Done. A restart may be required for some changes to fully take effect." "SUCCESS"
     Exit-PTW
 }
 
-# Strip -revert suffix: Java sends revert action IDs like 'security-improve-network-revert'
-# but actionMap keys use the base apply IDs like 'security-improve-network'
+# Strip the -revert suffix before action-map lookup.
 $k = $Action.ToLowerInvariant().Trim() -replace '-revert$', ''
 if (-not $actionMap.ContainsKey($k)) {
     Write-PTWLog "Unknown action: $Action" "ERROR"

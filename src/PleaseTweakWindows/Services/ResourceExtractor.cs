@@ -23,13 +23,20 @@ public sealed class ResourceExtractor
             if (_scriptsDirectory != null)
                 return _scriptsDirectory;
 
-            // Always extract from embedded resources. A filesystem scripts\ folder next
-            // to the EXE would be writable by any admin on the box, which would let a
-            // compromised admin modify privileged script content without rebuilding.
-            // The EXE ships self-contained and is only modifiable by re-publishing.
+            // Execute only scripts embedded in this build, never loose files beside the EXE.
             _logger.LogInformation("Extracting scripts from embedded resources");
             var tempDir = CreateTempDirectory();
-            ExtractFromEmbeddedResources(tempDir);
+            try
+            {
+                ExtractFromEmbeddedResources(tempDir);
+                Directory.CreateDirectory(Path.Combine(tempDir, ".runtime"));
+            }
+            catch
+            {
+                try { Directory.Delete(tempDir, recursive: true); }
+                catch (Exception ex) { _logger.LogDebug(ex, "Cleanup after extraction failure failed"); }
+                throw;
+            }
             _scriptsDirectory = tempDir;
             return tempDir;
         }
@@ -140,12 +147,23 @@ public sealed class ResourceExtractor
         }
     }
 
-    private void ExtractSingleResource(Assembly assembly, string[] allNames, string relativePath, string targetDir)
-    {
-        var msbuildSuffix = "Scripts." + relativePath
+    // Map an index path to its MSBuild embedded-resource suffix.
+    internal static string ComputeResourceSuffix(string relativePath) =>
+        "Scripts." + relativePath
             .Replace('/', '.')
             .Replace('\\', '.')
             .Replace(' ', '_');
+
+    // Check whether a destination is contained within the base directory.
+    internal static bool IsWithinDirectory(string baseDir, string destination)
+    {
+        var rel = Path.GetRelativePath(Path.GetFullPath(baseDir), Path.GetFullPath(destination));
+        return !rel.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(rel);
+    }
+
+    private void ExtractSingleResource(Assembly assembly, string[] allNames, string relativePath, string targetDir)
+    {
+        var msbuildSuffix = ComputeResourceSuffix(relativePath);
 
         var resourceName = allNames.FirstOrDefault(n =>
             n.EndsWith(msbuildSuffix, StringComparison.OrdinalIgnoreCase));
@@ -160,6 +178,12 @@ public sealed class ResourceExtractor
             ?? throw new InvalidOperationException($"Missing embedded resource: {resourceName}");
 
         var destination = Path.Combine(targetDir, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        // Reject manifest paths that escape the protected extraction directory.
+        if (!IsWithinDirectory(targetDir, destination))
+            throw new InvalidOperationException(
+                $"Refusing to extract '{relativePath}' outside the scripts directory.");
+
         var parentDir = Path.GetDirectoryName(destination);
         if (parentDir != null)
             Directory.CreateDirectory(parentDir);

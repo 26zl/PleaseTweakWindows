@@ -4,13 +4,12 @@ using System.Windows;
 
 namespace PleaseTweakWindows.Views.Dialogs;
 
-/// <summary>One reviewable row in the import dialog. IsSelected is bound TwoWay to a CheckBox.</summary>
+/// <summary>A selectable row in the import review dialog.</summary>
 public sealed class ConfigReviewItem
 {
     public string ActionId { get; }
     public string DisplayName { get; }
-    // Opt-in by default: a profile lists every tweak it *can* apply, not the user's current
-    // state, so importing must never pre-arm the whole set. The user ticks what they want.
+    // Leave imported actions unselected until the user opts in.
     public bool IsSelected { get; set; } = false;
 
     public ConfigReviewItem(string actionId, string displayName)
@@ -32,7 +31,7 @@ public partial class ConfigReviewDialog : Window
         InitializeComponent();
         ItemsHost.ItemsSource = _items;
         SubText.Text = droppedCount > 0
-            ? $"{_items.Count} tweak(s) from this profile match this build. {droppedCount} unknown entr(ies) were skipped. Nothing is selected — check the tweaks you want to apply, then Apply."
+            ? $"{_items.Count} tweak(s) from this profile match this build. {droppedCount} unknown action(s) were skipped. Nothing is selected — check the tweaks you want to apply, then Apply."
             : $"{_items.Count} tweak(s) found. Nothing is selected — check the tweaks you want to apply, then Apply.";
     }
 

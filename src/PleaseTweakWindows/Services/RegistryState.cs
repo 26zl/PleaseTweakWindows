@@ -3,12 +3,7 @@ using PleaseTweakWindows.Models;
 
 namespace PleaseTweakWindows.Services;
 
-/// <summary>
-/// Reads live registry state to evaluate sub-tweak dependencies. Windows-only at runtime.
-/// Fails CLOSED (returns NOT satisfied) on any read error: a dependent tweak — e.g. HVCI
-/// Mandatory or Secure Launch, which can affect boot — must never be enabled on an
-/// unverified prerequisite. The reason is logged so a genuine read failure is diagnosable.
-/// </summary>
+/// <summary>Evaluates registry-backed dependencies and treats read errors as unmet requirements.</summary>
 public static class RegistryState
 {
     public static bool IsSatisfied(SubTweakRequirement? requirement)

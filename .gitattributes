@@ -21,8 +21,9 @@
 *.psm1      text eol=lf
 *.psd1      text eol=lf
 
-# .reg files are UTF-16 LE with BOM — treat as binary so git never normalizes them.
-# Windows will refuse to import a normalized (LF / UTF-8) .reg file.
+# .reg files ship in mixed encodings (some UTF-16 LE + BOM, some ASCII/CRLF, none with
+# LF) — treat as binary so git never normalizes them. regedit refuses a normalized
+# (LF-converted) .reg file, and normalizing UTF-16 would corrupt it outright.
 *.reg    binary
 
 # Images / icons.

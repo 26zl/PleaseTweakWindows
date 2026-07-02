@@ -1,8 +1,4 @@
-# Create Restore Point
-# Purpose: Create a manual restore point for PleaseTweakWindows.
-# Usage: powershell -File create_restore_point.ps1 -Description "<text>"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Create Restore Point
 #Requires -RunAsAdministrator
 
 param (
@@ -15,15 +11,21 @@ if (-not $Description) {
     exit 1
 }
 
-# Check and start VSS (Volume Shadow Copy Service) if needed
+$vssWasRunning = $false
+$vssOriginalStartType = $null
+
+# Start VSS temporarily if needed.
 try {
     $vss = Get-Service "VSS" -ErrorAction SilentlyContinue
     if ($vss) {
+        $vssWasRunning = $vss.Status -eq 'Running'
+        $vssOriginalStartType = $vss.StartType
         if ($vss.Status -ne 'Running') {
             Write-Output "[*] Starting Volume Shadow Copy Service (VSS)..."
-            Set-Service -Name "VSS" -StartupType Automatic -ErrorAction Stop
+            if ($vss.StartType -eq 'Disabled') {
+                Set-Service -Name "VSS" -StartupType Manual -ErrorAction Stop
+            }
             Start-Service -Name "VSS" -ErrorAction Stop
-            Start-Sleep -Seconds 2
             Write-Output "[+] VSS service started successfully"
         } else {
             Write-Output "[*] VSS service is already running"
@@ -36,10 +38,7 @@ try {
     Write-Output "[*] Attempting to create restore point anyway..."
 }
 
-# Ensure System Protection is enabled for the system drive (best-effort).
-# On many Windows 11 / clean Windows 10 installs this is OFF by default, which
-# makes Checkpoint-Computer fail. Turn it on, reserve shadow storage, and clear
-# the 24h creation-frequency throttle so a fresh point is not silently suppressed.
+# Enable System Protection when possible; this is required for restore points.
 try {
     Write-Output "[*] Ensuring System Protection is enabled for $env:SystemDrive..."
     Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction SilentlyContinue
@@ -47,34 +46,42 @@ try {
     Write-Output "[!] WARNING: Could not enable System Protection: $($_.Exception.Message)"
 }
 
-# Best-effort reserve shadow storage so the first restore point has space.
+$frequencyPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+$frequencyName = 'SystemRestorePointCreationFrequency'
+$frequencyExisted = $false
+$frequencyOriginal = $null
 try {
-    vssadmin resize shadowstorage /for=$env:SystemDrive /on=$env:SystemDrive /maxsize=10GB | Out-Null
-} catch {
-    Write-Output "[!] WARNING: Could not reserve shadow storage: $($_.Exception.Message)"
-}
-
-# Bypass the once-per-24h restore point creation throttle so Checkpoint-Computer
-# does not silently no-op (return without creating a point and without throwing).
-try {
-    New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -Name 'SystemRestorePointCreationFrequency' -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+    $frequencyProperties = Get-ItemProperty -Path $frequencyPath -ErrorAction Stop
+    $frequencyExisted = $frequencyProperties.PSObject.Properties.Name -contains $frequencyName
+    if ($frequencyExisted) {
+        $frequencyOriginal = $frequencyProperties.$frequencyName
+    }
+    New-ItemProperty -Path $frequencyPath -Name $frequencyName -Value 0 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
 } catch {
     Write-Output "[!] WARNING: Could not clear restore point frequency throttle: $($_.Exception.Message)"
 }
 
-# Create restore point
+$succeeded = $false
 try {
     Write-Output "[*] Creating restore point: $Description"
-    $before = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
+    $beforeSequence = Get-ComputerRestorePoint -ErrorAction SilentlyContinue |
+        Measure-Object -Property SequenceNumber -Maximum |
+        Select-Object -ExpandProperty Maximum
+    if ($null -eq $beforeSequence) { $beforeSequence = -1 }
     Checkpoint-Computer -Description $Description -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
-    $after = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
-    if ($after -le $before) {
-        Write-Output "[-] ERROR: Checkpoint-Computer returned but no restore point was actually created."
-        Write-Output "    (Windows may have silently suppressed it, or System Protection is unavailable.)"
-        exit 1
+    $afterSequence = $beforeSequence
+    for ($attempt = 0; $attempt -lt 10 -and $afterSequence -le $beforeSequence; $attempt++) {
+        Start-Sleep -Seconds 1
+        $afterSequence = Get-ComputerRestorePoint -ErrorAction SilentlyContinue |
+            Measure-Object -Property SequenceNumber -Maximum |
+            Select-Object -ExpandProperty Maximum
+        if ($null -eq $afterSequence) { $afterSequence = -1 }
     }
+    if ($afterSequence -le $beforeSequence) {
+        throw "Checkpoint-Computer returned but no new restore point appeared."
+    }
+    $succeeded = $true
     Write-Output "[+] SUCCESS: Restore point created successfully!"
-    exit 0
 } catch {
     Write-Output "[-] ERROR: Failed to create restore point: $($_.Exception.Message)"
     Write-Output "[!] Common causes:"
@@ -82,5 +89,28 @@ try {
     Write-Output "    - Not enough disk space (requires at least 300MB free)"
     Write-Output "    - A restore point was created too recently (Windows limits frequency)"
     Write-Output "    - Volume Shadow Copy Service (VSS) is not functioning"
-    exit 1
+} finally {
+    try {
+        if ($frequencyExisted) {
+            New-ItemProperty -Path $frequencyPath -Name $frequencyName -Value $frequencyOriginal -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+        } else {
+            Remove-ItemProperty -Path $frequencyPath -Name $frequencyName -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-Output "[!] WARNING: Could not restore the restore-point frequency setting: $($_.Exception.Message)"
+    }
+
+    try {
+        if ($vssOriginalStartType) {
+            if (-not $vssWasRunning) {
+                Stop-Service -Name "VSS" -Force -ErrorAction SilentlyContinue
+            }
+            Set-Service -Name "VSS" -StartupType $vssOriginalStartType -ErrorAction Stop
+        }
+    } catch {
+        Write-Output "[!] WARNING: Could not restore the original VSS state: $($_.Exception.Message)"
+    }
 }
+
+if ($succeeded) { exit 0 }
+exit 1

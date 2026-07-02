@@ -1,15 +1,11 @@
 CommonFunctions.ps1
 Gaming optimizations/Gaming-Optimizations.ps1
-Gaming optimizations/revert-gaming.ps1
 Gaming optimizations/reg/nvidia_profile.xml
 Performance/performance.ps1
-Performance/revert-performance.ps1
 Performance/regs/Registry-Optimize.reg
 Performance/regs/Registry-Defaults.reg
 Network optimizations/Network-Optimizations.ps1
-Network optimizations/revert-network.ps1
 Debloat/debloat.ps1
-Debloat/revert-debloat.ps1
 Debloat/regs/servicesTweaked.reg
 Debloat/regs/servicesDefault.reg
 Privacy Security/privacy.ps1

@@ -20,12 +20,12 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Memory Integrity (HVCI)", SubTweakType.Toggle,
                 "security-hvci-enable", "security-hvci-enable-revert",
-                "Enable Virtualization-Based Security + Hypervisor-Enforced Code Integrity. Requires REBOOT and compatible hardware. WARNING: blocks unsigned/incompatible kernel drivers (some anti-cheat, old drivers, VM tools). Not Mandatory mode, so revert+reboot restores it")
+                "Enable Virtualization-Based Security + Hypervisor-Enforced Code Integrity. Requires REBOOT and compatible hardware. WARNING: blocks unsigned/incompatible kernel drivers (some anti-cheat, old drivers, VM tools). Not Mandatory mode, so Restore Default plus a reboot disables it")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' enables Virtualization-Based Security + Memory Integrity (HVCI).\n\n" +
-                    "REQUIRES A REBOOT and compatible hardware. HVCI blocks unsigned/incompatible kernel drivers — some anti-cheat, older hardware drivers and virtualization tools may stop working. Not Mandatory mode, so revert + reboot restores it.",
+                    "REQUIRES A REBOOT and compatible hardware. HVCI blocks unsigned/incompatible kernel drivers — some anti-cheat, older hardware drivers and virtualization tools may stop working. Not Mandatory mode, so Restore Default plus a reboot disables it.",
             },
             new SubTweak("Credential Guard", SubTweakType.Toggle,
                 "security-credential-guard-enable", "security-credential-guard-enable-revert",
@@ -42,15 +42,15 @@ public sealed partial class TweakRegistry
             new SubTweak("Disable WDigest credential caching", SubTweakType.Toggle,
                 "security-wdigest-disable", "security-wdigest-disable-revert",
                 "Stop WDigest from caching plaintext credentials in LSASS memory (UseLogonCredential=0)"),
-            new SubTweak("Memory Integrity — Mandatory (UEFI-locked)", SubTweakType.Toggle,
-                "security-hvci-mandatory", "security-hvci-mandatory-revert",
-                "UEFI-lock Memory Integrity (HVCI) as Mandatory so it cannot be turned off without clearing the firmware lock. WARNING: boot-brick risk if an installed driver is incompatible with HVCI. Enable only after HVCI is on and stable")
+            new SubTweak("Memory Integrity — UEFI-locked",
+                "security-hvci-mandatory",
+                "One-way action: UEFI-lock Memory Integrity (HVCI) so it cannot be turned off from Windows. The app cannot automatically restore a firmware-applied lock; use Microsoft's documented UEFI removal procedure")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
-                    "'{0}' UEFI-locks Memory Integrity (HVCI) as Mandatory.\n\n" +
-                    "SEVERE: once locked, HVCI cannot be turned off from Windows without clearing the lock in firmware. If an installed kernel driver is incompatible with HVCI the machine can FAIL TO BOOT. Only enable after HVCI has been on and stable across reboots.",
-                Requires = new SubTweakRequirement("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Enabled", 1, "Enable Memory Integrity (HVCI) first, then reboot, before locking it as Mandatory.")
+                    "'{0}' applies the Memory Integrity (HVCI) UEFI lock.\n\n" +
+                    "ONE-WAY FROM THIS APP: HVCI cannot be turned off from Windows after the firmware lock is applied. Clearing it requires Microsoft's documented UEFI removal procedure. The script refuses unless HVCI is confirmed running after a reboot.",
+                Requires = new SubTweakRequirement("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Enabled", 1, "Enable Memory Integrity (HVCI) first and reboot to activate it before applying the UEFI lock.")
             },
             new SubTweak("System Guard Secure Launch (DRTM)", SubTweakType.Toggle,
                 "security-secure-launch", "security-secure-launch-revert",
@@ -60,7 +60,16 @@ public sealed partial class TweakRegistry
                 Warning =
                     "'{0}' enables System Guard Secure Launch (DRTM).\n\n" +
                     "SEVERE: requires a DRTM-capable CPU and firmware. On incompatible hardware this can PREVENT THE MACHINE FROM BOOTING. Requires a reboot. Enable Memory Integrity (HVCI) first.",
-                Requires = new SubTweakRequirement("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Enabled", 1, "Enable Memory Integrity (HVCI) first.")
+                Requires = new SubTweakRequirement("HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Enabled", 1, "Enable Memory Integrity (HVCI) first and reboot to activate it before enabling Secure Launch.")
+            },
+            new SubTweak("Block external DMA devices (Kernel DMA Protection)", SubTweakType.Toggle,
+                "security-kernel-dma-protection", "security-kernel-dma-protection-revert",
+                "Block newly-plugged external Thunderbolt/PCIe peripherals that don't support DMA remapping (DeviceEnumerationPolicy=0), defeating drive-by DMA attacks. Needs Kernel DMA Protection hardware. WARNING: incompatible external devices won't work while locked")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' blocks external DMA-capable peripherals incompatible with DMA remapping.\n\n" +
+                    "Requires Kernel DMA Protection hardware support (UEFI + IOMMU). External Thunderbolt/PCIe devices without DMA-remapping support will be blocked while the screen is locked or before sign-in. Restore Default removes the policy.",
             },
         ]);
 }

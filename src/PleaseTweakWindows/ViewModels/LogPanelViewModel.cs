@@ -1,15 +1,10 @@
 using System.Collections.ObjectModel;
-using System.Text;
 using System.Windows.Media;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace PleaseTweakWindows.ViewModels;
 
-/// <summary>
-/// A single rendered log line with a foreground brush derived from its prefix
-/// so success/failure/warning lines are visually distinguishable.
-/// </summary>
+/// <summary>A rendered log line with prefix-based colouring.</summary>
 public sealed class LogLine
 {
     public string Text { get; }
@@ -24,73 +19,53 @@ public sealed class LogLine
 
 public partial class LogPanelViewModel : ViewModelBase
 {
-    // 1 MB cap. When exceeded we drop the oldest ~25% so the buffer stays bounded.
-    // Real-world tweak runs produce kilobytes; long batches ("Run All" over the whole
-    // Security category with verbose output) can exceed 100 KB, still well under the cap.
-    private const int MaxBufferLength = 1_048_576;
-    private const int TrimChunk = MaxBufferLength / 4;
-
-    // Bound the rendered line collection independently of the text buffer so the
-    // ItemsControl doesn't grow without limit during very long sweeps.
+    // Bound the rendered line collection during long runs.
     private const int MaxLines = 5000;
     private const int LineTrimChunk = MaxLines / 4;
 
-    private readonly StringBuilder _buffer = new(capacity: 8192);
-    private readonly object _lock = new();
-
-    // Cached brushes resolved lazily from the merged theme dictionary. Falls back to
-    // hard-coded colours if the app resources aren't available (e.g. design-time).
+    // Resolve cached brushes from the theme with design-time fallbacks.
     private static Brush? _successBrush;
     private static Brush? _dangerBrush;
     private static Brush? _warningBrush;
     private static Brush? _defaultBrush;
 
-    [ObservableProperty]
-    private string _logText = string.Empty;
-
-    /// <summary>Colour-coded log lines for the output panel.</summary>
-    public ObservableCollection<LogLine> Lines { get; } = new();
+    /// <summary>Colour-coded lines displayed by the output panel.</summary>
+    public ObservableCollection<LogLine> Lines => _lines;
+    private readonly TrimmableLogCollection _lines = new();
 
     public void AppendLine(string line)
     {
-        string snapshot;
-        lock (_lock)
+        // Callers marshal AppendLine onto the UI thread.
+        _lines.Add(new LogLine(line, BrushFor(line)));
+        if (_lines.Count > MaxLines)
         {
-            _buffer.Append(line);
-            _buffer.AppendLine();
-
-            if (_buffer.Length > MaxBufferLength)
-            {
-                _buffer.Remove(0, TrimChunk);
-            }
-
-            snapshot = _buffer.ToString();
+            // Trim old lines with one collection reset.
+            _lines.TrimHead(LineTrimChunk);
         }
+    }
 
-        // AppendLine is always marshalled onto the UI thread by callers
-        // (UiDispatcher.Post), so mutating the collection here is thread-safe.
-        Lines.Add(new LogLine(line, BrushFor(line)));
-        if (Lines.Count > MaxLines)
+    /// <summary>Collection that removes leading items with one reset notification.</summary>
+    private sealed class TrimmableLogCollection : ObservableCollection<LogLine>
+    {
+        public void TrimHead(int removeCount)
         {
-            for (var i = 0; i < LineTrimChunk && Lines.Count > 0; i++)
-                Lines.RemoveAt(0);
+            if (removeCount <= 0) return;
+            if (removeCount >= Count) { Clear(); return; }
+            ((List<LogLine>)Items).RemoveRange(0, removeCount);
+            OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(Count)));
+            OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs("Item[]"));
+            OnCollectionChanged(new System.Collections.Specialized.NotifyCollectionChangedEventArgs(
+                System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
         }
-
-        LogText = snapshot;
     }
 
     [RelayCommand]
     private void Clear()
     {
-        lock (_lock)
-        {
-            _buffer.Clear();
-        }
         Lines.Clear();
-        LogText = string.Empty;
     }
 
-    /// <summary>Opens the on-disk logs directory in Explorer so the user can see/delete what is kept.</summary>
+    /// <summary>Opens the logs directory in Explorer.</summary>
     [RelayCommand]
     private void OpenLogsFolder()
     {
@@ -103,7 +78,10 @@ public partial class LogPanelViewModel : ViewModelBase
                 UseShellExecute = true,
             });
         }
-        catch { /* opening the folder is best-effort; never crash the UI over it */ }
+        catch (Exception ex)
+        {
+            AppendLine($"[!] Could not open logs folder: {ex.Message}");
+        }
     }
 
     private static Brush BrushFor(string line)

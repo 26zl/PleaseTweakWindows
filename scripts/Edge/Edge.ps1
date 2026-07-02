@@ -1,9 +1,4 @@
-# Microsoft Edge Hardening
-# Purpose: Non-interactive action dispatcher for Microsoft Edge security policies.
-# Usage: powershell -File Edge.ps1 -Action "<action-id>"
-# Version: 2.2.0
-# Last Updated: 2026-06-24
-# Edge security and privacy policy values.
+﻿# Microsoft Edge Hardening
 #Requires -RunAsAdministrator
 
 param(
@@ -17,8 +12,6 @@ param(
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.2.0"
 
 #region Logging
 function Write-PTWLog {
@@ -44,7 +37,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 $EdgePolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'

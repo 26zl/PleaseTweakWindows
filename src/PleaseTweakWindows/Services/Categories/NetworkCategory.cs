@@ -21,5 +21,7 @@ public sealed partial class TweakRegistry
                     "It may disable Flow Control/Jumbo Frames and force Interrupt Moderation.\n" +
                     "This can reduce throughput on some LANs or increase latency.",
             },
+            new SubTweak("Restore Smart Network Defaults", "smart-optimize-revert",
+                "Restore multimedia network defaults and the latest adapter settings snapshot created by Smart Network Optimization"),
         ]);
 }

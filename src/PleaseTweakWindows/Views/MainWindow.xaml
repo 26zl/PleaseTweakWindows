@@ -81,6 +81,16 @@
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <ProgressBar Width="90" Height="4"
+                                 IsIndeterminate="True"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Foreground="{StaticResource PtwTextPrimaryBrush}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,12,0"
+                                 Visibility="{Binding IsScriptsRunning, Converter={StaticResource BoolToVisibility}}"
+                                 ToolTip="An operation is in progress…"
+                                 AutomationProperties.Name="Operation in progress" />
                     <Button Content="Stop"
                             Style="{StaticResource DangerButton}"
                             Command="{Binding CancelRunningCommand}"
@@ -124,10 +134,13 @@
                 BorderThickness="0,0,0,1"
                 Padding="16,10"
                 Visibility="{Binding ErrorMessage, Converter={StaticResource StringNotEmptyToVisibility}}">
+            <!-- Announce errors only from the message element. -->
             <TextBlock Text="{Binding ErrorMessage}"
                        Foreground="{StaticResource PtwDangerBrush}"
                        FontSize="13"
-                       TextWrapping="Wrap" />
+                       TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Assertive"
+                       AutomationProperties.Name="{Binding ErrorMessage}" />
         </Border>
 
         <!-- Update Banner -->

@@ -1,8 +1,4 @@
-# Privacy Revert Script
-# Purpose: Restores privacy settings to defaults.
-# Usage: powershell -File revert-privacy.ps1 -Mode <Revert|Repair|RevertAndRepair>
-# Version: 2.1.0
-# Last Updated: 2026-01-21
+﻿# Privacy Revert Script
 #Requires -RunAsAdministrator
 
 param(
@@ -13,40 +9,40 @@ param(
     [string]$Action = ''
 )
 
-$script:ScriptVersion = "2.1.0"
-
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-Output "[!] CommonFunctions.ps1 not found - some features may not work"
+    Write-Output "[-] CommonFunctions.ps1 not found; refusing to continue"
+    exit 1
 }
 
 function Restore-ExplorerFolder {
     param(
         [Parameter(Mandatory)][string]$FolderName,
-        [Parameter(Mandatory)][string]$Guid,
-        [Parameter(Mandatory)][int]$Build
+        [Parameter(Mandatory)][string]$Guid
     )
     Write-Output " [*] Restoring '$FolderName' in This PC..."
 
-    $paths = @(
-        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\FolderDescriptions\{$Guid}\PropertyBag",
-        "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Explorer\FolderDescriptions\{$Guid}\PropertyBag"
-    )
-    foreach ($path in $paths) {
-        Set-RegValueSafe -Path $path -Name 'ThisPCPolicy' -Type 'String' -Value 'Show'
+    # Keep the 3D Objects folder hidden to match the Windows 11 default.
+    $threeDObjectsGuid = '31C0DD25-9439-4F12-BF41-7FF4EDA38722'
+    if ($Guid -ne $threeDObjectsGuid) {
+        $paths = @(
+            "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\FolderDescriptions\{$Guid}\PropertyBag",
+            "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Explorer\FolderDescriptions\{$Guid}\PropertyBag"
+        )
+        foreach ($path in $paths) {
+            Set-RegValueSafe -Path $path -Name 'ThisPCPolicy' -Type 'String' -Value 'Show'
+        }
     }
 
     Remove-RegValueSafe -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideMyComputerIcons' -Name "{$Guid}"
 
+    # Clear hide flags only on existing namespace keys.
     $nsPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{$Guid}"
-    if (-not (Test-Path -LiteralPath $nsPath)) {
-        New-Item -Path $nsPath -Force | Out-Null
-    }
-
-    if ($Build -ge 22000) {
+    if (Test-Path -LiteralPath $nsPath) {
+        # Windows 11: clear the HiddenByDefault / HideIfEnabled flags to unhide the folder.
         Remove-RegValueSafe -Path $nsPath -Name 'HiddenByDefault'
         Remove-RegValueSafe -Path $nsPath -Name 'HideIfEnabled'
     }
@@ -76,31 +72,8 @@ function Restore-UiThisPcFolderList {
         '3D Objects' = '31C0DD25-9439-4F12-BF41-7FF4EDA38722'
     }
 
-    $build = [Environment]::OSVersion.Version.Build
     foreach ($name in $folders.Keys) {
-        Restore-ExplorerFolder -FolderName $name -Guid $folders[$name] -Build $build
-    }
-
-    if ($build -lt 22000) {
-        $legacyGuids = @(
-            'A8CDFF1C-4878-43be-B5FD-F8091C1C60D0',
-            'd3162b92-9365-467a-956b-92703aca08af',
-            '088e3905-0323-4b02-9826-5d99428e115f',
-            '374DE290-123F-4565-9164-39C4925E467B',
-            '3dfdf296-dbec-4fb4-81d1-6a3438bcf4de',
-            '1CF1260C-4DD0-4ebb-811F-33C572699FDE',
-            '24ad3ad4-a569-4530-98e1-ab02f9417aa8',
-            '3ADD1653-EB32-4cb0-BBD7-DFA0ABB5ACCA',
-            'f86fa3ab-70d2-4fc7-9c99-fcbf05467f3a',
-            'A0953C92-50DC-43bf-BE83-3742FED03C9C',
-            '0DB7E03F-FC29-4DC6-9020-FF41B59E513A'
-        )
-        foreach ($guid in $legacyGuids) {
-            $nsPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{$guid}"
-            if (-not (Test-Path -LiteralPath $nsPath)) {
-                New-Item -Path $nsPath -Force | Out-Null
-            }
-        }
+        Restore-ExplorerFolder -FolderName $name -Guid $folders[$name]
     }
 }
 
@@ -143,23 +116,11 @@ function Restore-UiCameraOsd {
 
 function Restore-Copilot {
     $ProgressPreference = 'SilentlyContinue'
-    # Remove the policy keys that suppress Copilot — this re-enables the UI if the
-    # package is still registered. If the package was already uninstalled by
-    # 'copilot-disable' it will not reappear via re-register (the InstallLocation
-    # is gone). The user should reinstall Copilot from the Microsoft Store if needed.
+    # Restore Copilot by removing its policy overrides.
     Remove-RegKey -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot"
     Remove-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
 
-    # Best-effort: re-register packages that are still present (e.g., on machines
-    # where copilot-disable was never run but the policy was set manually).
-    Get-AppXPackage -AllUsers *Microsoft.Windows.Ai.Copilot.Provider* |
-        Where-Object { $_.InstallLocation -and (Test-Path (Join-Path $_.InstallLocation 'AppXManifest.xml')) } |
-        ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue }
-    Get-AppXPackage -AllUsers *Microsoft.Copilot* |
-        Where-Object { $_.InstallLocation -and (Test-Path (Join-Path $_.InstallLocation 'AppXManifest.xml')) } |
-        ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue }
-
-    Write-Output "[i] Copilot policies cleared. If Copilot was uninstalled, reinstall from the Microsoft Store."
+    Write-Output "[i] Copilot policy overrides cleared. The installed package was not modified."
 }
 
 function Restore-Telemetry {
@@ -187,6 +148,60 @@ function Restore-OneDrivePolicyDisable {
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive' -Name 'DisableFileSyncNGSC'
 }
 
+function Restore-RecallDisable {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI' -Name 'DisableAIDataAnalysis'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI' -Name 'AllowRecallEnablement'
+    Remove-RegValueSafe -Path 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI' -Name 'DisableAIDataAnalysis'
+}
+
+function Restore-CameraMicDeny {
+    # Restore sensor consent to Allow and remove the policy overrides.
+    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam' -Name 'Value' -Type 'String' -Value 'Allow'
+    Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' -Name 'Value' -Type 'String' -Value 'Allow'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' -Name 'LetAppsAccessCamera'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' -Name 'LetAppsAccessMicrophone'
+}
+
+$script:PtwTelemetryTasks = @(
+    @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'Microsoft Compatibility Appraiser' },
+    @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'ProgramDataUpdater' },
+    @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'StartupAppTask' },
+    @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'Consolidator' },
+    @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'UsbCeip' },
+    @{ Path = '\Microsoft\Windows\Autochk\'; Name = 'Proxy' },
+    @{ Path = '\Microsoft\Windows\Feedback\Siuf\'; Name = 'DmClient' },
+    @{ Path = '\Microsoft\Windows\Feedback\Siuf\'; Name = 'DmClientOnScenarioDownload' },
+    @{ Path = '\Microsoft\Windows\Windows Error Reporting\'; Name = 'QueueReporting' }
+)
+
+function Restore-TelemetryTasksDisable {
+    foreach ($t in $script:PtwTelemetryTasks) {
+        try {
+            $task = Get-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction SilentlyContinue
+            if ($task) {
+                Enable-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction Stop | Out-Null
+            }
+        } catch {
+            Write-Verbose "Could not re-enable $($t.Name): $($_.Exception.Message)"
+        }
+    }
+}
+
+function Restore-LocationDisable {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name 'DisableLocation'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name 'DisableLocationScripting'
+}
+
+function Restore-WebSearchDisable {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'DisableWebSearch'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'ConnectedSearchUseWeb'
+    Remove-RegValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name 'DisableSearchBoxSuggestions'
+}
+
+function Restore-DeliveryOptimizationDisable {
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization' -Name 'DODownloadMode'
+}
+
 function Restore-DnsAndDoh {
     $dnsServers = @(
         "1.1.1.1",
@@ -207,15 +222,8 @@ function Restore-DnsAndDoh {
         }
     }
 
-    $adapters = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notlike '*Virtual*' -and $_.Name -notlike '*vEthernet*' }
-    foreach ($adapter in $adapters) {
-        try {
-            Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ResetServerAddresses -ErrorAction Stop
-            Write-Output " [OK] DNS reset to automatic on: $($adapter.Name)"
-        } catch {
-            Write-Output " [WARN] Could not reset DNS on: $($adapter.Name)"
-        }
-    }
+    # Remove DoH templates without changing the selected DNS resolver.
+    Write-Output " [i] DoH templates removed; your selected DNS resolver is left as-is (use 'Reset DNS to automatic' to clear it)."
 
     try { ipconfig /flushdns | Out-Null } catch {
         Write-Verbose "Failed to flush DNS cache."
@@ -224,8 +232,7 @@ function Restore-DnsAndDoh {
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
     Write-PTWError "Administrator privileges required."
-    $global:LASTEXITCODE = 2
-    return
+    exit 2
 }
 
 if ($Action) {
@@ -243,7 +250,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Copilot revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "doh-enable-revert" {
@@ -253,7 +260,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] DoH disable failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-online-content-revert" {
@@ -263,7 +270,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Online content revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-secure-recent-docs-revert" {
@@ -273,7 +280,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Recent docs revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-remove-this-pc-folders-revert" {
@@ -283,7 +290,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] This PC folders revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-lock-screen-notifications-revert" {
@@ -293,7 +300,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Lock screen notifications revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-store-open-with-revert" {
@@ -303,7 +310,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Store Open With revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-quick-access-recent-revert" {
@@ -313,7 +320,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Quick Access revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-sync-provider-notifications-revert" {
@@ -323,7 +330,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Sync provider revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-hibernation-revert" {
@@ -333,7 +340,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Hibernation revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "ui-camera-osd-revert" {
@@ -343,7 +350,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Camera OSD revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "telemetry-off-revert" {
@@ -353,7 +360,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Telemetry revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "telemetry-policy-enforce-revert" {
@@ -363,7 +370,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Telemetry policy revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "block-ms-account-revert" {
@@ -373,7 +380,7 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] Microsoft account revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
             }
         }
         "onedrive-policy-disable-revert" {
@@ -383,12 +390,72 @@ if ($Action) {
                 $global:LASTEXITCODE = 0
             } catch {
                 Write-Output " [WARN] OneDrive policy revert failed: $($_.Exception.Message)"
-                $global:LASTEXITCODE = 1
+                $script:PTWErrorCount++
+            }
+        }
+        "privacy-recall-disable-revert" {
+            try {
+                Restore-RecallDisable
+                Write-Output " [OK] Windows Recall policy override removed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Recall revert failed: $($_.Exception.Message)"
+                $script:PTWErrorCount++
+            }
+        }
+        "privacy-camera-mic-deny-revert" {
+            try {
+                Restore-CameraMicDeny
+                Write-Output " [OK] Camera/microphone access restored to default (Allow)"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Camera/mic revert failed: $($_.Exception.Message)"
+                $script:PTWErrorCount++
+            }
+        }
+        "privacy-telemetry-tasks-disable-revert" {
+            try {
+                Restore-TelemetryTasksDisable
+                Write-Output " [OK] Telemetry scheduled tasks re-enabled"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Telemetry tasks revert failed: $($_.Exception.Message)"
+                $script:PTWErrorCount++
+            }
+        }
+        "privacy-location-disable-revert" {
+            try {
+                Restore-LocationDisable
+                Write-Output " [OK] Location policy override removed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Location revert failed: $($_.Exception.Message)"
+                $script:PTWErrorCount++
+            }
+        }
+        "privacy-web-search-disable-revert" {
+            try {
+                Restore-WebSearchDisable
+                Write-Output " [OK] Web search policy override removed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Web search revert failed: $($_.Exception.Message)"
+                $script:PTWErrorCount++
+            }
+        }
+        "privacy-delivery-optimization-disable-revert" {
+            try {
+                Restore-DeliveryOptimizationDisable
+                Write-Output " [OK] Delivery Optimization policy override removed"
+                $global:LASTEXITCODE = 0
+            } catch {
+                Write-Output " [WARN] Delivery Optimization revert failed: $($_.Exception.Message)"
+                $script:PTWErrorCount++
             }
         }
         default {
             Write-PTWError "Unknown action: $Action"
-            $global:LASTEXITCODE = 1
+            $script:PTWErrorCount++
         }
     }
 
@@ -398,11 +465,11 @@ if ($Action) {
     Write-Output " [!] Restart recommended for changes to take effect"
     Write-Output "========================================"
     Wait-ForUser
-    return
+    # Exit through Exit-PTW so per-action restore failures return a non-zero code.
+    Exit-PTW
 }
 
 $doRevert = ($Mode -eq 'Revert') -or ($Mode -eq 'RevertAndRepair')
-$doRepair = ($Mode -eq 'Repair') -or ($Mode -eq 'RevertAndRepair')
 
 Write-Output ""
 Write-Output "========================================"
@@ -442,6 +509,12 @@ if ($doRevert) {
         Restore-TelemetryPolicyEnforce
         Restore-BlockMsAccount
         Restore-OneDrivePolicyDisable
+        Restore-RecallDisable
+        Restore-CameraMicDeny
+        Restore-TelemetryTasksDisable
+        Restore-LocationDisable
+        Restore-WebSearchDisable
+        Restore-DeliveryOptimizationDisable
         Write-Output " [OK] UI and Explorer privacy tweaks reverted"
     } catch {
         Write-Output " [WARN] UI/Explorer revert failed: $($_.Exception.Message)"
@@ -458,5 +531,5 @@ Write-Output " [+] $Mode complete"
 Write-Output " [!] Restart recommended for changes to take effect"
 Write-Output "========================================"
 Wait-ForUser
-$global:LASTEXITCODE = 0
-return
+# Honour $PTWErrorCount (the reg helpers increment it on failure) rather than forcing exit 0.
+Exit-PTW

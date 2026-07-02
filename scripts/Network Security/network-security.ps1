@@ -1,8 +1,4 @@
-# Network Security Tweaks
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File network-security.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-21
+﻿# Network Security Tweaks
 #Requires -RunAsAdministrator
 
 param(
@@ -24,8 +20,12 @@ param(
         "security-mss-hardening",
         "security-mdns-disable",
         "security-print-nightmare",
+        "security-spooler-rpc-disable",
         "security-rdp-nla",
         "security-winrm-harden",
+        "security-smb-guest-disable",
+        "security-ntlm-session-security",
+        "security-restrict-remote-sam",
         "network-all-public",
         "network-all-private",
         "country-ip-block",
@@ -34,8 +34,6 @@ param(
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 function Write-PTWLog {
     param([string]$Message, [string]$Level = "INFO")
@@ -59,7 +57,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 # Firewall hardening
@@ -68,15 +67,13 @@ function Set-FirewallBaseline {
     param()
     if (-not $PSCmdlet.ShouldProcess("Windows Firewall", "Apply firewall baseline")) { return }
     $basePath = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall'
-    New-Item -Path $basePath -Force | Out-Null
     foreach ($fwProfile in @('DomainProfile','PrivateProfile','PublicProfile')) {
-        New-Item -Path "$basePath\$fwProfile" -Force | Out-Null
-        New-Item -Path "$basePath\$fwProfile\Logging" -Force | Out-Null
-        Set-ItemProperty -Path "$basePath\$fwProfile" -Name 'EnableFirewall' -Type DWord -Value 1
-        Set-ItemProperty -Path "$basePath\$fwProfile" -Name 'DefaultOutboundAction' -Type DWord -Value 0
-        Set-ItemProperty -Path "$basePath\$fwProfile" -Name 'DefaultInboundAction' -Type DWord -Value 1
-        Set-ItemProperty -Path "$basePath\$fwProfile\Logging" -Name 'LogDroppedPackets' -Type DWord -Value 1
-        Set-ItemProperty -Path "$basePath\$fwProfile\Logging" -Name 'LogSuccessfulConnections' -Type DWord -Value 1
+        # Use the registry helper so write failures affect the action result.
+        Set-RegValueSafe -Path "$basePath\$fwProfile" -Name 'EnableFirewall' -Type 'DWord' -Value 1
+        Set-RegValueSafe -Path "$basePath\$fwProfile" -Name 'DefaultOutboundAction' -Type 'DWord' -Value 0
+        Set-RegValueSafe -Path "$basePath\$fwProfile" -Name 'DefaultInboundAction' -Type 'DWord' -Value 1
+        Set-RegValueSafe -Path "$basePath\$fwProfile\Logging" -Name 'LogDroppedPackets' -Type 'DWord' -Value 1
+        Set-RegValueSafe -Path "$basePath\$fwProfile\Logging" -Name 'LogSuccessfulConnections' -Type 'DWord' -Value 1
     }
 }
 
@@ -95,9 +92,7 @@ function Set-ImproveNetworkSecurity {
         [pscustomobject]@{ Path = 'HKLM:\Software\Policies\Microsoft\Windows NT\Printers'; Name = 'DisableHTTPPrinting'; Type = 'DWord'; Value = 1 },
         # Disable WebPnP printer downloads.
         [pscustomobject]@{ Path = 'HKLM:\Software\Policies\Microsoft\Windows NT\Printers'; Name = 'DisableWebPnPDownload'; Type = 'DWord'; Value = 1 },
-        # Disable SMBv1 protocol. The correct server-side value is "SMB1" (not "SMBv1",
-        # which was a no-op). The real SMB1 removal still happens via the optional-feature
-        # uninstall below — this reg key just disables the server-side SMB1 negotiator.
+        # Disable the SMB1 server negotiator before removing the optional feature.
         [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters'; Name = 'SMB1'; Type = 'DWord'; Value = 0 },
         # Enforce NTLMv2 only (LM/NTLMv1 disabled).
         [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'; Name = 'LmCompatibilityLevel'; Type = 'DWord'; Value = 5 },
@@ -131,11 +126,13 @@ function Set-ImproveNetworkSecurity {
                 try {
                     Set-ItemProperty -Path $_.PSPath -Name 'NetbiosOptions' -Type DWord -Value 2 -Force -ErrorAction Stop | Out-Null
                 } catch {
+                    $script:PTWErrorCount++
                     Write-Warning "[WARN] Failed NetBIOS disable on $($_.PSChildName): $($_.Exception.Message)"
                 }
             }
         }
     } catch {
+        $script:PTWErrorCount++
         Write-Warning "[WARN] NetBIOS disable failed: $($_.Exception.Message)"
     }
 
@@ -157,6 +154,7 @@ function Set-ImproveNetworkSecurity {
             Set-RegDword -Path $mrxKey -Name 'Start' -Value 4
         }
     } catch {
+        $script:PTWErrorCount++
         Write-Warning "[WARN] Failed to disable mrxsmb10: $($_.Exception.Message)"
     }
 
@@ -166,10 +164,12 @@ function Set-ImproveNetworkSecurity {
         if ($sc) {
             & $sc.Path config lanmanworkstation depend= bowser/mrxsmb20/nsi | Out-Null
             if ($LASTEXITCODE -ne 0) {
+                $script:PTWErrorCount++
                 Write-Warning "[WARN] LanmanWorkstation dependency update failed (code: $LASTEXITCODE)"
             }
         }
     } catch {
+        $script:PTWErrorCount++
         Write-Warning "[WARN] Failed to update LanmanWorkstation dependencies: $($_.Exception.Message)"
     }
 
@@ -250,9 +250,7 @@ function Set-TlsHardening {
             Set-RegValueSafeTx -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers\$cipher" -Name 'Enabled' -Type 'DWord' -Value 0
         }
 
-        # Disable insecure hashes. Note: 'SHA' (SHA-1) is intentionally NOT disabled here
-        # because killing the Schannel SHA-1 provider can break TLS 1.2 CBC-SHA handshakes
-        # to legacy servers/appliances; only MD5 is disabled.
+        # Disable MD5 while retaining SHA-1 compatibility for legacy TLS endpoints.
         $hashes = @('MD5')
         foreach ($hash in $hashes) {
             Set-RegValueSafeTx -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes\$hash" -Name 'Enabled' -Type 'DWord' -Value 0
@@ -285,24 +283,12 @@ function Set-TlsHardening {
             @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client'; Enabled = 1; DisabledByDefault = 0 }
         )
 
-        $build = Get-OsBuildNumber
-        if ($build -ge 14393) {
-            # Enable DTLS 1.2 (server).
-            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Server'; Enabled = 1; DisabledByDefault = 0 }
-            # Enable DTLS 1.2 (client).
-            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Client'; Enabled = 1; DisabledByDefault = 0 }
-        } else {
-            Write-Output "[i] Skipping DTLS 1.2 enable (build $build < 14393)"
-        }
-
-        if ($build -ge 20348) {
-            # Enable TLS 1.3 (server).
-            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server'; Enabled = 1; DisabledByDefault = 0 }
-            # Enable TLS 1.3 (client).
-            $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client'; Enabled = 1; DisabledByDefault = 0 }
-        } else {
-            Write-Output "[i] Skipping TLS 1.3 enable (build $build < 20348)"
-        }
+        # Enable DTLS 1.2 for clients and servers.
+        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Server'; Enabled = 1; DisabledByDefault = 0 }
+        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\DTLS 1.2\Client'; Enabled = 1; DisabledByDefault = 0 }
+        # Enable TLS 1.3 (server + client).
+        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server'; Enabled = 1; DisabledByDefault = 0 }
+        $protocols += @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client'; Enabled = 1; DisabledByDefault = 0 }
 
         foreach ($proto in $protocols) {
             Set-RegValueSafeTx -Path $proto.Path -Name 'Enabled' -Type 'DWord' -Value $proto.Enabled
@@ -340,7 +326,7 @@ function Set-SmbModernEnforced {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enforce SMB 3.1.1 minimum + encryption")) { return }
     Write-Output "[*] Enforcing SMB 3.1.1 minimum + encryption..."
-    Write-Output "[!] WARNING: Setting the SMB CLIENT minimum dialect to 3.1.1 will block this PC from connecting to any share that only speaks SMB 2.x/3.0 - this includes many NAS units (older Synology/QNAP firmware), network printers/scanners, Samba < 4.11, and Windows 7/8/Server 2012 shares. You may lose access to those devices until you revert."
+    Write-Output "[!] WARNING: Setting the SMB CLIENT minimum dialect to 3.1.1 will block this PC from connecting to any share that only speaks SMB 2.x/3.0 - this includes many NAS units (older Synology/QNAP firmware), network printers/scanners, Samba < 4.11, and Windows 7/8/Server 2012 shares. You may lose access until you use Restore Default."
     Write-Output "[!] WARNING: Requiring SMB server-side encryption (EncryptData) will block non-SMB3 clients (Windows 7, scan-to-folder printers, older media players/TVs) from reaching shares hosted on THIS machine."
     # Dialect values: 0x0202=2.0.2, 0x0210=2.1, 0x0300=3.0, 0x0302=3.0.2, 0x0311=3.1.1
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name 'Smb2DialectMin' -Type 'DWord' -Value 0x0311
@@ -349,9 +335,12 @@ function Set-SmbModernEnforced {
         Set-SmbServerConfiguration -EncryptData $true -RejectUnencryptedAccess $false -Confirm:$false -ErrorAction Stop | Out-Null
         Set-SmbClientConfiguration -RequireSecuritySignature $true -EnableSecuritySignature $true -Confirm:$false -ErrorAction Stop | Out-Null
     } catch {
+        $script:PTWErrorCount++
         Write-Warning "[WARN] SMB cmdlet config failed: $($_.Exception.Message)"
     }
-    Write-Output "[+] SUCCESS: SMB 3.1.1 minimum enforced, server encryption required"
+    if ($script:PTWErrorCount -eq 0) {
+        Write-Output "[+] SUCCESS: SMB 3.1.1 minimum enforced, server encryption required"
+    }
 }
 
 function Set-SmbCipherSuiteOrder {
@@ -380,13 +369,28 @@ function Set-FirewallLoggingEnabled {
         Write-Output "[+] SUCCESS: Firewall logging enabled (Domain, Private, Public)"
     } catch {
         Write-Warning "[WARN] Set-NetFirewallProfile failed: $($_.Exception.Message). Falling back to netsh."
-        foreach ($p in @('domain','private','public')) {
-            netsh advfirewall set "$p" logging filename '%systemroot%\system32\LogFiles\Firewall\pfirewall.log' 2>&1 | Out-Null
-            netsh advfirewall set "$p" logging maxfilesize 32767 2>&1 | Out-Null
-            netsh advfirewall set "$p" logging droppedconnections enable 2>&1 | Out-Null
-            netsh advfirewall set "$p" logging allowedconnections enable 2>&1 | Out-Null
+        $netshOk = $true
+        foreach ($p in @('domainprofile','privateprofile','publicprofile')) {
+            $cmds = @(
+                @('logging','filename','%systemroot%\system32\LogFiles\Firewall\pfirewall.log'),
+                @('logging','maxfilesize','32767'),
+                @('logging','droppedconnections','enable'),
+                @('logging','allowedconnections','enable')
+            )
+            foreach ($c in $cmds) {
+                netsh advfirewall set $p @c 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    $netshOk = $false
+                    Write-Warning "[WARN] netsh advfirewall set $p $($c -join ' ') failed (code: $LASTEXITCODE)"
+                }
+            }
         }
-        Write-Output "[+] SUCCESS: Firewall logging enabled via netsh"
+        if ($netshOk) {
+            Write-Output "[+] SUCCESS: Firewall logging enabled via netsh"
+        } else {
+            Write-Output "[-] ERROR: Firewall logging fallback via netsh did not fully succeed"
+            $script:PTWErrorCount++
+        }
     }
 }
 
@@ -447,9 +451,7 @@ function Set-NetworkRpcHardening {
     Write-Output "[+] SUCCESS: RPC/LMHOSTS network hardening applied"
 }
 
-# Living-off-the-land binaries that are frequently abused to download/execute payloads
-# and that PTW itself does NOT depend on (powershell.exe / cmd.exe / rundll32.exe are
-# deliberately excluded so PTW's own download tweaks keep working).
+# Block commonly abused system binaries that PleaseTweakWindows does not require.
 $script:PtwLolbins = @('bitsadmin.exe','certutil.exe','cmstp.exe','cscript.exe','wscript.exe','mshta.exe','wmic.exe','regsvr32.exe')
 
 function Set-BlockLolbinNetwork {
@@ -458,13 +460,20 @@ function Set-BlockLolbinNetwork {
     if (-not $PSCmdlet.ShouldProcess("Windows Firewall", "Block network for dual-use binaries")) { return }
     Write-Output "[*] Creating firewall rules to block network access for dual-use (living-off-the-land) binaries..."
     Write-Output "[!] WARNING: this cuts inbound/outbound network for tools like certutil, mshta, wscript, regsvr32. It can break legitimate admin scripting or tooling that relies on them."
+    # Remove any existing rules first so re-running does not duplicate them.
+    Remove-NetFirewallRule -Group 'PTW LOLBin Block' -ErrorAction SilentlyContinue
     foreach ($baseDir in @("$env:SystemRoot\System32", "$env:SystemRoot\SysWOW64")) {
         foreach ($exe in $script:PtwLolbins) {
             $progPath = Join-Path $baseDir $exe
             if (-not (Test-Path -LiteralPath $progPath)) { continue }
             foreach ($dir in @('Inbound','Outbound')) {
-                New-NetFirewallRule -DisplayName "PTW-BlockLOLBin-$exe-$dir" -Group 'PTW LOLBin Block' `
-                    -Program $progPath -Direction $dir -Action Block -Profile Any -ErrorAction SilentlyContinue | Out-Null
+                try {
+                    New-NetFirewallRule -DisplayName "PTW-BlockLOLBin-$exe-$dir" -Group 'PTW LOLBin Block' `
+                        -Program $progPath -Direction $dir -Action Block -Profile Any -ErrorAction Stop | Out-Null
+                } catch {
+                    $script:PTWErrorCount++
+                    Write-Output "[-] Failed to create LOLBin rule for $exe ($dir): $($_.Exception.Message)"
+                }
             }
         }
     }
@@ -539,6 +548,49 @@ function Set-WinRmHarden {
     Write-Output "[+] SUCCESS: WinRM / RPC remote access hardened (inbound remote management restricted)"
 }
 
+function Set-SmbGuestDisable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Disable insecure SMB guest logons")) { return }
+    Write-Output "[*] Disabling insecure SMB guest logons (AllowInsecureGuestAuth=0)..."
+    Write-Output "[!] WARNING: unauthenticated guest access to SMB shares will stop working. Some consumer NAS units and media boxes rely on guest SMB; you may lose access until you use Restore Default."
+    # Policy form is authoritative over the service parameter.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation' -Name 'AllowInsecureGuestAuth' -Value 0
+    Write-Output "[+] SUCCESS: insecure SMB guest logons disabled"
+}
+
+function Set-NtlmSessionSecurity {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Require NTLM SSP 128-bit + NTLMv2 session security")) { return }
+    Write-Output "[*] Requiring 128-bit encryption and NTLMv2 session security for the NTLM SSP (client + server)..."
+    # 537395200 = 0x20080000 = Require NTLMv2 session security (0x80000) + Require 128-bit encryption (0x20000000).
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0' -Name 'NTLMMinClientSec' -Value 537395200
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0' -Name 'NTLMMinServerSec' -Value 537395200
+    Write-Output "[+] SUCCESS: NTLM minimum session security set to 128-bit + NTLMv2"
+}
+
+function Set-RestrictRemoteSam {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Restrict remote SAM enumeration to administrators")) { return }
+    Write-Output "[*] Restricting remote SAM (SAMR) enumeration to administrators only..."
+    # Restrict SAMR account enumeration to administrators.
+    Set-RegSz -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RestrictRemoteSAM' -Value 'O:BAG:BAD:(A;;RC;;;BA)'
+    Write-Output "[+] SUCCESS: remote SAM enumeration restricted to administrators"
+}
+
+function Set-SpoolerRpcDisable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Disable the Print Spooler inbound remote RPC endpoint")) { return }
+    Write-Output "[*] Disabling the Print Spooler's inbound remote RPC endpoint (PrintNightmare-class inbound surface)..."
+    Write-Output "[!] WARNING: this PC will no longer accept remote print connections (it can still print locally and to network printers). Shared printers HOSTED on this PC become unreachable; Restore Default restores the endpoint."
+    # RegisterSpoolerRemoteRpcEndPoint: 1 = enabled (default), 2 = disabled.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers' -Name 'RegisterSpoolerRemoteRpcEndPoint' -Value 2
+    Write-Output "[+] SUCCESS: Print Spooler remote RPC endpoint disabled"
+}
+
 switch ($Action.ToLowerInvariant()) {
     "firewall-hardening" {
         Write-Output "[*] Applying Firewall Baseline..."
@@ -566,7 +618,13 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters',
             'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa',
             'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient',
-            'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
+            'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces',
+            'HKLM:\SYSTEM\CurrentControlSet\Services\mrxsmb10',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LanmanServer',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services',
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance'
         )
         Set-ImproveNetworkSecurity
         Exit-PTW
@@ -673,6 +731,14 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "security-spooler-rpc-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers'
+        )
+        Set-SpoolerRpcDisable
+        Exit-PTW
+    }
+
     "security-rdp-nla" {
         Backup-RegistryPath -Action $Action -Paths @(
             'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
@@ -691,16 +757,51 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "security-smb-guest-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation'
+        )
+        Set-SmbGuestDisable
+        Exit-PTW
+    }
+
+    "security-ntlm-session-security" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0'
+        )
+        Set-NtlmSessionSecurity
+        Exit-PTW
+    }
+
+    "security-restrict-remote-sam" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+        )
+        Set-RestrictRemoteSam
+        Exit-PTW
+    }
+
     "network-all-public" {
         Write-Output "[*] Setting all network profiles to Public..."
         try {
-            Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+            $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
+            if ($profiles.Count -eq 0) {
+                Write-Output "[-] ERROR: No network profiles were found."
+                exit 1
+            }
+            $failed = 0
+            $profiles | ForEach-Object {
                 try {
                     Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Public -ErrorAction Stop
                     Write-Output "  [+] $($_.Name) -> Public"
                 } catch {
+                    $failed++
                     Write-Warning "  [WARN] Could not set $($_.Name) to Public: $($_.Exception.Message)"
                 }
+            }
+            if ($failed -gt 0) {
+                Write-Output "[-] ERROR: $failed of $($profiles.Count) network profile(s) could not be changed."
+                exit 1
             }
             Write-Output "[+] SUCCESS: All network profiles set to Public (reduces trust to LAN devices)"
         } catch {
@@ -713,13 +814,24 @@ switch ($Action.ToLowerInvariant()) {
     "network-all-private" {
         Write-Output "[*] Setting all network profiles to Private..."
         try {
-            Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+            $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
+            if ($profiles.Count -eq 0) {
+                Write-Output "[-] ERROR: No network profiles were found."
+                exit 1
+            }
+            $failed = 0
+            $profiles | ForEach-Object {
                 try {
                     Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
                     Write-Output "  [+] $($_.Name) -> Private"
                 } catch {
+                    $failed++
                     Write-Warning "  [WARN] Could not set $($_.Name) to Private: $($_.Exception.Message)"
                 }
+            }
+            if ($failed -gt 0) {
+                Write-Output "[-] ERROR: $failed of $($profiles.Count) network profile(s) could not be changed."
+                exit 1
             }
             Write-Output "[+] SUCCESS: All network profiles restored to Private"
         } catch {
@@ -736,24 +848,24 @@ switch ($Action.ToLowerInvariant()) {
             @{ Name = 'PTW Country IP Block - State Sponsors of Terrorism'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/main/Curated-Lists/StateSponsorsOfTerrorism.txt' },
             @{ Name = 'PTW Country IP Block - OFAC Sanctioned'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/main/Curated-Lists/OFACSanctioned.txt' }
         )
-        # Clean slate so re-applying does not stack duplicate rules.
-        Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
-        # The default Windows Firewall store throws "The array bounds are invalid" on very large
-        # -RemoteAddress arrays (the OFAC list is ~20k+ CIDRs), so split each list into batches
-        # and create numbered rules per batch within the shared group (group revert removes them all).
-        $chunkSize = 1000
-        $created = 0
+        $resolvedBundles = @()
         foreach ($b in $bundles) {
             try {
                 $cidrs = @(Get-CidrListFromWeb -URL $b.Url)
+                $resolvedBundles += [pscustomobject]@{ Name = $b.Name; Cidrs = $cidrs }
             } catch {
-                Write-Output "[-] Could not fetch '$($b.Name)': $($_.Exception.Message)"
-                continue
+                Write-Output "[-] ERROR: Could not fetch '$($b.Name)': $($_.Exception.Message)"
+                Write-Output "[i] Existing country-block rules were left unchanged."
+                exit 1
             }
-            if ($cidrs.Count -eq 0) {
-                Write-Output "[-] '$($b.Name)' returned no ranges; skipping"
-                continue
-            }
+        }
+
+        Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
+        $chunkSize = 1000
+        $created = 0
+        $failed = 0
+        foreach ($b in $resolvedBundles) {
+            $cidrs = $b.Cidrs
             $batch = 0
             for ($i = 0; $i -lt $cidrs.Count; $i += $chunkSize) {
                 $batch++
@@ -765,14 +877,16 @@ switch ($Action.ToLowerInvariant()) {
                             -Direction $dir -Action Block -RemoteAddress $slice -Profile Any -ErrorAction Stop | Out-Null
                         $created++
                     } catch {
+                        $failed++
                         Write-Output "[-] '$($b.Name)' batch $batch ($dir) failed: $($_.Exception.Message)"
                     }
                 }
             }
             Write-Output "  [+] $($b.Name): $($cidrs.Count) ranges across $batch batch(es)"
         }
-        if ($created -eq 0) {
-            Write-Output "[-] No country IP block rules were created."
+        if ($created -eq 0 -or $failed -gt 0) {
+            Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
+            Write-Output "[-] ERROR: Country IP blocking was incomplete ($created rules created, $failed failures). Partial rules were rolled back."
             exit 1
         }
         Write-Output "[+] SUCCESS: country IP blocking applied ($created firewall rule(s))"
@@ -781,13 +895,21 @@ switch ($Action.ToLowerInvariant()) {
 
     "country-ip-unblock" {
         Write-Output "[*] Removing country IP block firewall rules..."
-        Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue
+        try {
+            Remove-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction Stop
+        } catch {
+            $remaining = @(Get-NetFirewallRule -Group 'PTW Country IP Block' -ErrorAction SilentlyContinue)
+            if ($remaining.Count -gt 0) {
+                Write-Output "[-] ERROR: Could not remove all country IP block rules: $($_.Exception.Message)"
+                exit 1
+            }
+        }
         Write-Output "[+] SUCCESS: country IP block rules removed"
         Exit-PTW
     }
 
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 
