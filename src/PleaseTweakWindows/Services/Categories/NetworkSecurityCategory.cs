@@ -9,7 +9,8 @@ public sealed partial class TweakRegistry
         $"Network Security{S}network-security.ps1",
         $"Network Security{S}revert-network-security.ps1",
         [
-            new SubTweak("Harden Firewall Policies", "firewall-hardening",
+            new SubTweak("Harden Firewall Policies", SubTweakType.Toggle,
+                "firewall-hardening", "firewall-hardening-revert",
                 "Apply baseline Windows Firewall policies (domain/private/public)")
             {
                 Risk = SubTweakRisk.High,
@@ -27,7 +28,8 @@ public sealed partial class TweakRegistry
                     "'{0}' will harden SMB/NetBIOS and disable legacy network components.\n\n" +
                     "WARNING: This may break file sharing, remote access, or older devices on your network.",
             },
-            new SubTweak("Harden TLS/Cryptography", "tls-hardening",
+            new SubTweak("Harden TLS/Cryptography", SubTweakType.Toggle,
+                "tls-hardening", "tls-hardening-revert",
                 "Disable TLS 1.0/1.1 and weak ciphers, enforce modern cryptography (may break legacy apps; disabling SHA-1 can break TLS to old appliances)")
             {
                 Risk = SubTweakRisk.High,
@@ -60,7 +62,7 @@ public sealed partial class TweakRegistry
                 Risk = SubTweakRisk.Confirm,
                 Warning =
                     "'{0}' will write firewall logs to %SystemRoot%\\System32\\LogFiles\\Firewall\\pfirewall.log (up to 32 MB per profile).\n\n" +
-                    "Safe change — useful for forensics. Revert restores defaults.",
+                    "Safe change — useful for forensics. Restore Default returns to Windows defaults.",
             },
             new SubTweak("Configure TLS cipher suite + ECC curve order", SubTweakType.Toggle,
                 "security-tls-cipher-order", "security-tls-cipher-order-revert",
@@ -112,6 +114,30 @@ public sealed partial class TweakRegistry
             new SubTweak("Harden Print Spooler (PrintNightmare)", SubTweakType.Toggle,
                 "security-print-nightmare", "security-print-nightmare-revert",
                 "Restrict Point-and-Print driver installation to admins (mitigates CVE-2021-34527) without disabling printing"),
+            new SubTweak("Disable Print Spooler remote RPC endpoint", SubTweakType.Toggle,
+                "security-spooler-rpc-disable", "security-spooler-rpc-disable-revert",
+                "Stop this PC accepting inbound remote print connections (closes the PrintNightmare-class remote attack surface). Local + network printing still works. WARNING: shared printers hosted on THIS PC become unreachable; Restore Default restores the endpoint")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' disables the Print Spooler's inbound remote RPC endpoint.\n\n" +
+                    "This PC can still print locally and to network printers, but it will no longer accept remote print connections, so any printer SHARED from this PC becomes unreachable. Restore Default restores the endpoint.",
+            },
+            new SubTweak("Disable insecure SMB guest logons", SubTweakType.Toggle,
+                "security-smb-guest-disable", "security-smb-guest-disable-revert",
+                "Block unauthenticated guest access to SMB shares (AllowInsecureGuestAuth=0) — a real downgrade/relay vector. WARNING: some consumer NAS/media boxes rely on guest SMB; Restore Default re-allows it")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' blocks insecure (unauthenticated) SMB guest logons.\n\n" +
+                    "WARNING: some consumer NAS units and media boxes rely on guest SMB access; you may lose access to those shares until you use Restore Default.",
+            },
+            new SubTweak("Require NTLM 128-bit + NTLMv2 session security", SubTweakType.Toggle,
+                "security-ntlm-session-security", "security-ntlm-session-security-revert",
+                "Force the NTLM SSP to require 128-bit encryption and NTLMv2 session security for client and server (NTLMMinClient/ServerSec=537395200)"),
+            new SubTweak("Restrict remote SAM enumeration to admins", SubTweakType.Toggle,
+                "security-restrict-remote-sam", "security-restrict-remote-sam-revert",
+                "Allow only administrators to remotely enumerate local accounts via SAMR (RestrictRemoteSAM SDDL) — blocks BloodHound-style reconnaissance"),
             new SubTweak("Require RDP Network Level Authentication", SubTweakType.Toggle,
                 "security-rdp-nla", "security-rdp-nla-revert",
                 "Force NLA + TLS + high encryption for Remote Desktop. WARNING: only relevant if you use RDP; blocks legacy RDP clients that can't do NLA")
@@ -119,7 +145,7 @@ public sealed partial class TweakRegistry
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' requires Network Level Authentication, TLS and high encryption for Remote Desktop.\n\n" +
-                    "Only relevant if you use RDP to reach this PC. WARNING: this blocks legacy RDP clients that cannot do NLA/CredSSP. Revert restores the defaults.",
+                    "Only relevant if you use RDP to reach this PC. WARNING: this blocks legacy RDP clients that cannot do NLA/CredSSP. Restore Default returns to the defaults.",
             },
             new SubTweak("Harden WinRM / RPC remote access", SubTweakType.Toggle,
                 "security-winrm-harden", "security-winrm-harden-revert",
@@ -128,7 +154,7 @@ public sealed partial class TweakRegistry
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' hardens WinRM and remote RPC access.\n\n" +
-                    "SEVERE: this breaks INBOUND remote PowerShell / WinRM management to this PC and restricts remote RPC clients. Do not enable on a machine you administer remotely. Revert removes the policy overrides.",
+                    "SEVERE: this breaks INBOUND remote PowerShell / WinRM management to this PC and restricts remote RPC clients. Do not enable on a machine you administer remotely. Restore Default removes the policy overrides.",
             },
             new SubTweak("Set all networks to Public", SubTweakType.Toggle,
                 "network-all-public", "network-all-private",
@@ -142,12 +168,12 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Block sanctioned-country IP ranges", SubTweakType.Toggle,
                 "country-ip-block", "country-ip-unblock",
-                "Create firewall rules that block inbound+outbound traffic to State-Sponsors-of-Terrorism + OFAC-sanctioned country IP ranges (lists fetched live from a curated IANA IP-block source). WARNING: a VPN/VPS in another country bypasses it; revert removes the rules")
+                "Create firewall rules that block inbound+outbound traffic to State-Sponsors-of-Terrorism + OFAC-sanctioned country IP ranges (CIDR lists fetched live from a third-party, community-maintained GitHub repo). WARNING: a VPN/VPS in another country bypasses it; Restore Default removes the rules")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' blocks inbound and outbound traffic to entire sanctioned-country IP ranges.\n\n" +
-                    "Lists (State Sponsors of Terrorism + OFAC) are fetched live from a curated IANA IP-block source and validated as CIDR. A VPN/VPS endpoint in another country bypasses this. Revert removes the rules.",
+                    "The lists (State Sponsors of Terrorism + OFAC) are fetched live over HTTPS from a third-party, community-maintained GitHub repository and validated as CIDR before use. Only block rules are created, so a poisoned list can over-block connectivity but cannot open anything. A VPN/VPS endpoint in another country bypasses this. Restore Default removes the rules.",
             },
         ]);
 }

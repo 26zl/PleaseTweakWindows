@@ -1,8 +1,4 @@
-# Performance & Power
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File performance.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Performance & Power
 #Requires -RunAsAdministrator
 
 param(
@@ -11,16 +7,17 @@ param(
         "power-plan-on",
         "power-plan-default",
         "registry-apply",
+        "registry-default",
         "scaling-fix",
         "scaling-default",
         "hdcp-disable",
         "hdcp-enable",
+        "usb-suspend-disable",
+        "usb-suspend-default",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 #region Logging
 function Write-PTWLog {
@@ -46,24 +43,69 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 function Import-LocalRegistryFile {
     param([string]$FileName)
     $regPath = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath "regs") -ChildPath $FileName
     if (Test-Path $regPath) {
-        # reg.exe import (via Import-RegistryFile) returns a real failure code; regedit /s does not.
-        if (-not (Import-RegistryFile -RegFile $regPath)) {
-            Write-Output "[-] WARNING: Registry import failed for $FileName"
-        }
+        # Import the verified registry file with failure-aware reg.exe handling.
+        return (Import-RegistryFile -RegFile $regPath)
     }
+    Write-Output "[-] WARNING: Registry file not found: $regPath"
+    return $false
 }
 
-function Test-PowerSchemeExists {
+function Get-RegOptimizeBackupPath {
+    # Derive the backup set from Registry-Optimize.reg section headers.
+    param([string]$FileName = "Registry-Optimize.reg")
+    $regPath = Join-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath "regs") -ChildPath $FileName
+    if (-not (Test-Path $regPath)) { return @() }
+    $hiveMap = @{
+        'HKEY_LOCAL_MACHINE'  = 'HKLM:'
+        'HKEY_CURRENT_USER'   = 'HKCU:'
+        'HKEY_USERS'          = 'HKU:'
+        'HKEY_CLASSES_ROOT'   = 'HKCR:'
+        'HKEY_CURRENT_CONFIG' = 'HKCC:'
+    }
+    $keys = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in Get-Content -LiteralPath $regPath) {
+        # Include section headers for both modified and deleted keys.
+        $m = [regex]::Match($line, '^\s*\[-?(?<k>HKEY_[^\]]+)\]\s*$')
+        if (-not $m.Success) { continue }
+        $k = $m.Groups['k'].Value
+        $hive = ($k -split '\\', 2)[0]
+        if (-not $hiveMap.ContainsKey($hive)) { continue }
+        $rest = $k.Substring($hive.Length).TrimStart('\')
+        $keys.Add(($hiveMap[$hive] + '\' + $rest).TrimEnd('\'))
+    }
+    # Remove keys already covered by a recursively exported ancestor.
+    $kept = [System.Collections.Generic.List[string]]::new()
+    foreach ($k in (($keys | Sort-Object -Unique) | Sort-Object { $_.Length })) {
+        $covered = $false
+        foreach ($a in $kept) {
+            if ($k.Equals($a, [StringComparison]::OrdinalIgnoreCase) -or
+                $k.StartsWith($a + '\', [StringComparison]::OrdinalIgnoreCase)) { $covered = $true; break }
+        }
+        if (-not $covered) { $kept.Add($k) }
+    }
+    return $kept.ToArray()
+}
+
+function Test-PowerSchemeExistence {
     param([Parameter(Mandatory=$true)][string]$SchemeId)
     $list = powercfg /list 2>$null
     return ($list -match [regex]::Escape($SchemeId))
+}
+
+function Invoke-PowerCfg {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    & powercfg.exe @Arguments 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "powercfg $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+    }
 }
 
 function Get-ActivePowerSchemeId {
@@ -79,12 +121,22 @@ switch ($Action.ToLowerInvariant()) {
 
     "power-plan-on" {
         Write-Output "[*] Applying Ultimate Power Plan..."
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling',
+            # power-plan-on writes ValueMax=0 here machine-wide; snapshot it so power-plan-default can be verified.
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583'
+        )
         $schemeId = "99999999-9999-9999-9999-999999999999"
-        if (-not (Test-PowerSchemeExists -SchemeId $schemeId)) {
-            cmd /c "powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 $schemeId >nul 2>&1"
-        }
-        if ((Get-ActivePowerSchemeId) -ne $schemeId) {
-            cmd /c "powercfg /SETACTIVE $schemeId >nul 2>&1"
+        try {
+            if (-not (Test-PowerSchemeExistence -SchemeId $schemeId)) {
+                Invoke-PowerCfg -Arguments @('/duplicatescheme', 'e9a42b02-d5df-448d-aa00-03f14749eb61', $schemeId)
+            }
+            if ((Get-ActivePowerSchemeId) -ne $schemeId) {
+                Invoke-PowerCfg -Arguments @('/setactive', $schemeId)
+            }
+        } catch {
+            Write-Output "[-] ERROR: Could not activate the Ultimate Performance plan: $($_.Exception.Message)"
+            exit 1
         }
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" -Name "ValueMax" -Value 0
         Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff" -Value 1
@@ -94,9 +146,23 @@ switch ($Action.ToLowerInvariant()) {
 
     "power-plan-default" {
         Write-Output "[*] Restoring default power plan..."
-        cmd /c "powercfg /restoredefaultschemes >nul 2>&1"
-        cmd /c "powercfg /delete 99999999-9999-9999-9999-999999999999 >nul 2>&1"
+        $balancedScheme = '381b4222-f694-41f0-9685-ff5bb260df2e'
+        $ptwScheme = '99999999-9999-9999-9999-999999999999'
+        try {
+            if (-not (Test-PowerSchemeExistence -SchemeId $balancedScheme)) {
+                throw "The Windows Balanced power plan is missing. Refusing to delete or overwrite custom plans."
+            }
+            Invoke-PowerCfg -Arguments @('/setactive', $balancedScheme)
+            if (Test-PowerSchemeExistence -SchemeId $ptwScheme) {
+                Invoke-PowerCfg -Arguments @('/delete', $ptwScheme)
+            }
+        } catch {
+            Write-Output "[-] ERROR: Could not restore the Balanced power plan: $($_.Exception.Message)"
+            exit 1
+        }
         Remove-RegValue -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" -Name "PowerThrottlingOff"
+        # Windows default for this Processor performance core parking max is PRESENT=100 (0x64), not absent.
+        Set-RegDword -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\0cc5b647-c1df-4637-891a-dec35c318583" -Name "ValueMax" -Value 0x64
         Write-Output "[+] SUCCESS: Default power plan restored (restart required)"
         Exit-PTW
     }
@@ -109,17 +175,14 @@ switch ($Action.ToLowerInvariant()) {
         }
 
         Write-Output "[*] Applying Registry Tweaks..."
-        # Back up the top-level hives that Registry-Optimize.reg touches so users can
-        # restore individual values without a full System Restore rollback.
-        Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies',
-            'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters',
-            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced',
-            'HKCU:\Control Panel\Desktop'
-        )
+        # Snapshot the registry-file section keys as a convenience backup.
+        Backup-RegistryPath -Action $Action -Paths (Get-RegOptimizeBackupPath)
         try {
-            powercfg -setacvalueindex SCHEME_CURRENT SUB_PCIE EXPRESS 0
-            Import-LocalRegistryFile -FileName "Registry-Optimize.reg"
+            Invoke-PowerCfg -Arguments @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PCIE', 'EXPRESS', '0')
+            # Throw on import failure so rollback runs and no applied marker is written.
+            if (-not (Import-LocalRegistryFile -FileName "Registry-Optimize.reg")) {
+                throw "Registry-Optimize.reg failed its integrity check or reg.exe import"
+            }
 
             if (!(Test-Path $markerPath)) { New-Item -Path $markerPath -Force | Out-Null }
             Set-ItemProperty -Path $markerPath -Name "RegistryOptimized" -Value 1
@@ -127,16 +190,38 @@ switch ($Action.ToLowerInvariant()) {
         } catch {
             Write-Output "[-] ERROR during registry tweaks: $($_.Exception.Message)"
             Write-Output "[!] Attempting rollback with default registry settings..."
-            Import-LocalRegistryFile -FileName "Registry-Defaults.reg"
+            $rolledBack = Import-LocalRegistryFile -FileName "Registry-Defaults.reg"
             Remove-ItemProperty -Path $markerPath -Name "RegistryOptimized" -ErrorAction SilentlyContinue
-            Write-Output "[+] Rollback applied. Restart to restore defaults."
+            if ($rolledBack) {
+                Write-Output "[+] Rollback applied. Restart to restore defaults."
+            } else {
+                Write-Output "[-] Rollback FAILED to import Registry-Defaults.reg — the machine may be left partially tweaked. Use System Restore to recover."
+            }
             exit 1
         }
         Exit-PTW
     }
 
+    "registry-default" {
+        Write-Output "[*] Restoring default registry settings..."
+        $markerPath = "HKCU:\Software\PleaseTweakWindows"
+        # Same verified-import helper the registry-apply rollback uses for this file.
+        if (Import-LocalRegistryFile -FileName "Registry-Defaults.reg") {
+            Write-Output "[+] SUCCESS: Default registry settings restored (restart required)"
+        } else {
+            Write-Output "[-] ERROR: Registry-Defaults.reg failed its integrity check or reg.exe import"
+        }
+        # Clear the marker registry-apply sets so the tweak can be re-applied later.
+        Remove-ItemProperty -Path $markerPath -Name "RegistryOptimized" -ErrorAction SilentlyContinue
+        Exit-PTW
+    }
+
     "scaling-fix" {
         Write-Output "[*] Applying 100% scaling fix..."
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKCU:\Control Panel\Mouse',
+            'HKCU:\Control Panel\Desktop'
+        )
         Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseSensitivity" -Value "10"
         Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseSpeed" -Value "0"
         Set-RegSz -Path "Registry::HKCU\Control Panel\Mouse" -Name "MouseThreshold1" -Value "0"
@@ -163,6 +248,9 @@ switch ($Action.ToLowerInvariant()) {
 
     "hdcp-disable" {
         Write-Output "[*] Disabling HDCP..."
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+        )
         $subkeys = (Get-ChildItem -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}" -Force -ErrorAction SilentlyContinue).Name
         foreach ($key in $subkeys) {
             if ($key -notlike '*Configuration') {
@@ -185,8 +273,41 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "usb-suspend-disable" {
+        Write-Output "[*] Disabling USB selective suspend (stops Windows powering down USB controllers - avoids audio/HID stutter and disconnects)..."
+        # SUB_USB subgroup / USB selective suspend setting; 0 = disabled, on both AC and DC.
+        $usbSub = '2a737441-1930-4402-8d77-b2bebba308a3'
+        $usbSetting = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
+        try {
+            Invoke-PowerCfg -Arguments @('/setacvalueindex', 'SCHEME_CURRENT', $usbSub, $usbSetting, '0')
+            Invoke-PowerCfg -Arguments @('/setdcvalueindex', 'SCHEME_CURRENT', $usbSub, $usbSetting, '0')
+            Invoke-PowerCfg -Arguments @('/setactive', 'SCHEME_CURRENT')
+        } catch {
+            Write-Output "[-] ERROR: Could not disable USB selective suspend: $($_.Exception.Message)"
+            exit 1
+        }
+        Write-Output "[+] SUCCESS: USB selective suspend disabled"
+        Exit-PTW
+    }
+
+    "usb-suspend-default" {
+        Write-Output "[*] Restoring USB selective suspend to the Windows default (enabled)..."
+        $usbSub = '2a737441-1930-4402-8d77-b2bebba308a3'
+        $usbSetting = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
+        try {
+            Invoke-PowerCfg -Arguments @('/setacvalueindex', 'SCHEME_CURRENT', $usbSub, $usbSetting, '1')
+            Invoke-PowerCfg -Arguments @('/setdcvalueindex', 'SCHEME_CURRENT', $usbSub, $usbSetting, '1')
+            Invoke-PowerCfg -Arguments @('/setactive', 'SCHEME_CURRENT')
+        } catch {
+            Write-Output "[-] ERROR: Could not restore USB selective suspend: $($_.Exception.Message)"
+            exit 1
+        }
+        Write-Output "[+] SUCCESS: USB selective suspend restored to default"
+        Exit-PTW
+    }
+
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

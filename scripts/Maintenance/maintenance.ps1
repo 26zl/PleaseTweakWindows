@@ -1,23 +1,17 @@
-# Maintenance & Tools
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File maintenance.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Maintenance & Tools
 #Requires -RunAsAdministrator
 
 param(
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "cleanup-run",
-        "driver-clean",
+        "ddu-install",
         "autoruns-open",
         "cpp-install",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 #region Logging
 function Write-PTWLog {
@@ -43,7 +37,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 #region Action Dispatcher
@@ -56,55 +51,97 @@ switch ($Action.ToLowerInvariant()) {
             @{url="https://aka.ms/vs/17/release/vc_redist.x86.exe"; file="vcredist_x86.exe"; args="/passive /norestart"}
         )
         foreach ($item in $urls) {
-            $destPath = "$env:TEMP\$($item.file)"
+            $destPath = Get-PTWRuntimePath $item.file
             Get-FileFromWeb -URL $item.url -File $destPath
-            # Dynamic-hash download — verify Authenticode before executing as admin
             Test-SignedFile -Path $destPath -PublisherPatterns @('Microsoft Corporation')
-            Start-Process -Wait $destPath -ArgumentList $item.args
+            $install = Start-Process -FilePath $destPath -ArgumentList $item.args `
+                -Wait -PassThru -ErrorAction Stop
+            if ($install.ExitCode -notin @(0, 1638, 3010)) {
+                Write-Output "[-] ERROR: $($item.file) exited with code $($install.ExitCode)."
+                exit 1
+            }
+            Remove-Item -LiteralPath $destPath -Force -ErrorAction SilentlyContinue
         }
         Write-Output "[+] SUCCESS: C++ Redistributables installed"
         Exit-PTW
     }
 
-    "driver-clean" {
+    "ddu-install" {
         Write-Output "[*] Installing DDU..."
         $dduUrl = $PTWDownloadUrls.DisplayDriverUninstaller
-        $dduExe = "$env:TEMP\DDU-setup.exe"
-        $dduDir = "$env:TEMP\DDU"
+        $dduExe = Get-PTWRuntimePath "DDU-setup.exe"
+        $toolsDir = Join-Path $env:ProgramFiles "PleaseTweakWindows Tools"
+        $dduDir = Join-Path $toolsDir "DDU"
         Get-FileFromWeb -URL $dduUrl -File $dduExe
         # DDU distributes as a self-extracting 7z archive; extract with 7-Zip
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
-            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File "$env:TEMP\7z-setup.exe"
-            Start-Process -Wait "$env:TEMP\7z-setup.exe" -ArgumentList "/S"
+            $sevenZipInstaller = Get-PTWRuntimePath "7z-setup.exe"
+            Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File $sevenZipInstaller
+            $install = Start-Process -FilePath $sevenZipInstaller -ArgumentList "/S" `
+                -Wait -PassThru -ErrorAction Stop
+            if ($install.ExitCode -ne 0) {
+                Write-Output "[-] ERROR: 7-Zip installation failed with exit code $($install.ExitCode)."
+                exit 1
+            }
         }
+        if (-not (Test-Path $sevenZip)) {
+            Write-Output "[-] ERROR: 7-Zip installation did not produce $sevenZip."
+            exit 1
+        }
+        New-Item -ItemType Directory -Path $toolsDir -Force -ErrorAction Stop | Out-Null
         Remove-Item -Recurse -Force $dduDir -ErrorAction SilentlyContinue
-        cmd /c "`"$sevenZip`" x `"$dduExe`" -o`"$dduDir`" -y" | Out-Null
+        & $sevenZip x $dduExe "-o$dduDir" -y | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "[-] ERROR: DDU extraction failed (7-Zip exit $LASTEXITCODE)."
+            exit 1
+        }
+        $dduProgram = Join-Path $dduDir "Display Driver Uninstaller.exe"
+        if (-not (Test-Path $dduProgram)) {
+            Write-Output "[-] ERROR: DDU executable not found after extraction."
+            exit 1
+        }
         $WshShell = New-Object -ComObject WScript.Shell
         $s = $WshShell.CreateShortcut("$Home\Desktop\Display Driver Uninstaller.lnk")
-        $s.TargetPath = "$dduDir\Display Driver Uninstaller.exe"
+        $s.TargetPath = $dduProgram
         $s.Save()
-        Write-Output "[+] SUCCESS: DDU installed to Desktop"
+        Remove-Item -LiteralPath $dduExe -Force -ErrorAction SilentlyContinue
+        Write-Output "[+] SUCCESS: DDU installed to $dduDir (Desktop shortcut created)"
         Exit-PTW
     }
 
     "cleanup-run" {
         Write-Output "[*] Running System Cleanup..."
-        $paths = @("$env:TEMP","$env:SystemDrive\Windows\Temp")
-        foreach ($p in $paths) { Remove-Item -Path "$p\*" -Recurse -Force -ErrorAction SilentlyContinue }
-        try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Could not clear recycle bin: $($_.Exception.Message)" }
-        Write-Output "[+] SUCCESS: System cleanup complete"
+        $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+        $paths = @("$env:SystemDrive\Windows\Temp")
+        if (-not [string]::IsNullOrWhiteSpace($localAppData)) {
+            $paths = @((Join-Path $localAppData 'Temp')) + $paths
+        }
+        $cleanupErrors = @()
+        foreach ($p in $paths) {
+            Remove-Item -Path "$p\*" -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable +cleanupErrors
+        }
+        try {
+            Clear-RecycleBin -Force -ErrorAction Stop
+        } catch {
+            $cleanupErrors += $_
+        }
+        if ($cleanupErrors.Count -gt 0) {
+            Write-Output "[!] Cleanup completed with $($cleanupErrors.Count) item(s) skipped (typically files currently in use)."
+        } else {
+            Write-Output "[+] SUCCESS: System cleanup complete"
+        }
         Exit-PTW
     }
 
     "autoruns-open" {
         Write-Output "[*] Launching Sysinternals Autoruns..."
-        $autorunsZip = Join-Path $env:TEMP "Autoruns.zip"
-        $autorunsDir = Join-Path $env:TEMP "Autoruns"
+        $autorunsZip = Get-PTWRuntimePath "Autoruns.zip"
+        $autorunsDir = Get-PTWRuntimePath "Autoruns"
         Remove-Item -Path $autorunsZip -Force -ErrorAction SilentlyContinue
         Remove-Item -Path $autorunsDir -Recurse -Force -ErrorAction SilentlyContinue
         Get-FileFromWeb -URL "https://download.sysinternals.com/files/Autoruns.zip" -File $autorunsZip
-        Expand-Archive $autorunsZip -DestinationPath $autorunsDir -Force -ErrorAction SilentlyContinue
+        Expand-Archive $autorunsZip -DestinationPath $autorunsDir -Force -ErrorAction Stop
         $autorunsExe = if ([Environment]::Is64BitOperatingSystem) {
             Join-Path $autorunsDir "Autoruns64.exe"
         } else {
@@ -117,15 +154,22 @@ switch ($Action.ToLowerInvariant()) {
             Write-Output "[-] ERROR: Autoruns executable not found after download"
             exit 1
         }
-        # Dynamic-hash download — verify Authenticode before execution
-        Test-SignedFile -Path $autorunsExe -PublisherPatterns @('Microsoft Corporation')
-        Start-Process -FilePath $autorunsExe
+        $autorunsBinaries = Get-ChildItem -LiteralPath $autorunsDir -Recurse -File |
+            Where-Object { $_.Extension -in @('.exe', '.dll') }
+        if (-not $autorunsBinaries) {
+            Write-Output "[-] ERROR: Autoruns archive contained no executable files."
+            exit 1
+        }
+        foreach ($binary in $autorunsBinaries) {
+            Test-SignedFile -Path $binary.FullName -PublisherPatterns @('Microsoft Corporation')
+        }
+        Start-Process -FilePath $autorunsExe -ErrorAction Stop
         Write-Output "[+] SUCCESS: Autoruns launched"
         Exit-PTW
     }
 
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

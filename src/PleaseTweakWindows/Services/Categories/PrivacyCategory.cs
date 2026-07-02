@@ -10,7 +10,13 @@ public sealed partial class TweakRegistry
         $"Privacy Security{S}revert-privacy.ps1",
         [
             new SubTweak("Apply OOSU10 Profile", "ooshutup-apply",
-                "Apply the bundled O&O ShutUp10++ privacy/performance profile"),
+                "Apply the bundled O&O ShutUp10++ privacy/performance profile")
+            {
+                Risk = SubTweakRisk.High,
+                Warning =
+                    "'{0}' applies a broad set of privacy and security policies through O&O ShutUp10++.\n\n" +
+                    "This one-shot profile has no automatic Restore Default action. Create a restore point and review the bundled profile first.",
+            },
             new SubTweak("Disable online content in File Explorer", SubTweakType.Toggle,
                 "ui-online-content-disable", "ui-online-content-revert",
                 "Disable online tips, wizards, and web services in File Explorer")
@@ -73,35 +79,70 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Disable Copilot", SubTweakType.Toggle,
                 "copilot-disable", "copilot-disable-revert",
-                "Disable Windows Copilot AI assistant. Note: applying uninstalls the Copilot app; revert only re-allows it via policy and does not reinstall it")
+                "Disable Windows Copilot through per-user and machine policy without uninstalling the app; Restore Default removes those policy overrides")
             {
                 Risk = SubTweakRisk.Confirm,
                 Warning =
                     "'{0}' will disable Windows Copilot.\n\n" +
-                    "This removes the Copilot app and sets group policy to prevent it from running.",
+                    "This sets per-user and machine policy to prevent Copilot from running. The installed app package is left intact.",
             },
             new SubTweak("Disable Telemetry", SubTweakType.Toggle,
                 "telemetry-off", "telemetry-off-revert",
-                "Minimize Windows diagnostic-data collection via policy (SmartScreen/Defender reporting untouched); revert removes the policy override"),
+                "Minimize Windows diagnostic-data collection via policy (SmartScreen/Defender reporting untouched); Restore Default removes the policy override"),
             new SubTweak("Enforce telemetry/consumer GPO policies", SubTweakType.Toggle,
                 "telemetry-policy-enforce", "telemetry-policy-enforce-revert",
                 "Set the GPO-enforcing DWORDs that disable consumer content, tailored experiences, AIT/CEIP, implicit feedback, device-name telemetry and the advertising ID"),
             new SubTweak("Block Microsoft account sign-in", SubTweakType.Toggle,
                 "block-ms-account", "block-ms-account-revert",
-                "Block adding or using a Microsoft account (NoConnectedUser=3). WARNING: breaks Store/OneDrive/Copilot/Office sign-in; revert removes the block")
+                "Block adding or using a Microsoft account (NoConnectedUser=3). WARNING: breaks Store/OneDrive/Copilot/Office sign-in; Restore Default removes the block")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' blocks adding or using a Microsoft account on this PC.\n\n" +
-                    "WARNING: this breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in (NoConnectedUser=3). Revert removes the block.",
+                    "WARNING: this breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in (NoConnectedUser=3). Restore Default removes the block.",
             },
             new SubTweak("Disable OneDrive sync (policy)", SubTweakType.Toggle,
                 "onedrive-policy-disable", "onedrive-policy-disable-revert",
                 "Disable OneDrive file sync via policy (DisableFileSyncNGSC=1) so removal stays durable across reinstall"),
+            new SubTweak("Disable Windows Recall (native)", SubTweakType.Toggle,
+                "privacy-recall-disable", "privacy-recall-disable-revert",
+                "Suppress Windows Recall / AI snapshot saving via native policy (DisableAIDataAnalysis=1, AllowRecallEnablement=0) — does not depend on running the O&O ShutUp10 profile"),
+            new SubTweak("Deny camera + microphone app access", SubTweakType.Toggle,
+                "privacy-camera-mic-deny", "privacy-camera-mic-deny-revert",
+                "Set the system-wide app permission for the webcam and microphone to Deny (the two sensors the privacy batch leaves on). WARNING: blocks Camera/Teams/Zoom etc. until restored or re-allowed per app in Settings")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' denies ALL apps access to the camera and microphone system-wide.\n\n" +
+                    "WARNING: camera/mic apps (Windows Camera, Teams, Zoom, etc.) will be blocked until you use Restore Default or re-allow them per app in Settings > Privacy & security.",
+            },
+            new SubTweak("Disable telemetry scheduled tasks", SubTweakType.Toggle,
+                "privacy-telemetry-tasks-disable", "privacy-telemetry-tasks-disable-revert",
+                "Disable the Appraiser / ProgramDataUpdater / CEIP / feedback / error-reporting scheduled tasks that collect and upload diagnostic data. Restore Default re-enables them")
+            {
+                Risk = SubTweakRisk.Confirm,
+            },
+            new SubTweak("Disable location services (policy)", SubTweakType.Toggle,
+                "privacy-location-disable", "privacy-location-disable-revert",
+                "Turn off the Windows location platform and location scripting via policy (DisableLocation=1). WARNING: breaks Maps, 'Find my device', weather and any app that needs your location")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' disables the Windows location platform system-wide.\n\n" +
+                    "Maps, 'Find my device', weather and any app relying on location will stop working until the default is restored.",
+            },
+            new SubTweak("Disable web/Bing results in Search", SubTweakType.Toggle,
+                "privacy-web-search-disable", "privacy-web-search-disable-revert",
+                "Stop Start menu / Search from sending queries to Bing and showing web suggestions (DisableWebSearch=1). Local file/app search is unaffected"),
+            new SubTweak("Disable Delivery Optimization peer sharing", SubTweakType.Toggle,
+                "privacy-delivery-optimization-disable", "privacy-delivery-optimization-disable-revert",
+                "Set Delivery Optimization to HTTP-only (DODownloadMode=0) so Windows/Store updates aren't peer-to-peer uploaded or fetched from other PCs"),
             new SubTweak("Set Cloudflare DNS", "dns-cloudflare",
                 "Set DNS to Cloudflare (1.1.1.1, 1.0.0.1)"),
             new SubTweak("Set Google DNS", "dns-google",
                 "Set DNS to Google (8.8.8.8, 8.8.4.4)"),
+            new SubTweak("Set Quad9 DNS (malware-blocking)", "dns-quad9",
+                "Set DNS to Quad9 (9.9.9.9, 149.112.112.112) — blocks known-malicious domains at the resolver"),
             new SubTweak("Reset DNS to automatic", "dns-reset",
                 "Reset all adapters' DNS to automatic (DHCP) - undoes Cloudflare/Google DNS"),
             new SubTweak("Enable DNS over HTTPS (DoH)", SubTweakType.Toggle,

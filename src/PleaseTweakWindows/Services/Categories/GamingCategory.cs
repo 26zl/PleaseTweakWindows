@@ -8,10 +8,22 @@ public sealed partial class TweakRegistry
         "Gaming Optimizations",
         $"Gaming optimizations{S}Gaming-Optimizations.ps1",
         [
-            new SubTweak("Nvidia Settings", SubTweakType.Toggle, "nvidia-settings-on", "nvidia-settings-default",
-                "Optimize NVIDIA control panel settings for gaming performance. WARNING: the profile sets a global ~357 FPS cap and disables G-SYNC globally; advanced users may want to adjust these in the NVIDIA Control Panel"),
+            new SubTweak("Nvidia Settings", "nvidia-settings-on",
+                "Import a performance-focused NVIDIA base profile. WARNING: this changes many global driver settings, including a ~357 FPS cap and disabled G-SYNC; use NVIDIA Control Panel to review or reset them")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' imports a global NVIDIA driver profile.\n\n" +
+                    "The app cannot reconstruct your previous NVIDIA profile automatically. Export it first if you need an exact rollback.",
+            },
             new SubTweak("Nvidia Driver", "nvidia-driver-install",
-                "Install/update NVIDIA driver"),
+                "Download and run the latest NVIDIA driver installer")
+            {
+                Risk = SubTweakRisk.High,
+                Warning =
+                    "'{0}' downloads and runs NVIDIA's driver installer.\n\n" +
+                    "A driver update can require a reboot and may temporarily disrupt the display. Close games and save work first.",
+            },
             new SubTweak("AMD Driver", "amd-driver-install",
                 "Install/update AMD Radeon driver")
             {
@@ -34,9 +46,9 @@ public sealed partial class TweakRegistry
             new SubTweak("DirectX Runtime", "directx-install",
                 "Install DirectX June 2010 Runtime"),
             new SubTweak("Disable Multi-Plane Overlay (fix flicker/stutter)", SubTweakType.Toggle, "mpo-on", "mpo-default",
-                "Apply disables Multi-Plane Overlay (MPO) to fix screen flicker/stutter; revert restores the Windows default"),
+                "Apply disables Multi-Plane Overlay (MPO) to fix screen flicker/stutter; Restore Default returns to the Windows default"),
             new SubTweak("Hardware-Accelerated GPU Scheduling (HAGS)", SubTweakType.Toggle, "hags-on", "hags-off",
-                "Enable HAGS for lower DPC latency (reboot required; safe to revert)"),
+                "Enable HAGS for lower DPC latency; Restore Default removes the override (reboot required)"),
             new SubTweak("Windows Game Mode", SubTweakType.Toggle, "game-mode-on", "game-mode-off",
                 "Enable Windows Game Mode to prioritise the foreground game"),
         ]);

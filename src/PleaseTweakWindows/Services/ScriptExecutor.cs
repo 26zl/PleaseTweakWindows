@@ -1,24 +1,34 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Reflection;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace PleaseTweakWindows.Services;
 
-public sealed partial class ScriptExecutor : IScriptExecutor
+public sealed partial class ScriptExecutor : IScriptExecutor, IDisposable
 {
     private const int MaxConcurrency = 4;
     private static readonly string PowerShellPath = GetPowerShellPath();
+    // Action IDs that use the 45-minute timeout instead of the 10-minute default.
+    internal static readonly HashSet<string> LongRunningActions = new(StringComparer.Ordinal)
+    {
+        "cpp-install",
+        "directx-install",
+        "nvidia-driver-install"
+    };
+
+    // STATUS_CONTROL_C_EXIT marks cancellation initiated by Stop.
+    internal const int CancelledExitCode = -1073741510;
 
     internal static readonly HashSet<string> ConsolidatedScripts = new(StringComparer.OrdinalIgnoreCase)
     {
         "gaming-optimizations.ps1",
         "network-optimizations.ps1",
         "performance.ps1",
-        "revert-performance.ps1",
         "debloat.ps1",
-        "revert-debloat.ps1",
         "maintenance.ps1",
         "revert-privacy.ps1",
         "privacy.ps1",
@@ -39,7 +49,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor
 
     private readonly IProcessRunner _processRunner;
     private readonly ILogger<ScriptExecutor> _logger;
-    private readonly ILogger _telemetryLogger;
+    private readonly ILogger _activityLogger;
     private readonly SemaphoreSlim _semaphore = new(MaxConcurrency, MaxConcurrency);
     private readonly ConcurrentDictionary<string, Process> _activeProcesses = new();
     private readonly object _ctsLock = new();
@@ -53,27 +63,15 @@ public sealed partial class ScriptExecutor : IScriptExecutor
     {
         _processRunner = processRunner;
         _logger = loggerFactory.CreateLogger<ScriptExecutor>();
-        _telemetryLogger = loggerFactory.CreateLogger("Telemetry");
+        _activityLogger = loggerFactory.CreateLogger("LocalActivity");
     }
 
     public void SetScriptsBaseDir(string baseDir) => _scriptsBaseDir = baseDir;
 
     public static string GetPowerShellPath()
     {
-        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
-        if (string.IsNullOrWhiteSpace(systemRoot) || !Regex.IsMatch(systemRoot, @"^[A-Za-z0-9\\:]+$"))
-            systemRoot = @"C:\Windows";
-
-        try
-        {
-            var normalized = Path.GetFullPath(systemRoot);
-            if (normalized.Length >= 3 && char.IsLetter(normalized[0]) && normalized[1] == ':' && normalized[2] == '\\')
-                return Path.Combine(normalized, @"System32\WindowsPowerShell\v1.0\powershell.exe");
-        }
-        catch
-        {
-        }
-        return @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+        // Resolve PowerShell from the trusted Windows system directory.
+        return Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
     }
 
     public void CancelAllOperations()
@@ -121,16 +119,54 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             RejectWithError($"Invalid action parameter: {action}", scriptPath, action, onOutput);
             return -1;
         }
+        // Refuse execution unless the script can be confined to the protected extraction directory.
+        if (_scriptsBaseDir == null)
+        {
+            RejectWithError("Scripts base directory not initialized — refusing to run.", scriptPath, action, onOutput);
+            return -1;
+        }
 
-        var expectedHash = ComputeFileHash(scriptPath);
+        // Trust the manifest embedded in this EXE, not a replaceable on-disk copy.
+        var expectedHash = GetManifestHashForScript(scriptPath);
+        if (expectedHash == null)
+        {
+            RejectWithError($"Script not in embedded checksum manifest — refusing to run: {Path.GetFileName(scriptPath)}", scriptPath, action, onOutput);
+            return -1;
+        }
+
+        // A read failure must not bypass the integrity re-check.
+        var diskHash = ComputeFileHash(scriptPath);
+        if (diskHash == null)
+        {
+            RejectWithError($"Could not hash script for integrity check: {scriptPath}", scriptPath, action, onOutput);
+            return -1;
+        }
+        if (!string.Equals(expectedHash, diskHash, StringComparison.Ordinal))
+        {
+            RejectWithError($"Script failed embedded-manifest integrity check: {Path.GetFileName(scriptPath)}", scriptPath, action, onOutput);
+            return -1;
+        }
 
         onOutput?.Invoke($"> Starting: {Path.GetFileName(scriptPath)}");
         _logger.LogInformation("Running script: {ScriptPath} (action={Action})", scriptPath, action);
 
-        await _semaphore.WaitAsync(cancellationToken);
+        var globalToken = GetGlobalToken();
+        using var queueCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, globalToken);
         try
         {
-            return await ExecuteScriptAsync(scriptPath, action, expectedHash, onOutput, cancellationToken);
+            await _semaphore.WaitAsync(queueCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            onOutput?.Invoke("[!] Operation cancelled by user");
+            LogActionTelemetry(scriptPath, action, CancelledExitCode, 0);
+            return CancelledExitCode;
+        }
+
+        try
+        {
+            return await ExecuteScriptAsync(
+                scriptPath, action, expectedHash, onOutput, cancellationToken, globalToken);
         }
         finally
         {
@@ -138,67 +174,108 @@ public sealed partial class ScriptExecutor : IScriptExecutor
         }
     }
 
-    private async Task<int> ExecuteScriptAsync(string scriptPath, string? action, string? expectedHash, Action<string>? onOutput, CancellationToken cancellationToken)
+    internal static ProcessStartInfo BuildScriptProcessStartInfo(
+        string scriptPath,
+        string? action,
+        string? scriptsBaseDir = null,
+        string? stateDirectory = null)
+    {
+        var scriptName = Path.GetFileName(scriptPath);
+        var isConsolidated = ConsolidatedScripts.Contains(scriptName);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = PowerShellPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-ExecutionPolicy");
+        psi.ArgumentList.Add("Bypass");
+        psi.ArgumentList.Add("-WindowStyle");
+        psi.ArgumentList.Add("Hidden");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(scriptPath);
+
+        if (isConsolidated && action != null)
+        {
+            psi.ArgumentList.Add("-Action");
+            psi.ArgumentList.Add(action);
+        }
+
+        psi.Environment["PTW_EMBEDDED"] = "1";
+        psi.Environment["PTW_LOG_DIR"] = AppPaths.GetLogsDirectory();
+        if (!string.IsNullOrWhiteSpace(scriptsBaseDir))
+        {
+            if (string.IsNullOrWhiteSpace(stateDirectory))
+                throw new InvalidOperationException("Protected state directory was not provided.");
+
+            var baseDir = Path.GetFullPath(scriptsBaseDir);
+            var systemDirectory = Environment.SystemDirectory;
+            var windowsDirectory = Directory.GetParent(systemDirectory)?.FullName
+                ?? throw new InvalidOperationException("Could not resolve the Windows directory.");
+            var powerShellDirectory = Path.GetDirectoryName(PowerShellPath)
+                ?? throw new InvalidOperationException("Could not resolve the PowerShell directory.");
+
+            psi.WorkingDirectory = baseDir;
+            psi.Environment["PTW_SCRIPTS_DIR"] = baseDir;
+            psi.Environment["PTW_STATE_DIR"] = Path.GetFullPath(stateDirectory);
+            var runtimeDirectory = Path.Combine(baseDir, ".runtime");
+            psi.Environment["PTW_RUNTIME_DIR"] = runtimeDirectory;
+            psi.Environment["TEMP"] = runtimeDirectory;
+            psi.Environment["TMP"] = runtimeDirectory;
+            psi.Environment["SystemRoot"] = windowsDirectory;
+            psi.Environment["windir"] = windowsDirectory;
+            psi.Environment["ComSpec"] = Path.Combine(systemDirectory, "cmd.exe");
+            psi.Environment["PATH"] = string.Join(Path.PathSeparator,
+                systemDirectory,
+                windowsDirectory,
+                Path.Combine(systemDirectory, "Wbem"),
+                powerShellDirectory);
+        }
+        // Enable full PowerShell transcripts only for debug builds or explicit opt-in.
+#if DEBUG
+        psi.Environment["PTW_TRANSCRIPT"] = "1";
+#endif
+        return psi;
+    }
+
+    private async Task<int> ExecuteScriptAsync(
+        string scriptPath,
+        string? action,
+        string expectedHash,
+        Action<string>? onOutput,
+        CancellationToken cancellationToken,
+        CancellationToken globalToken)
     {
         var sw = Stopwatch.StartNew();
         var exitCode = -1;
+        // Set only when Stop initiates cancellation.
+        var cancelledByUser = false;
 
         try
         {
-            if (expectedHash != null)
+            var currentHash = ComputeFileHash(scriptPath);
+            if (!string.Equals(expectedHash, currentHash, StringComparison.Ordinal))
             {
-                var currentHash = ComputeFileHash(scriptPath);
-                if (!string.Equals(expectedHash, currentHash, StringComparison.Ordinal))
-                {
-                    onOutput?.Invoke("ERROR: Script integrity check failed - file was modified between validation and execution");
-                    _logger.LogError("TOCTOU: Script hash mismatch for {ScriptPath}. Expected={Expected}, Got={Got}", scriptPath, expectedHash, currentHash);
-                    return -1;
-                }
+                onOutput?.Invoke("ERROR: Script integrity check failed - file was modified between validation and execution");
+                _logger.LogError("TOCTOU: Script hash mismatch for {ScriptPath}. Expected={Expected}, Got={Got}", scriptPath, expectedHash, currentHash);
+                return -1;
             }
 
-            var scriptName = Path.GetFileName(scriptPath);
-            var isConsolidated = ConsolidatedScripts.Contains(scriptName);
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = PowerShellPath,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            psi.ArgumentList.Add("-NoProfile");
-            psi.ArgumentList.Add("-ExecutionPolicy");
-            psi.ArgumentList.Add("Bypass");
-            psi.ArgumentList.Add("-WindowStyle");
-            psi.ArgumentList.Add("Hidden");
-            psi.ArgumentList.Add("-File");
-            psi.ArgumentList.Add(scriptPath);
-
-            if (isConsolidated && action != null)
-            {
-                psi.ArgumentList.Add("-Action");
-                psi.ArgumentList.Add(action);
+            var psi = BuildScriptProcessStartInfo(
+                scriptPath, action, _scriptsBaseDir, AppPaths.GetStateDirectory());
+            if (psi.ArgumentList.Contains("-Action"))
                 onOutput?.Invoke($"[>] Action: {action}");
-            }
-
-            psi.Environment["PTW_EMBEDDED"] = "1";
-            var logDir = AppPaths.GetLogsDirectory();
-            psi.Environment["PTW_LOG_DIR"] = logDir;
-            // The full PowerShell transcript captures ALL cmdlet output (adapter names, paths,
-            // installed apps, etc.) — useful for debugging but a privacy concern for end users,
-            // and redundant with the GUI's own output capture. Opt-in only: DEBUG builds turn it
-            // on; release builds never do unless the user sets PTW_TRANSCRIPT=1 themselves.
-#if DEBUG
-            psi.Environment["PTW_TRANSCRIPT"] = "1";
-#endif
 
             var processKey = $"{scriptPath}_{Interlocked.Increment(ref _keyCounter)}";
 
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, GetGlobalToken());
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, globalToken);
 
             Process? process = null;
             try
@@ -206,12 +283,8 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                 process = _processRunner.Start(psi);
                 _activeProcesses[processKey] = process;
 
-                // Apply one shared hard-cap timeout across BOTH the stream reads and the
-                // WaitForExitAsync. Previously the 30s timeout was only attached to the
-                // exit wait, which was unreachable for hung processes because the stream
-                // reads above would block indefinitely (ReadLineAsync returns null only
-                // when the process closes its stdout/stderr — a hung process never does).
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                // Apply one timeout to output reads and process exit.
+                using var timeoutCts = new CancellationTokenSource(GetTimeout(action));
                 using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token, timeoutCts.Token);
 
                 var outputTask = ReadStreamAsync(process.StandardOutput, onOutput, combinedCts.Token);
@@ -224,8 +297,8 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                 }
                 catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Process exceeded 10-minute timeout, forcing: {ScriptPath}", scriptPath);
-                    onOutput?.Invoke("[!] Script exceeded 10-minute timeout — forcing termination.");
+                    _logger.LogWarning("Process exceeded timeout, forcing: {ScriptPath}", scriptPath);
+                    onOutput?.Invoke($"[!] Script exceeded its {GetTimeout(action).TotalMinutes:0}-minute timeout — forcing termination.");
                     try { process.Kill(entireProcessTree: true); } catch { }
                     exitCode = -1;
                 }
@@ -233,13 +306,12 @@ public sealed partial class ScriptExecutor : IScriptExecutor
                 {
                     onOutput?.Invoke("[!] Operation cancelled by user");
                     try { process.Kill(entireProcessTree: true); } catch { }
-                    exitCode = -1;
+                    exitCode = CancelledExitCode;
+                    cancelledByUser = true;
                 }
                 finally
                 {
-                    // Always drain the read tasks, even on timeout/cancel. After Kill or
-                    // a token trip these complete quickly — usually with OperationCanceledException.
-                    // Leaving them unawaited causes unobserved task exceptions later.
+                    // Drain output tasks after timeout or cancellation to observe their exceptions.
                     try { await Task.WhenAll(outputTask, errorTask); }
                     catch (OperationCanceledException) { }
                     catch (Exception ex) { _logger.LogDebug(ex, "Drain of read tasks threw"); }
@@ -255,9 +327,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             finally
             {
                 _activeProcesses.TryRemove(processKey, out _);
-                // If we fell through to the outer catch after Start already succeeded, the
-                // powershell child may still be running. Don't orphan a privileged process:
-                // kill the tree before disposing the handle (Dispose alone does not kill it).
+                // Terminate a started PowerShell process before disposing its handle.
                 if (exitCode != 0 && process != null)
                 {
                     try
@@ -274,6 +344,11 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             {
                 onOutput?.Invoke("[+] SUCCESS - Operation completed");
                 _logger.LogInformation("Script finished successfully: {ScriptPath}", scriptPath);
+            }
+            else if (cancelledByUser)
+            {
+                // Suppress the failure banner only for cancellation initiated by Stop.
+                _logger.LogInformation("Script cancelled by user: {ScriptPath}", scriptPath);
             }
             else
             {
@@ -307,6 +382,11 @@ public sealed partial class ScriptExecutor : IScriptExecutor
         return ActionIdRegex().IsMatch(action);
     }
 
+    internal static TimeSpan GetTimeout(string? action) =>
+        action != null && LongRunningActions.Contains(action)
+            ? TimeSpan.FromMinutes(45)
+            : TimeSpan.FromMinutes(10);
+
     internal bool IsValidScriptPath(string? scriptPath)
     {
         if (string.IsNullOrWhiteSpace(scriptPath)) return false;
@@ -321,8 +401,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             if (_scriptsBaseDir != null)
             {
                 var baseAbs = Path.GetFullPath(_scriptsBaseDir);
-                // Use GetRelativePath to decide containment — a plain StartsWith on the
-                // prefix would also match sibling directories like "<base>-evil\...".
+                // Use relative-path semantics to reject sibling directories with matching prefixes.
                 var rel = Path.GetRelativePath(baseAbs, normalized);
                 if (rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel))
                 {
@@ -353,9 +432,66 @@ public sealed partial class ScriptExecutor : IScriptExecutor
         var msg = $"ActionTelemetry script={scriptName} action={actionLabel} exit={exitCode} duration={durationMs}ms";
 
         if (exitCode == 0)
-            _telemetryLogger.LogInformation("{@Telemetry}", msg);
+            _activityLogger.LogInformation("{@LocalActivity}", msg);
         else
-            _telemetryLogger.LogWarning("{@Telemetry}", msg);
+            _activityLogger.LogWarning("{@LocalActivity}", msg);
+    }
+
+    // Cache embedded script checksums by normalized manifest path.
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> ManifestHashes =
+        new(LoadManifestHashes);
+
+    internal static IReadOnlyDictionary<string, string> LoadManifestHashes()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceName = assembly.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("Scripts.file-checksums.json", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Embedded checksum manifest not found: file-checksums.json");
+
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException("Embedded checksum manifest stream was null: file-checksums.json");
+        using var doc = JsonDocument.Parse(stream);
+
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (doc.RootElement.TryGetProperty("scripts", out var scripts) && scripts.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var entry in scripts.EnumerateObject())
+            {
+                var hash = entry.Value.GetString();
+                if (!string.IsNullOrWhiteSpace(hash))
+                    map[entry.Name] = hash.ToLowerInvariant();
+            }
+        }
+        return map;
+    }
+
+    // Relative path of an extracted script as it appears in the manifest (forward slashes).
+    internal static string? ToManifestKey(string scriptsBaseDir, string scriptPath)
+    {
+        try
+        {
+            var rel = Path.GetRelativePath(Path.GetFullPath(scriptsBaseDir), Path.GetFullPath(scriptPath));
+            if (rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
+            return rel.Replace('\\', '/');
+        }
+        catch { return null; }
+    }
+
+    private string? GetManifestHashForScript(string scriptPath)
+    {
+        var baseDir = _scriptsBaseDir;
+        if (baseDir == null) return null;
+        var key = ToManifestKey(baseDir, scriptPath);
+        if (key == null) return null;
+        try
+        {
+            return ManifestHashes.Value.TryGetValue(key, out var hash) ? hash : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load embedded checksum manifest");
+            return null;
+        }
     }
 
     internal static string? ComputeFileHash(string filePath)
@@ -380,16 +516,24 @@ public sealed partial class ScriptExecutor : IScriptExecutor
             catch (Exception ex) { _logger.LogDebug(ex, "Shutdown kill failed"); }
         }
         _activeProcesses.Clear();
-        // Do NOT dispose _globalCts or _semaphore: they are process-lifetime singletons.
-        // An in-flight tweak task can still touch them after shutdown (semaphore Release,
-        // GetGlobalToken), and disposing here races those awaits into ObjectDisposedException.
-        // The OS reclaims them on process exit. Cancel is enough to unblock waiters.
+        // Cancel operations without disposing synchronization objects still used by in-flight tasks.
         lock (_ctsLock)
         {
             _globalCts.Cancel();
         }
     }
 
-    [GeneratedRegex(@"^[A-Za-z0-9_-]{2,64}$")]
+    public void Dispose()
+    {
+        Shutdown();
+        _semaphore.Dispose();
+        lock (_ctsLock)
+        {
+            _globalCts.Dispose();
+        }
+    }
+
+    // Use absolute anchors so action IDs with trailing newlines are rejected.
+    [GeneratedRegex(@"\A[A-Za-z0-9_-]{2,64}\z")]
     private static partial Regex ActionIdRegex();
 }

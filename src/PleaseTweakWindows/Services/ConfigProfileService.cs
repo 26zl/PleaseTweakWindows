@@ -3,11 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace PleaseTweakWindows.Services;
 
-/// <summary>
-/// A portable, versioned tweak profile: a list of apply-action IDs that can be
-/// exported on one machine and re-applied on another. It records WHAT to apply,
-/// not the machine's current state (PTW has no applied-state model).
-/// </summary>
+/// <summary>A portable, versioned list of Apply actions.</summary>
 public sealed class ConfigProfile
 {
     public int SchemaVersion { get; set; } = 1;
@@ -23,13 +19,14 @@ public sealed record ConfigImportResult(
 
 public sealed class ConfigProfileService
 {
+    public const int MaxProfileBytes = 1024 * 1024;
+    private const int MaxActions = 1000;
+
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        // Be lenient about key casing for hand-edited / foreign-tool profiles. Without this a
-        // non-camelCase "schemaversion" key would silently bind to the default (1) and bypass
-        // the unsupported-version rejection below.
+        // Match JSON keys case-insensitively so the schema-version check cannot be bypassed.
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
@@ -69,6 +66,8 @@ public sealed class ConfigProfileService
             return new ConfigImportResult([], [], $"Unsupported profile schema version {profile.SchemaVersion}. This build understands version 1.");
         if (profile.Actions is null || profile.Actions.Count == 0)
             return new ConfigImportResult([], [], "Profile contains no actions.");
+        if (profile.Actions.Count > MaxActions)
+            return new ConfigImportResult([], [], $"Profile contains too many actions (maximum {MaxActions}).");
 
         var valid = new List<string>();
         var dropped = new List<string>();
@@ -77,8 +76,7 @@ public sealed class ConfigProfileService
         {
             if (string.IsNullOrWhiteSpace(action) || !seen.Add(action))
                 continue;
-            // Drop unknown IDs (different/older PTW build, hand-edited typo) rather than
-            // ever passing an unvalidated string through to a script invocation.
+            // Drop unknown action IDs before script invocation.
             if (knownActionIds.Contains(action))
                 valid.Add(action);
             else

@@ -4,7 +4,8 @@ using Microsoft.Extensions.Logging;
 
 namespace PleaseTweakWindows.Services;
 
-public sealed record UpdateInfo(string Version, string DownloadUrl);
+// ReleasePageUrl is the browser-facing GitHub release page.
+public sealed record UpdateInfo(string Version, string ReleasePageUrl);
 
 public sealed class UpdateChecker
 {
@@ -23,7 +24,11 @@ public sealed class UpdateChecker
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10),
+            MaxResponseContentBufferSize = 1024 * 1024
+        };
         client.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
         client.DefaultRequestHeaders.Add("User-Agent", AppPaths.ProductName);
         return client;
@@ -34,9 +39,7 @@ public sealed class UpdateChecker
         try
         {
             var assembly = Assembly.GetExecutingAssembly();
-            // Prefer AssemblyInformationalVersion — matches <Version> in the csproj
-            // directly (e.g. "2.1.1"), unlike AssemblyName.Version which can be pinned
-            // to Major.Minor.0.0 if someone ever sets <AssemblyVersion> separately.
+            // Read the project version from AssemblyInformationalVersion.
             var info = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
             if (!string.IsNullOrWhiteSpace(info))
             {
@@ -100,15 +103,38 @@ public sealed class UpdateChecker
     {
         try
         {
-            var prefsPath = GetPrefsPath();
-            var dir = Path.GetDirectoryName(prefsPath);
-            if (dir != null) Directory.CreateDirectory(dir);
-            File.WriteAllText(prefsPath, $"dismissed_version={version}");
+            WriteDismissedVersion(GetPrefsPath(), version);
         }
         catch (Exception ex)
         {
             _logger.LogDebug("Failed to save update preferences: {Message}", ex.Message);
         }
+    }
+
+    // Sanitize release tags before storing or comparing preference values.
+    internal static string SanitizeVersion(string version) =>
+        new string(version
+            .Take(64)
+            .Where(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '+')
+            .ToArray());
+
+    internal static void WriteDismissedVersion(string prefsPath, string version)
+    {
+        var safeVersion = SanitizeVersion(version);
+        if (safeVersion.Length == 0)
+            return;
+
+        var dir = Path.GetDirectoryName(prefsPath);
+        if (dir != null) Directory.CreateDirectory(dir);
+
+        // Read-modify-write so we never clobber other keys the prefs file may hold later.
+        var lines = File.Exists(prefsPath)
+            ? File.ReadAllLines(prefsPath)
+                .Where(l => !l.TrimStart().StartsWith("dismissed_version=", StringComparison.Ordinal))
+                .ToList()
+            : new List<string>();
+        lines.Add($"dismissed_version={safeVersion}");
+        File.WriteAllLines(prefsPath, lines);
     }
 
     internal static (string? tagName, string? htmlUrl) ParseReleaseJson(string json)
@@ -117,6 +143,9 @@ public sealed class UpdateChecker
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+            // Reject non-object responses before reading release properties.
+            if (root.ValueKind != JsonValueKind.Object)
+                return (null, null);
             string? tag = root.TryGetProperty("tag_name", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
             string? url = root.TryGetProperty("html_url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
             return (tag, url);
@@ -142,7 +171,9 @@ public sealed class UpdateChecker
     private static int[] ParseVersion(string version)
     {
         var parts = new int[3];
-        var split = version.Split('.');
+        // Ignore prerelease and build-metadata suffixes during numeric comparison.
+        var core = version.Split('-', '+')[0];
+        var split = core.Split('.');
         for (int i = 0; i < Math.Min(split.Length, 3); i++)
         {
             if (int.TryParse(split[i], out var val))
@@ -154,21 +185,24 @@ public sealed class UpdateChecker
     private static string GetPrefsPath() =>
         Path.Combine(AppPaths.GetLogsDirectory(), "ptw-update-prefs.properties");
 
-    private static bool IsDismissed(string version)
+    private static bool IsDismissed(string version) => IsDismissedIn(GetPrefsPath(), version);
+
+    internal static bool IsDismissedIn(string prefsPath, string version)
     {
-        var path = GetPrefsPath();
-        if (!File.Exists(path)) return false;
+        if (!File.Exists(prefsPath)) return false;
+        // Compare against the same sanitized form WriteDismissedVersion stored, not the raw version.
+        var wanted = SanitizeVersion(version);
+        if (wanted.Length == 0) return false;
         try
         {
-            // Exact key=value match. A substring match would incorrectly flag version
-            // "2.1.1" as dismissed when the prefs file holds "dismissed_version=2.1.10".
-            foreach (var line in File.ReadAllLines(path))
+            // Require an exact key-value match for the dismissed version.
+            foreach (var line in File.ReadAllLines(prefsPath))
             {
                 var eq = line.IndexOf('=');
                 if (eq <= 0) continue;
                 var key = line.AsSpan(0, eq).Trim();
                 var value = line.AsSpan(eq + 1).Trim();
-                if (key.SequenceEqual("dismissed_version") && value.SequenceEqual(version))
+                if (key.SequenceEqual("dismissed_version") && value.SequenceEqual(wanted))
                     return true;
             }
         }

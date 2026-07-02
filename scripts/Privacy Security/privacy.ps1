@@ -1,8 +1,4 @@
-# Privacy Tweaks
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File privacy.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-21
+﻿# Privacy Tweaks
 #Requires -RunAsAdministrator
 
 param(
@@ -23,16 +19,21 @@ param(
         "telemetry-policy-enforce",
         "block-ms-account",
         "onedrive-policy-disable",
+        "privacy-recall-disable",
+        "privacy-camera-mic-deny",
+        "privacy-telemetry-tasks-disable",
+        "privacy-location-disable",
+        "privacy-web-search-disable",
+        "privacy-delivery-optimization-disable",
         "dns-cloudflare",
         "dns-google",
+        "dns-quad9",
         "dns-reset",
         "doh-enable",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 function Write-PTWLog {
     param([string]$Message, [string]$Level = "INFO")
@@ -56,7 +57,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 function Set-DnsAddress {
@@ -100,15 +102,31 @@ function Enable-AllDoh {
         @{ Server = '9.9.9.9'; Template = 'https://dns.quad9.net/dns-query' }
     )
     foreach ($dns in $dnsServers) {
-        Start-Process -FilePath 'netsh' -ArgumentList "dns add encryption server=$($dns.Server) dohtemplate=$($dns.Template) autoupgrade=yes udpfallback=yes" -WindowStyle Hidden -Wait
-        Write-Output "Enabled DoH for $($dns.Server)"
+        $proc = Start-Process -FilePath 'netsh' -ArgumentList "dns add encryption server=$($dns.Server) dohtemplate=$($dns.Template) autoupgrade=yes udpfallback=yes" -WindowStyle Hidden -PassThru -Wait
+        if ($proc.ExitCode -ne 0) {
+            Write-Output "[!] Failed to enable DoH for $($dns.Server) (netsh exit $($proc.ExitCode))"
+            $script:PTWErrorCount++
+        } else {
+            Write-Output "Enabled DoH for $($dns.Server)"
+        }
     }
-    # Registering DoH templates alone does nothing unless an adapter actually
-    # uses one of these resolver IPs. Point active adapters at Cloudflare (a
-    # registered DoH-capable resolver) so DoH truly engages instead of being an
-    # inert no-op on machines using router/DHCP DNS.
-    Set-DnsAddress -Addresses '1.1.1.1','1.0.0.1' -Label 'Cloudflare DoH'
+    # Preserve a supported resolver or select Cloudflare before enabling DoH.
+    $dohIps = '1.1.1.1','1.0.0.1','8.8.8.8','8.8.4.4','9.9.9.9','149.112.112.112'
+    $alreadyDoh = $false
+    foreach ($a in (Get-ActiveAdapter | Select-Object -ExpandProperty Name)) {
+        $cur = @((Get-DnsClientServerAddress -InterfaceAlias $a -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses)
+        if ($cur | Where-Object { $dohIps -contains $_ }) { $alreadyDoh = $true; break }
+    }
+    if (-not $alreadyDoh) {
+        Set-DnsAddress -Addresses '1.1.1.1','1.0.0.1' -Label 'Cloudflare DoH (default)'
+    } else {
+        Write-Output '[i] An active adapter already uses a DoH-capable resolver; keeping your DNS choice (DoH still engages).'
+    }
     ipconfig /flushdns | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $script:PTWErrorCount++
+        Write-Output "[-] ERROR: ipconfig /flushdns returned $LASTEXITCODE"
+    }
 }
 
 function Hide-ExplorerFolder {
@@ -130,18 +148,10 @@ function Hide-ExplorerFolder {
     # Per-user hide in This PC.
     Set-RegValueSafe -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideMyComputerIcons' -Name "{$Guid}" -Type 'DWord' -Value 1
 
-    $build = [Environment]::OSVersion.Version.Build
+    # Hide Explorer folders with the documented HiddenByDefault flag.
     $nsPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{$Guid}"
-    if ($build -lt 22000) {
-        # Windows 10 and earlier: remove the NameSpace key.
-        Remove-RegKeySafe -Path $nsPath
-    } else {
-        # Windows 11+: hide via documented flag. Previously also wrote HideIfEnabled with
-        # an undocumented magic bitmask (0x022AB9B9) that re-interprets across builds —
-        # HiddenByDefault=1 alone is the supported mechanism.
-        if (Test-Path -LiteralPath $nsPath) {
-            Set-RegValueSafe -Path $nsPath -Name 'HiddenByDefault' -Type 'DWord' -Value 1
-        }
+    if (Test-Path -LiteralPath $nsPath) {
+        Set-RegValueSafe -Path $nsPath -Name 'HiddenByDefault' -Type 'DWord' -Value 1
     }
 }
 
@@ -197,27 +207,6 @@ function Invoke-UiRemoveThisPcFolderList {
         Hide-ExplorerFolder -FolderName $name -Guid $folders[$name]
     }
 
-    # Remove legacy NameSpace keys on Windows 10 and earlier.
-    $build = [Environment]::OSVersion.Version.Build
-    if ($build -lt 22000) {
-        $legacyGuids = @(
-            'A8CDFF1C-4878-43be-B5FD-F8091C1C60D0',
-            'd3162b92-9365-467a-956b-92703aca08af',
-            '088e3905-0323-4b02-9826-5d99428e115f',
-            '374DE290-123F-4565-9164-39C4925E467B',
-            '3dfdf296-dbec-4fb4-81d1-6a3438bcf4de',
-            '1CF1260C-4DD0-4ebb-811F-33C572699FDE',
-            '24ad3ad4-a569-4530-98e1-ab02f9417aa8',
-            '3ADD1653-EB32-4cb0-BBD7-DFA0ABB5ACCA',
-            'f86fa3ab-70d2-4fc7-9c99-fcbf05467f3a',
-            'A0953C92-50DC-43bf-BE83-3742FED03C9C',
-            '0DB7E03F-FC29-4DC6-9020-FF41B59E513A'
-        )
-        foreach ($guid in $legacyGuids) {
-            Remove-RegKeySafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{$guid}"
-        }
-    }
-
     Write-Output "[+] SUCCESS: This PC folders hidden"
 }
 
@@ -251,6 +240,8 @@ function Invoke-UiQuickAccessRecentDisable {
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HomeFolderDesktop\NameSpace\DelegateFolders\$delegateGuid",
         "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Explorer\HomeFolderDesktop\NameSpace\DelegateFolders\$delegateGuid"
     )
+    # Back up the DelegateFolders keys before the destructive (Default)-value removal.
+    Backup-RegistryPath -Action $Action -Paths $delegatePaths
     foreach ($path in $delegatePaths) {
         Remove-RegValueSafe -Path $path -Name '(Default)'
     }
@@ -272,8 +263,14 @@ function Invoke-UiHibernationDisable {
 
     try {
         powercfg -h off | Out-Null
-        Write-Output "[+] SUCCESS: hibernation disabled"
+        if ($LASTEXITCODE -ne 0) {
+            $script:PTWErrorCount++
+            Write-Output "[-] ERROR: powercfg -h off returned $LASTEXITCODE"
+        } else {
+            Write-Output "[+] SUCCESS: hibernation disabled"
+        }
     } catch {
+        $script:PTWErrorCount++
         Write-Warning "[WARN] Failed to disable hibernation: $($_.Exception.Message)"
     }
 }
@@ -308,7 +305,7 @@ function Invoke-TelemetryPolicyEnforce {
 
 function Invoke-BlockMsAccount {
     Write-Output "[*] Blocking Microsoft account sign-in..."
-    Write-Output "[!] WARNING: NoConnectedUser=3 blocks adding OR using a Microsoft account on this PC. This breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in. Revert removes the block."
+    Write-Output "[!] WARNING: NoConnectedUser=3 blocks adding OR using a Microsoft account on this PC. This breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in. Restore Default removes the block."
     Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'NoConnectedUser' -Value 3
     Write-Output "[+] SUCCESS: Microsoft account sign-in blocked"
 }
@@ -317,6 +314,78 @@ function Invoke-OneDrivePolicyDisable {
     Write-Output "[*] Disabling OneDrive file sync via policy (durable across reinstall)..."
     Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OneDrive' -Name 'DisableFileSyncNGSC' -Value 1
     Write-Output "[+] SUCCESS: OneDrive sync disabled via policy"
+}
+
+function Invoke-RecallDisable {
+    Write-Output "[*] Suppressing Windows Recall / AI data analysis natively (independent of the O&O ShutUp10 profile)..."
+    # Disable Recall through machine, user, and CSP-equivalent policy values.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI' -Name 'DisableAIDataAnalysis' -Value 1
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI' -Name 'AllowRecallEnablement' -Value 0
+    Set-RegDword -Path 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI' -Name 'DisableAIDataAnalysis' -Value 1
+    Write-Output "[+] SUCCESS: Windows Recall suppressed via native policy"
+}
+
+function Invoke-CameraMicDeny {
+    Write-Output "[*] Denying app access to the camera and microphone (the two sensors the privacy batch leaves on)..."
+    Write-Output "[!] WARNING: this is a system-wide app deny. Camera/microphone apps (Teams, Zoom, Camera) will be blocked until you use Restore Default or re-allow them per-app in Settings > Privacy."
+    # Per-app consent store: flip the global default for webcam + microphone from Allow to Deny.
+    Set-RegSz -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam' -Name 'Value' -Value 'Deny'
+    Set-RegSz -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' -Name 'Value' -Value 'Deny'
+    # Policy form (Force Deny = 2) so the deny is GPO-enforced too.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' -Name 'LetAppsAccessCamera' -Value 2
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' -Name 'LetAppsAccessMicrophone' -Value 2
+    Write-Output "[+] SUCCESS: camera and microphone app access denied"
+}
+
+# Disable telemetry tasks without deleting them so Restore Default can re-enable them.
+$script:PtwTelemetryTasks = @(
+    @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'Microsoft Compatibility Appraiser' },
+    @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'ProgramDataUpdater' },
+    @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'StartupAppTask' },
+    @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'Consolidator' },
+    @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'UsbCeip' },
+    @{ Path = '\Microsoft\Windows\Autochk\'; Name = 'Proxy' },
+    @{ Path = '\Microsoft\Windows\Feedback\Siuf\'; Name = 'DmClient' },
+    @{ Path = '\Microsoft\Windows\Feedback\Siuf\'; Name = 'DmClientOnScenarioDownload' },
+    @{ Path = '\Microsoft\Windows\Windows Error Reporting\'; Name = 'QueueReporting' }
+)
+
+function Invoke-TelemetryTasksDisable {
+    Write-Output "[*] Disabling telemetry / CEIP / feedback scheduled tasks..."
+    foreach ($t in $script:PtwTelemetryTasks) {
+        try {
+            $task = Get-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction SilentlyContinue
+            if ($task) {
+                Disable-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction Stop | Out-Null
+                Write-Output "  [OK] Disabled $($t.Path)$($t.Name)"
+            }
+        } catch {
+            Write-Output "  [!] Could not disable $($t.Name): $($_.Exception.Message)"
+            $script:PTWErrorCount++
+        }
+    }
+    Write-Output "[+] SUCCESS: telemetry scheduled tasks disabled"
+}
+
+function Invoke-LocationDisable {
+    Write-Output "[*] Disabling the Windows location platform via policy..."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name 'DisableLocation' -Value 1
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name 'DisableLocationScripting' -Value 1
+    Write-Output "[+] SUCCESS: location services disabled by policy"
+}
+
+function Invoke-WebSearchDisable {
+    Write-Output "[*] Disabling web/Bing results and suggestions in Start/Search..."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'DisableWebSearch' -Value 1
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'ConnectedSearchUseWeb' -Value 0
+    Set-RegDword -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name 'DisableSearchBoxSuggestions' -Value 1
+    Write-Output "[+] SUCCESS: web search results disabled"
+}
+
+function Invoke-DeliveryOptimizationDisable {
+    Write-Output "[*] Restricting Delivery Optimization to HTTP-only (no peer-to-peer upload/download)..."
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization' -Name 'DODownloadMode' -Value 0
+    Write-Output "[+] SUCCESS: Delivery Optimization peer sharing disabled"
 }
 
 switch ($Action.ToLowerInvariant()) {
@@ -329,17 +398,18 @@ switch ($Action.ToLowerInvariant()) {
             Write-Output "    Expected: $configPath"
             exit 1
         }
+        if (-not (Test-PtwFileChecksum -Path $configPath)) {
+            Write-Output "[-] ERROR: O&O config file failed its integrity check."
+            exit 1
+        }
 
-        # Download to the ACL-restricted per-user script dir (not world-writable
-        # $env:TEMP) and always fetch a fresh copy so a pre-placed binary cannot
-        # be reused. Authenticode is still re-verified below before execution.
-        $oosuExe = Join-Path $PSScriptRoot "OOSU10.exe"
+        $oosuExe = Get-PTWRuntimePath "OOSU10.exe"
         Remove-Item -Path $oosuExe -Force -ErrorAction SilentlyContinue
         Write-Output "[*] Downloading OOSU10.exe..."
         Get-FileFromWeb -URL "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe" -File $oosuExe
 
         # Dynamic-hash download — verify Authenticode before executing as admin
-        Test-SignedFile -Path $oosuExe -PublisherPatterns @('O&O Software', 'OO Software')
+        Test-SignedFile -Path $oosuExe -PublisherPatterns @('O&O Software GmbH')
 
         & $oosuExe $configPath /quiet
         if ($LASTEXITCODE -ne 0) {
@@ -398,10 +468,7 @@ switch ($Action.ToLowerInvariant()) {
     "copilot-disable" {
         Write-Output "[*] Disabling Copilot..."
         $ProgressPreference = 'SilentlyContinue'
-        # Policy-only disable so the toggle is genuinely reversible. We do NOT
-        # uninstall the Copilot Appx packages (Remove-AppxPackage deletes the
-        # install location and cannot be undone by the revert), and we no longer
-        # kill the unrelated OneDrive/Widgets processes.
+        # Keep the toggle reversible by changing policy without uninstalling Copilot.
         Set-RegDword -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1
         Set-RegDword -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1
         Write-Output "[+] SUCCESS: Copilot disabled (restart recommended)"
@@ -413,8 +480,7 @@ switch ($Action.ToLowerInvariant()) {
         Backup-RegistryPath -Action $Action -Paths @(
             'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
         )
-        # Policy value; on Pro/Enterprise this caps telemetry at Security (0), on Home it is
-        # honoured as the lowest selectable level. SmartScreen/Defender reporting is untouched.
+        # Set the lowest supported telemetry level without changing SmartScreen or Defender reporting.
         Set-RegDword -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
         Set-RegDword -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
         Write-Output "[+] SUCCESS: telemetry minimized"
@@ -450,10 +516,66 @@ switch ($Action.ToLowerInvariant()) {
         Exit-PTW
     }
 
+    "privacy-recall-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI',
+            'HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI'
+        )
+        Invoke-RecallDisable
+        Exit-PTW
+    }
+
+    "privacy-camera-mic-deny" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam',
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy'
+        )
+        Invoke-CameraMicDeny
+        Exit-PTW
+    }
+
+    "privacy-telemetry-tasks-disable" {
+        Invoke-TelemetryTasksDisable
+        Exit-PTW
+    }
+
+    "privacy-location-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors'
+        )
+        Invoke-LocationDisable
+        Exit-PTW
+    }
+
+    "privacy-web-search-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search',
+            'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
+        )
+        Invoke-WebSearchDisable
+        Exit-PTW
+    }
+
+    "privacy-delivery-optimization-disable" {
+        Backup-RegistryPath -Action $Action -Paths @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+        )
+        Invoke-DeliveryOptimizationDisable
+        Exit-PTW
+    }
+
     "dns-cloudflare" {
         Write-Output "[*] Setting Cloudflare DNS..."
         Set-DnsAddress -Addresses "1.1.1.1","1.0.0.1" -Label "Cloudflare DNS"
         Write-Output "[+] SUCCESS: Cloudflare DNS applied"
+        Exit-PTW
+    }
+
+    "dns-quad9" {
+        Write-Output "[*] Setting Quad9 DNS (malware-blocking resolver)..."
+        Set-DnsAddress -Addresses "9.9.9.9","149.112.112.112" -Label "Quad9 DNS"
+        Write-Output "[+] SUCCESS: Quad9 DNS applied"
         Exit-PTW
     }
 
@@ -479,6 +601,10 @@ switch ($Action.ToLowerInvariant()) {
             }
         }
         ipconfig /flushdns | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            $script:PTWErrorCount++
+            Write-Output "[-] ERROR: ipconfig /flushdns returned $LASTEXITCODE"
+        }
         Write-Output "[+] SUCCESS: DNS reset to automatic"
         Exit-PTW
     }
@@ -491,7 +617,7 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

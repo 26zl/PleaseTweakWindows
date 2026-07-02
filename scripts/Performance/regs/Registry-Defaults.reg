@@ -216,9 +216,6 @@ Windows Registry Editor Version 5.00
 
 ; enhance pointer precision
 [HKEY_CURRENT_USER\Control Panel\Mouse]
-"MouseSpeed"="1"
-"MouseThreshold1"="6"
-"MouseThreshold2"="10"
 
 ; mouse pointers scheme
 [HKEY_CURRENT_USER\Control Panel\Cursors]
@@ -342,14 +339,6 @@ Windows Registry Editor Version 5.00
 "Value"=dword:00000001
 
 ; camera
-[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam]
-"Value"="Allow"
-
-; microphone
-[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone]
-"Value"="Allow"
-
-; voice activation
 [-HKEY_CURRENT_USER\Software\Microsoft\Speech_OneCore\Settings]
 
 ; notifications
@@ -447,7 +436,6 @@ Windows Registry Editor Version 5.00
 
 ; sending required data
 [HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\DataCollection]
-"AllowTelemetry"=-
 
 ; feedback frequency
 [-HKEY_CURRENT_USER\SOFTWARE\Microsoft\Siuf]
@@ -626,7 +614,6 @@ Windows Registry Editor Version 5.00
 
 ; search from taskbar
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Search]
-"SearchboxTaskbarMode"=-
 
 ; copilot from taskbar
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
@@ -699,11 +686,9 @@ Windows Registry Editor Version 5.00
 
 ; hardware accelerated gpu scheduling
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers]
-"HwSchMode"=-
 
 ; variable refresh rate & optimizations for windowed games
 [HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences]
-"DirectXUserGlobalSettings"=-
 
 ; notifications
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\PushNotifications]
@@ -834,7 +819,6 @@ Windows Registry Editor Version 5.00
 
 ; web search in start menu
 [HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\Explorer]
-"DisableSearchBoxSuggestions"=-
 
 ; copilot
 [-HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\WindowsCopilot]
@@ -914,9 +898,6 @@ Windows Registry Editor Version 5.00
   04,00,00,00,00,00,00,fc,12,00,00,00,00,00,00,c0,bb,01,00,00,00,00
 
 [HKEY_USERS\.DEFAULT\Control Panel\Mouse]
-"MouseSpeed"="1"
-"MouseThreshold1"="6"
-"MouseThreshold2"="10"
 
 ; disable endtask menu taskbar w11
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings]

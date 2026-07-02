@@ -1,10 +1,4 @@
-# System Security Revert Script
-# Purpose: Reverts the changes made by system-security.ps1 (v2.1.0) back to Windows defaults where possible.
-# Usage:
-#   powershell -File revert-system-security.ps1 -Mode <Revert|Repair|RevertAndRepair> [-Action "<action-id>"]
-# Notes:
-#   - Revert: removes policy/override registry values created by the security hardening actions (returns to "not configured"/defaults).
-#   - Repair: re-enables optional features/capabilities/services that the hardening actions may have disabled/removed.
+﻿# System Security Revert Script
 
 #Requires -RunAsAdministrator
 
@@ -18,15 +12,14 @@ param(
     [string]$Action = ''
 )
 
-$script:ScriptVersion = "2.1.0"
-
 # Dot-source common functions
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-Output "[!] CommonFunctions.ps1 not found - some features may not work"
+    Write-Output "[-] CommonFunctions.ps1 not found; refusing to continue"
+    exit 1
 }
 
 # Admin check (kept explicit for nicer message)
@@ -64,10 +57,11 @@ function Repair-ClipboardDataDisable {
     try {
         Get-Service -Name 'cbdhsvc_*' -ErrorAction SilentlyContinue | ForEach-Object {
             try {
-                Set-Service -Name $_.Name -StartupType Manual -ErrorAction SilentlyContinue
-                if ($_.Status -ne 'Running') { Start-Service -Name $_.Name -ErrorAction SilentlyContinue }
+                Set-Service -Name $_.Name -StartupType Manual -ErrorAction Stop
+                if ($_.Status -ne 'Running') { Start-Service -Name $_.Name -ErrorAction Stop }
             } catch {
-                Write-Verbose "Failed to reset clipboard service $($_.Name)."
+                Write-PTWWarning "Failed to reset clipboard service $($_.Name): $($_.Exception.Message)"
+                $script:PTWErrorCount++
             }
         }
     } catch {
@@ -157,9 +151,7 @@ function Restore-UacSilentElevation {
     Write-PTWLog "Restored default administrator consent prompt (Notify level)" "SUCCESS"
 }
 
-# ---------------------------------------------------------------------------
 # Reverts for the system-security hardening functions.
-# ---------------------------------------------------------------------------
 
 function Restore-BinaryIntegrityHardening {
     [CmdletBinding(SupportsShouldProcess=$true)]
@@ -170,11 +162,18 @@ function Restore-BinaryIntegrityHardening {
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\AMSI' -Name 'FeatureBits'
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit' -Name 'ProcessCreationIncludeCmdLine_Enabled'
     & auditpol.exe /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:disable 2>&1 | Out-Null
+    $auditpolRc = $LASTEXITCODE
+    if ($auditpolRc -ne 0) {
+        Write-PTWWarning "Could not restore the Process Creation audit subcategory (auditpol exit $auditpolRc)"
+        $script:PTWErrorCount++
+    }
     # Restore the Windows default: these shortcut types carry an empty NeverShowExt value.
     foreach ($k in @('InternetShortcut','lnkfile','piffile')) {
         Set-RegValueSafe -Path "Registry::HKEY_CLASSES_ROOT\$k" -Name 'NeverShowExt' -Type 'String' -Value ''
     }
-    Write-PTWLog "Reverted binary-integrity hardening" "SUCCESS"
+    if ($auditpolRc -eq 0) {
+        Write-PTWLog "Reverted binary-integrity hardening" "SUCCESS"
+    }
 }
 
 function Restore-SvchostMitigation {
@@ -210,21 +209,68 @@ function Restore-AccountLockoutPolicy {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert account lockout policy")) { return }
-    & net.exe accounts /lockoutthreshold:0 2>&1 | Out-Null
-    Write-PTWLog "Reverted account lockout policy (threshold 0 = no lockout)" "SUCCESS"
+    # Restore the Windows 11 account-lockout defaults.
+    & net.exe accounts /lockoutthreshold:10 /lockoutduration:10 /lockoutwindow:10 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-PTWWarning "Could not restore account lockout policy (net.exe exit $LASTEXITCODE)"
+        $script:PTWErrorCount++
+        return
+    }
+    Write-PTWLog "Restored account lockout policy to the Windows 11 default (threshold 10)" "SUCCESS"
 }
 
 # Advanced audit subcategory GUIDs (must mirror system-security.ps1's Set-AdvancedAuditPolicy).
 $script:PtwAuditSubcategories = @(
-    '{0CCE923F-69AE-11D9-BED3-505054503030}',  # Credential Validation
+    # System
+    '{0CCE9210-69AE-11D9-BED3-505054503030}',  # Security State Change
+    '{0CCE9211-69AE-11D9-BED3-505054503030}',  # Security System Extension
+    '{0CCE9212-69AE-11D9-BED3-505054503030}',  # System Integrity
+    '{0CCE9213-69AE-11D9-BED3-505054503030}',  # IPsec Driver
+    '{0CCE9214-69AE-11D9-BED3-505054503030}',  # Other System Events
+    # Logon/Logoff
     '{0CCE9215-69AE-11D9-BED3-505054503030}',  # Logon
-    '{0CCE921B-69AE-11D9-BED3-505054503030}',  # Special Logon
-    '{0CCE922B-69AE-11D9-BED3-505054503030}',  # Process Creation
-    '{0CCE9245-69AE-11D9-BED3-505054503030}',  # Removable Storage
-    '{0CCE9237-69AE-11D9-BED3-505054503030}',  # Security Group Management
+    '{0CCE9216-69AE-11D9-BED3-505054503030}',  # Logoff
     '{0CCE9217-69AE-11D9-BED3-505054503030}',  # Account Lockout
-    '{0CCE9228-69AE-11D9-BED3-505054503030}'   # Sensitive Privilege Use
+    '{0CCE921B-69AE-11D9-BED3-505054503030}',  # Special Logon
+    '{0CCE921C-69AE-11D9-BED3-505054503030}',  # Other Logon/Logoff Events
+    '{0CCE9249-69AE-11D9-BED3-505054503030}',  # Group Membership
+    # Object Access (volume-safe subset)
+    '{0CCE9224-69AE-11D9-BED3-505054503030}',  # File Share
+    '{0CCE9227-69AE-11D9-BED3-505054503030}',  # Other Object Access Events
+    '{0CCE9245-69AE-11D9-BED3-505054503030}',  # Removable Storage
+    # Privilege Use
+    '{0CCE9228-69AE-11D9-BED3-505054503030}',  # Sensitive Privilege Use
+    # Detailed Tracking
+    '{0CCE922B-69AE-11D9-BED3-505054503030}',  # Process Creation
+    '{0CCE9248-69AE-11D9-BED3-505054503030}',  # Plug and Play Events
+    # Policy Change
+    '{0CCE922F-69AE-11D9-BED3-505054503030}',  # Audit Policy Change
+    '{0CCE9230-69AE-11D9-BED3-505054503030}',  # Authentication Policy Change
+    '{0CCE9231-69AE-11D9-BED3-505054503030}',  # Authorization Policy Change
+    '{0CCE9232-69AE-11D9-BED3-505054503030}',  # MPSSVC Rule-Level Policy Change
+    # Account Management
+    '{0CCE9235-69AE-11D9-BED3-505054503030}',  # User Account Management
+    '{0CCE9236-69AE-11D9-BED3-505054503030}',  # Computer Account Management
+    '{0CCE9237-69AE-11D9-BED3-505054503030}',  # Security Group Management
+    '{0CCE923A-69AE-11D9-BED3-505054503030}',  # Other Account Management Events
+    # Account Logon
+    '{0CCE923F-69AE-11D9-BED3-505054503030}'   # Credential Validation
 )
+
+# Use Windows 11 audit defaults only when no Apply-time snapshot exists.
+$script:PtwAuditDefaultsOn = @{
+    '{0CCE9210-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:disable')  # Security State Change
+    '{0CCE9212-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:enable')   # System Integrity
+    '{0CCE9214-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:enable')   # Other System Events
+    '{0CCE9215-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:enable')   # Logon
+    '{0CCE9216-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:disable')  # Logoff
+    '{0CCE9217-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:enable')   # Account Lockout
+    '{0CCE921B-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:disable')  # Special Logon
+    '{0CCE9235-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:enable')   # User Account Management
+    '{0CCE9237-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:disable')  # Security Group Management
+    '{0CCE922F-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:disable')  # Audit Policy Change
+    '{0CCE9230-69AE-11D9-BED3-505054503030}' = @('/success:enable','/failure:disable')  # Authentication Policy Change
+}
 
 function Restore-PowerShellAuditLogging {
     [CmdletBinding(SupportsShouldProcess=$true)]
@@ -238,21 +284,65 @@ function Restore-PowerShellAuditLogging {
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'EnableTranscripting'
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'EnableInvocationHeader'
     Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'OutputDirectory'
-    Write-PTWLog "Reverted PowerShell audit logging (policy overrides removed)" "SUCCESS"
+
+    # Remove protected transcript data after disabling the policy.
+    $transcriptDir = Join-Path $env:ProgramData 'PleaseTweakWindows\PSTranscripts'
+    try {
+        $existing = Get-Item -LiteralPath $transcriptDir -Force -ErrorAction SilentlyContinue
+        if ($existing -and ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            cmd /c rmdir "$transcriptDir" 2>&1 | Out-Null
+        } elseif ($existing) {
+            Remove-Item -LiteralPath $transcriptDir -Recurse -Force -ErrorAction Stop
+        }
+        if (Test-Path -LiteralPath $transcriptDir) {
+            throw 'The transcript directory still exists after deletion.'
+        }
+    } catch {
+        Write-PTWWarning "PowerShell audit policies were removed, but transcript cleanup failed: $($_.Exception.Message)"
+        $script:PTWErrorCount++
+        return
+    }
+
+    Write-PTWLog "Reverted PowerShell audit logging and removed stored transcripts" "SUCCESS"
 }
 
 function Restore-AdvancedAuditPolicy {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert advanced audit policy")) { return }
+    # Restore the Apply-time audit snapshot when available.
+    $auditBackup = Get-PTWStatePath 'audit-policy-backup.csv'
+    if (Test-Path -LiteralPath $auditBackup) {
+        & auditpol.exe /restore /file:"$auditBackup" 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'SCENoApplyLegacyAuditPolicy'
+            Remove-Item -LiteralPath $auditBackup -Force -ErrorAction SilentlyContinue
+            Write-PTWLog "Restored audit policy from the apply-time snapshot (exact pre-tweak state)" "SUCCESS"
+            return
+        }
+        Write-PTWWarning "auditpol /restore failed (exit $LASTEXITCODE) — falling back to the Windows default baseline"
+    }
+    # Without a snapshot, restore the documented Windows client baseline.
+    $auditFailures = 0
     foreach ($guid in $script:PtwAuditSubcategories) {
-        & auditpol.exe /set /subcategory:"$guid" /success:disable /failure:disable 2>&1 | Out-Null
+        if ($script:PtwAuditDefaultsOn.ContainsKey($guid)) {
+            $flags = $script:PtwAuditDefaultsOn[$guid]
+            & auditpol.exe /set /subcategory:"$guid" @flags 2>&1 | Out-Null
+        } else {
+            & auditpol.exe /set /subcategory:"$guid" /success:disable /failure:disable 2>&1 | Out-Null
+        }
+        if ($LASTEXITCODE -ne 0) { $auditFailures++ }
+    }
+    if ($auditFailures -gt 0) {
+        Write-PTWWarning "$auditFailures audit subcategory defaults could not be restored"
+        $script:PTWErrorCount += $auditFailures
+        return
     }
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'SCENoApplyLegacyAuditPolicy'
-    Write-PTWLog "Reverted advanced audit policy (subcategories disabled; SCENoApplyLegacyAuditPolicy removed)" "SUCCESS"
+    Write-PTWLog "Reverted advanced audit policy toward Windows defaults (no snapshot found; default-on subcategories preserved). Verify on a clean Win11 if exact parity matters." "SUCCESS"
 }
 
-function Restore-DisableCoInstallers {
+function Restore-DisableCoInstaller {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert driver co-installer disable")) { return }
@@ -267,6 +357,24 @@ function Restore-WindowsScriptHost {
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows Script Host\Settings' -Name 'Enabled' -Type 'DWord' -Value 1
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows Script Host\Settings' -Name 'Enabled' -Type 'DWord' -Value 1
     Write-PTWLog "Re-enabled Windows Script Host (Enabled=1)" "SUCCESS"
+}
+
+function Restore-FilterAdminToken {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Revert Admin Approval Mode for built-in Administrator")) { return }
+    # Remove the value to restore its absent Windows default.
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'FilterAdministratorToken'
+    Write-PTWLog "Reverted FilterAdministratorToken (override removed)" "SUCCESS"
+}
+
+function Restore-Ntfs8Dot3Disable {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Revert NTFS 8.3 short-name creation")) { return }
+    # The Windows default is 2 (per-volume), NOT absent — write 2 rather than remove.
+    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'NtfsDisable8dot3NameCreation' -Type 'DWord' -Value 2
+    Write-PTWLog "Reverted NTFS 8.3 short-name creation to Windows default (2)" "SUCCESS"
 }
 
 $actionMap = @{
@@ -285,13 +393,12 @@ $actionMap = @{
     'security-account-lockout'              = @{ Revert = { Restore-AccountLockoutPolicy } ; Repair = { } }
     'security-powershell-audit'             = @{ Revert = { Restore-PowerShellAuditLogging } ; Repair = { } }
     'security-audit-policy'                 = @{ Revert = { Restore-AdvancedAuditPolicy } ; Repair = { } }
-    'security-disable-coinstallers'         = @{ Revert = { Restore-DisableCoInstallers } ; Repair = { } }
+    'security-disable-coinstallers'         = @{ Revert = { Restore-DisableCoInstaller } ; Repair = { } }
     'security-wsh-disable'                  = @{ Revert = { Restore-WindowsScriptHost } ; Repair = { } }
+    'security-filter-admin-token'           = @{ Revert = { Restore-FilterAdminToken } ; Repair = { } }
+    'security-ntfs-8dot3-disable'           = @{ Revert = { Restore-Ntfs8Dot3Disable } ; Repair = { } }
 
-    # Alias keys: the GUI (TweakRegistry.cs) sends revert IDs for these toggles WITHOUT
-    # the apply verb (e.g. 'security-clipboard-data-revert'), which strip to the base ID below.
-    # Map each base ID to the SAME scriptblocks as its '-disable'/'-enable' counterpart so the
-    # revert resolves instead of hitting the unknown-action branch.
+    # Map shortened GUI restore IDs to their Apply counterparts.
     'security-clipboard-data'               = @{ Revert = { Restore-ClipboardDataDisable } ; Repair = { Repair-ClipboardDataDisable } }
     'security-autorun'                      = @{ Revert = { Restore-AutorunDisable } ; Repair = { } }
     'security-lock-screen-camera'           = @{ Revert = { Restore-LockScreenCameraDisable } ; Repair = { } }
@@ -313,7 +420,7 @@ function Invoke-Mode {
     }
 }
 
-Write-PTWLog "Note: revert restores Windows DEFAULTS, not any prior custom/hardened values you may have had on shared SYSTEM keys (e.g. LmCompatibilityLevel, restrictanonymous, AutoShareWks, NetbiosOptions). Original values are captured in the registry-backup .reg files under the registry-backups folder of PTW_LOG_DIR if you need to restore them manually." "INFO"
+Write-PTWLog "Restore Default applies Windows defaults; it does not reconstruct prior custom or organization-managed values." "INFO"
 
 if ([string]::IsNullOrWhiteSpace($Action)) {
     Write-PTWLog "No -Action provided; running Mode=$Mode for all security revert actions." "INFO"
@@ -334,15 +441,16 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
     Invoke-Mode -RevertBlock { Restore-AccountLockoutPolicy } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-PowerShellAuditLogging } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-AdvancedAuditPolicy } -RepairBlock { }
-    Invoke-Mode -RevertBlock { Restore-DisableCoInstallers } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-DisableCoInstaller } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-WindowsScriptHost } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-FilterAdminToken } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-Ntfs8Dot3Disable } -RepairBlock { }
 
     Write-PTWLog "Done. A restart may be required for some changes to fully take effect." "SUCCESS"
     Exit-PTW
 }
 
-# Strip -revert suffix: Java sends revert action IDs like 'security-improve-network-revert'
-# but actionMap keys use the base apply IDs like 'security-improve-network'
+# Strip the -revert suffix before action-map lookup.
 $k = $Action.ToLowerInvariant().Trim() -replace '-revert$', ''
 if (-not $actionMap.ContainsKey($k)) {
     Write-PTWLog "Unknown action: $Action" "ERROR"

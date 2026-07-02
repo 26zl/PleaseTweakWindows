@@ -2,22 +2,20 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
-    <Version>2.1.2</Version>
+    <Version>2.1.3</Version>
     <AssemblyName>PleaseTweakWindows</AssemblyName>
     <RootNamespace>PleaseTweakWindows</RootNamespace>
-    <!-- Pin transitive package versions so the dependency graph is reproducible. CI enforces
-         this on the solution restore (build + test). NOTE: the lock file is intentionally NOT
-         enforced on `dotnet publish -r win-x64`, because single-file publish pulls in
-         SDK-version-tied tooling (Microsoft.NET.ILLink.Tasks) that a normal restore never
-         records — locking it would couple the lock file to one SDK patch and break across
-         runners. Locking the dependency restore is the reproducibility win; the publish stays
-         unlocked. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- Produce deterministic managed assemblies. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- Enforce locked dependency restore in CI. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
@@ -28,13 +26,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
-    <PackageReference Include="Serilog" Version="4.2.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
-    <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.9" />
+    <PackageReference Include="Microsoft.NET.ILLink.Tasks" Version="10.0.9" PrivateAssets="all" />
+    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

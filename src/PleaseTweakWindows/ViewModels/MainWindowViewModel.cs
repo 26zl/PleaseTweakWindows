@@ -55,8 +55,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public bool HasNoResults => IsInitialized && !FilteredCategories.Any();
 
-    // When the global running flag flips, push change notifications down to every
-    // category/sub-tweak so their Apply/Revert/Run All IsEnabled bindings update.
+    // Propagate global running-state changes to all action controls.
     partial void OnIsScriptsRunningChanged(bool value)
     {
         foreach (var cat in Categories)
@@ -146,6 +145,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (IsScriptsRunning || _scriptDirectory == null) return;
 
+        ErrorMessage = null; // don't leave a stale failure banner over a successful restore point
         var scriptPath = Path.Combine(_scriptDirectory, "create_restore_point.ps1");
         IsScriptsRunning = true;
 
@@ -156,6 +156,15 @@ public partial class MainWindowViewModel : ViewModelBase
 
             if (exitCode == 0)
                 _restorePointGuard.MarkCreated();
+            // A user Stop mid-creation is a deliberate cancel, not a failure — stay silent.
+            else if (exitCode != ScriptExecutor.CancelledExitCode)
+                ErrorMessage = $"Restore point creation failed (exit {exitCode}) — check the output panel.";
+        }
+        catch (Exception ex)
+        {
+            LogPanel.AppendLine($"[-] ERROR: Restore point creation failed: {ex.Message}");
+            ErrorMessage = "Restore point creation could not be completed — check the output panel.";
+            _logger.LogWarning(ex, "Restore point creation failed");
         }
         finally
         {
@@ -166,17 +175,21 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task HandleCloseAsync()
     {
-        if (_executor.HasActiveOperations)
+        try
         {
-            var cancel = await _dialogService.ShowCancelConfirmationAsync();
-            if (cancel)
+            if (_executor.HasActiveOperations)
             {
+                var cancel = await _dialogService.ShowCancelConfirmationAsync();
+                if (!cancel)
+                    return;
+
                 _executor.CancelAllOperations();
             }
-            else
-            {
-                return;
-            }
+        }
+        catch (Exception ex)
+        {
+            // Never let a close-handler exception escape as an unhandled async-void crash.
+            _logger.LogError(ex, "Close handling failed; closing anyway");
         }
 
         System.Windows.Application.Current?.MainWindow?.Close();
@@ -214,18 +227,22 @@ public partial class MainWindowViewModel : ViewModelBase
                 _logger.LogWarning("Refused to open non-HTTPS URL: {Url}", UpdateUrl);
                 return;
             }
+            // Open update links only when they use HTTPS on github.com.
+            if (!string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Refused to open non-GitHub URL: {Url}", UpdateUrl);
+                return;
+            }
 
-            // Use ArgumentList instead of a single Arguments string so the URL isn't
-            // command-line-parsed by rundll32 — prevents any spaces/quotes in the URL
-            // from splitting into unintended extra arguments.
+            // Pass the URL as one rundll32 argument.
             var psi = new ProcessStartInfo
             {
-                FileName = "rundll32",
+                FileName = Path.Combine(Environment.SystemDirectory, "rundll32.exe"),
                 UseShellExecute = false
             };
             psi.ArgumentList.Add("url.dll,FileProtocolHandler");
             psi.ArgumentList.Add(UpdateUrl);
-            Process.Start(psi);
+            using var process = Process.Start(psi);
         }
         catch (Exception ex)
         {
@@ -233,18 +250,17 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    // Maps every apply action ID to a friendly label and the script that runs it.
-    // The basis for export (all action IDs) and import (validate + run selected).
-    private List<(string ActionId, string DisplayName, string ScriptPath)> BuildApplyActionCatalog()
+    // Map Apply action IDs to display names and scripts for profile import and export.
+    private List<(string ActionId, string DisplayName, string ScriptPath, SubTweakRequirement? Requires)> BuildApplyActionCatalog()
     {
-        var catalog = new List<(string ActionId, string DisplayName, string ScriptPath)>();
+        var catalog = new List<(string ActionId, string DisplayName, string ScriptPath, SubTweakRequirement? Requires)>();
         if (_scriptDirectory == null) return catalog;
 
         foreach (var tweak in _tweakRegistry.GetTweaks())
         {
             var scriptPath = Path.Combine(_scriptDirectory, tweak.ApplyScript);
             foreach (var sub in tweak.SubTweaks)
-                catalog.Add((sub.ApplyAction, $"{tweak.Title}: {sub.Name}", scriptPath));
+                catalog.Add((sub.ApplyAction, $"{tweak.Title}: {sub.Name}", scriptPath, sub.Requires));
         }
         return catalog;
     }
@@ -253,6 +269,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private void ExportConfig()
     {
         if (_scriptDirectory == null) return;
+        ErrorMessage = null; // clear any stale failure banner before a fresh export
         var catalog = BuildApplyActionCatalog();
         if (catalog.Count == 0)
         {
@@ -270,7 +287,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         try
         {
-            var version = GetType().Assembly.GetName().Version?.ToString() ?? "unknown";
+            // Use AssemblyInformationalVersion for exported profile versions.
+            var version = UpdateChecker.CurrentVersion;
             var json = _configProfileService.Export(catalog.Select(c => c.ActionId), version, DateTimeOffset.UtcNow);
             File.WriteAllText(dialog.FileName, json);
             LogPanel.AppendLine($"[+] Exported all {catalog.Count} available tweaks (a template — import lets you pick which to apply) to {dialog.FileName}");
@@ -294,63 +312,89 @@ public partial class MainWindowViewModel : ViewModelBase
         };
         if (openDialog.ShowDialog() != true) return;
 
-        string json;
-        try
-        {
-            json = await File.ReadAllTextAsync(openDialog.FileName);
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Could not read profile: {ex.Message}";
-            return;
-        }
-
-        var catalog = BuildApplyActionCatalog();
-        var byId = catalog
-            .GroupBy(c => c.ActionId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        var known = new HashSet<string>(byId.Keys, StringComparer.Ordinal);
-
-        var result = _configProfileService.Import(json, known);
-        if (result.Error != null)
-        {
-            ErrorMessage = result.Error;
-            return;
-        }
-        if (result.ValidActions.Count == 0)
-        {
-            ErrorMessage = "No tweaks in that profile apply to this build.";
-            return;
-        }
-
-        var reviewItems = result.ValidActions
-            .Select(a => (ActionId: a, DisplayName: byId[a].DisplayName))
-            .ToList();
-        var selected = await _dialogService.ShowConfigReviewAsync(reviewItems, result.DroppedActions.Count);
-        if (selected == null || selected.Count == 0) return;
-
-        // One batch confirmation, escalated if any selected tweak is high-risk.
-        var highRisk = selected.Any(a => _dialogService.IsHighRisk(a));
-        var batchAction = highRisk ? "run-all-batch-high-risk" : "run-all-batch";
-        var confirmed = await _dialogService.ShowConfirmationAsync(batchAction, $"Imported profile: {selected.Count} tweaks");
-        if (!confirmed) return;
-
-        Action<string> onOutput = line => UiDispatcher.Post(() => LogPanel.AppendLine(line));
-
-        // One restore point for the whole import, then skip it inside the loop.
-        var proceed = await _restorePointGuard.EnsureRestorePointAsync(_scriptDirectory, onOutput, isHighRisk: highRisk);
-        if (!proceed) return;
-
+        // Block other actions throughout profile reading, review, and execution.
+        ErrorMessage = null;
         IsScriptsRunning = true;
         try
         {
+            string json;
+            try
+            {
+                await using var stream = new FileStream(openDialog.FileName, new FileStreamOptions
+                {
+                    Mode = FileMode.Open,
+                    Access = FileAccess.Read,
+                    Share = FileShare.Read,
+                    BufferSize = 4096,
+                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                });
+                if (stream.Length > ConfigProfileService.MaxProfileBytes)
+                {
+                    ErrorMessage = $"Profile is too large. Maximum size is {ConfigProfileService.MaxProfileBytes / 1024} KB.";
+                    return;
+                }
+                using var reader = new StreamReader(stream);
+                json = await reader.ReadToEndAsync();
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = $"Could not read profile: {ex.Message}";
+                return;
+            }
+
+            var catalog = BuildApplyActionCatalog();
+            var byId = catalog
+                .GroupBy(c => c.ActionId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+            var known = new HashSet<string>(byId.Keys, StringComparer.Ordinal);
+
+            var result = _configProfileService.Import(json, known);
+            if (result.Error != null)
+            {
+                ErrorMessage = result.Error;
+                return;
+            }
+            if (result.ValidActions.Count == 0)
+            {
+                ErrorMessage = "No tweaks in that profile apply to this build.";
+                return;
+            }
+
+            var reviewItems = result.ValidActions
+                .Select(a => (ActionId: a, DisplayName: byId[a].DisplayName))
+                .ToList();
+            var selected = await _dialogService.ShowConfigReviewAsync(reviewItems, result.DroppedActions.Count);
+            if (selected == null || selected.Count == 0) return;
+
+            // One batch confirmation, escalated if any selected tweak is high-risk.
+            var highRisk = selected.Any(a => _dialogService.IsHighRisk(a));
+            var batchAction = highRisk ? "run-all-batch-high-risk" : "run-all-batch";
+            var confirmed = await _dialogService.ShowConfirmationAsync(batchAction, $"Imported profile: {selected.Count} tweaks");
+            if (!confirmed) return;
+
+            Action<string> onOutput = line => UiDispatcher.Post(() => LogPanel.AppendLine(line));
+
+            // One restore point for the whole import, then skip it inside the loop.
+            var proceed = await _restorePointGuard.EnsureRestorePointAsync(_scriptDirectory, onOutput, isHighRisk: highRisk);
+            if (!proceed)
+            {
+                if (_restorePointGuard.LastStatus == RestorePointStatus.Failed)
+                    ErrorMessage = "Restore point creation failed — import aborted. See the output panel.";
+                return;
+            }
+
             foreach (var actionId in selected)
             {
                 var entry = byId[actionId];
-                // High-risk tweaks still show their specific warning (UAC, wu-disable,
-                // persist, NTLM block, ...) so an imported profile can't silently apply a
-                // severe change behind one generic batch prompt. Reviewed non-high-risk
-                // tweaks run without an extra prompt.
+
+                // Skip imported actions whose dependencies are unmet.
+                if (!RegistryState.IsSatisfied(entry.Requires))
+                {
+                    onOutput($"[!] Skipped '{entry.DisplayName}' — prerequisite not met: {entry.Requires?.UnmetMessage}");
+                    continue;
+                }
+
+                // Keep per-action warnings for high-risk imports only.
                 var skipConfirm = !_dialogService.IsHighRisk(actionId);
                 var runResult = await ScriptRunner.RunAsync(
                     entry.ScriptPath, actionId, entry.DisplayName, _scriptDirectory,
@@ -362,6 +406,11 @@ public partial class MainWindowViewModel : ViewModelBase
                     onOutput("[!] Import cancelled by user — stopping remaining tweaks.");
                     break;
                 }
+                if (runResult.Outcome == ScriptRunOutcome.Cancelled)
+                {
+                    onOutput("[!] Stopped by user — remaining tweaks not applied.");
+                    break;
+                }
                 if (runResult.Outcome == ScriptRunOutcome.Applied && runResult.ExitCode != 0)
                 {
                     onOutput($"[!] '{entry.DisplayName}' exited with code {runResult.ExitCode} — stopping import.");
@@ -369,6 +418,12 @@ public partial class MainWindowViewModel : ViewModelBase
                     break;
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            LogPanel.AppendLine($"[-] ERROR: Import failed: {ex.Message}");
+            ErrorMessage = "Profile import could not be completed — check the output panel.";
+            _logger.LogWarning(ex, "Config import failed");
         }
         finally
         {
@@ -378,11 +433,20 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task CheckForUpdatesAsync()
     {
+        // PTW_NO_UPDATE_CHECK=1 disables the GitHub release check.
+        var optOut = Environment.GetEnvironmentVariable("PTW_NO_UPDATE_CHECK");
+        if (string.Equals(optOut, "1", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(optOut, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("Update check skipped (PTW_NO_UPDATE_CHECK set).");
+            return;
+        }
+
         var update = await _updateChecker.CheckForUpdateAsync();
         if (update != null)
         {
             UpdateVersion = update.Version;
-            UpdateUrl = update.DownloadUrl;
+            UpdateUrl = update.ReleasePageUrl;
             ShowUpdateBanner = true;
         }
     }

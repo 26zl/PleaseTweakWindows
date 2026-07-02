@@ -33,6 +33,18 @@ public class ScriptExecutorTests
         _executor.IsValidAction(action).Should().Be(expected);
     }
 
+    [Fact]
+    public void IsValidAction_RejectsControlCharsAndOverLength()
+    {
+        // Reject action IDs with trailing line breaks.
+        _executor.IsValidAction("trailing-newline\n").Should().BeFalse();
+        _executor.IsValidAction("trailing-cr\r").Should().BeFalse();
+        _executor.IsValidAction("mid\nnewline").Should().BeFalse();
+        // Length floor/ceiling.
+        _executor.IsValidAction(new string('a', 64)).Should().BeTrue();
+        _executor.IsValidAction(new string('a', 65)).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(null, false)]
     [InlineData("", false)]
@@ -99,7 +111,8 @@ public class ScriptExecutorTests
     public async Task RunScriptAsync_RejectsInvalidPath()
     {
         var output = new List<string>();
-        var result = await _executor.RunScriptAsync("invalid.txt", null, line => output.Add(line));
+        var result = await _executor.RunScriptAsync("invalid.txt", null, line => output.Add(line),
+            TestContext.Current.CancellationToken);
 
         result.Should().Be(-1);
         output.Should().Contain(s => s.Contains("Invalid script path"));
@@ -109,7 +122,8 @@ public class ScriptExecutorTests
     public async Task RunScriptAsync_RejectsNonexistentScript()
     {
         var output = new List<string>();
-        var result = await _executor.RunScriptAsync("nonexistent.ps1", null, line => output.Add(line));
+        var result = await _executor.RunScriptAsync("nonexistent.ps1", null, line => output.Add(line),
+            TestContext.Current.CancellationToken);
 
         result.Should().Be(-1);
         output.Should().Contain(s => s.Contains("Script not found"));
@@ -119,15 +133,38 @@ public class ScriptExecutorTests
     public async Task RunScriptAsync_RejectsInvalidAction()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), "test-valid.ps1");
-        await File.WriteAllTextAsync(tempFile, "# test");
+        await File.WriteAllTextAsync(tempFile, "# test", TestContext.Current.CancellationToken);
 
         try
         {
             var output = new List<string>();
-            var result = await _executor.RunScriptAsync(tempFile, "bad action!", line => output.Add(line));
+            var result = await _executor.RunScriptAsync(tempFile, "bad action!", line => output.Add(line),
+                TestContext.Current.CancellationToken);
 
             result.Should().Be(-1);
             output.Should().Contain(s => s.Contains("Invalid action"));
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task RunScriptAsync_RejectsWhenBaseDirNotSet()
+    {
+        // Refuse execution until the scripts base directory is configured.
+        var tempFile = Path.Combine(Path.GetTempPath(), $"nobase-{Guid.NewGuid():N}.ps1");
+        await File.WriteAllTextAsync(tempFile, "# test", TestContext.Current.CancellationToken);
+        try
+        {
+            var output = new List<string>();
+            var result = await _executor.RunScriptAsync(tempFile, null, line => output.Add(line),
+                TestContext.Current.CancellationToken);
+
+            result.Should().Be(-1);
+            output.Should().Contain(s => s.Contains("base directory not initialized", StringComparison.OrdinalIgnoreCase));
+            _mockRunner.Verify(r => r.Start(It.IsAny<System.Diagnostics.ProcessStartInfo>()), Times.Never);
         }
         finally
         {
@@ -171,16 +208,28 @@ public class ScriptExecutorTests
         path.Should().Contain("WindowsPowerShell");
     }
 
+    // Materialize an embedded script that matches the checksum manifest.
+    private static (string baseDir, string scriptPath) MaterializeEmbeddedScript(string relativePath = "CommonFunctions.ps1")
+    {
+        var asm = typeof(ScriptExecutor).Assembly;
+        var suffix = "Scripts." + relativePath.Replace('/', '.').Replace('\\', '.').Replace(' ', '_');
+        var name = asm.GetManifestResourceNames()
+            .First(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+
+        var baseDir = Path.Combine(Path.GetTempPath(), $"ptw-test-{Guid.NewGuid():N}");
+        var dest = Path.Combine(baseDir, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        using (var s = asm.GetManifestResourceStream(name)!)
+        using (var fs = File.Create(dest))
+            s.CopyTo(fs);
+        return (baseDir, dest);
+    }
+
     [Fact]
     public async Task RunScriptAsync_AbortsOnHashMismatch_TOCTOU()
     {
-        // RunScriptAsync hashes the file once up front, then ExecuteScriptAsync
-        // re-hashes it and aborts if the file changed. The onOutput callback for
-        // "> Starting:" fires AFTER the first hash and BEFORE the re-hash, giving us
-        // a deterministic seam to mutate the file mid-flight and trigger the TOCTOU
-        // abort branch without ever reaching the process-launch code.
-        var tempFile = Path.Combine(Path.GetTempPath(), $"toctou-{Guid.NewGuid():N}.ps1");
-        await File.WriteAllTextAsync(tempFile, "# original content");
+        // Mutate a valid script between its initial and execution-time integrity checks.
+        var (baseDir, scriptPath) = MaterializeEmbeddedScript();
 
         try
         {
@@ -190,16 +239,17 @@ public class ScriptExecutorTests
             void OnOutput(string line)
             {
                 output.Add(line);
-                // Mutate the file exactly once, on the first callback (the "> Starting:"
-                // line), which lands between the two hash computations.
+                // Mutate once after the initial integrity check.
                 if (!mutated)
                 {
                     mutated = true;
-                    File.WriteAllText(tempFile, "# TAMPERED content - injected after validation");
+                    File.WriteAllText(scriptPath, "# TAMPERED content - injected after validation");
                 }
             }
 
-            var result = await _executor.RunScriptAsync(tempFile, null, OnOutput);
+            _executor.SetScriptsBaseDir(baseDir);
+            var result = await _executor.RunScriptAsync(scriptPath, null, OnOutput,
+                TestContext.Current.CancellationToken);
 
             result.Should().Be(-1, "a hash mismatch between validation and execution must abort the script");
             output.Should().Contain(s => s.Contains("integrity check failed"));
@@ -209,25 +259,49 @@ public class ScriptExecutorTests
         }
         finally
         {
-            File.Delete(tempFile);
+            Directory.Delete(baseDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task RunScriptAsync_RejectsScriptNotInManifest()
+    {
+        // Refuse scripts that are absent from the embedded checksum manifest.
+        var baseDir = Path.Combine(Path.GetTempPath(), $"ptw-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(baseDir);
+        var rogue = Path.Combine(baseDir, "not-a-real-script.ps1");
+        await File.WriteAllTextAsync(rogue, "# unknown payload", TestContext.Current.CancellationToken);
+
+        try
+        {
+            _executor.SetScriptsBaseDir(baseDir);
+            var output = new List<string>();
+            var result = await _executor.RunScriptAsync(rogue, null, line => output.Add(line),
+                TestContext.Current.CancellationToken);
+
+            result.Should().Be(-1);
+            output.Should().Contain(s => s.Contains("not in embedded checksum manifest", StringComparison.OrdinalIgnoreCase));
+            _mockRunner.Verify(r => r.Start(It.IsAny<System.Diagnostics.ProcessStartInfo>()), Times.Never);
+        }
+        finally
+        {
+            Directory.Delete(baseDir, true);
         }
     }
 
     [Fact]
     public async Task RunScriptAsync_HonorsAlreadyCancelledToken()
     {
-        // A token cancelled before the semaphore is acquired must short-circuit:
-        // _semaphore.WaitAsync(cancellationToken) throws OperationCanceledException
-        // and the process is never started.
-        var tempFile = Path.Combine(Path.GetTempPath(), $"cancel-{Guid.NewGuid():N}.ps1");
-        await File.WriteAllTextAsync(tempFile, "# test");
+        // Short-circuit when cancellation occurs before semaphore acquisition.
+        var (baseDir, scriptPath) = MaterializeEmbeddedScript();
 
         try
         {
             using var cts = new CancellationTokenSource();
             cts.Cancel();
 
-            var act = async () => await _executor.RunScriptAsync(tempFile, null, null, cts.Token);
+            _executor.SetScriptsBaseDir(baseDir);
+            var act = async () => await _executor.RunScriptAsync(scriptPath, null, null, cts.Token);
 
             await act.Should().ThrowAsync<OperationCanceledException>();
             _mockRunner.Verify(r => r.Start(It.IsAny<System.Diagnostics.ProcessStartInfo>()), Times.Never);
@@ -235,16 +309,34 @@ public class ScriptExecutorTests
         }
         finally
         {
-            File.Delete(tempFile);
+            Directory.Delete(baseDir, true);
         }
+    }
+
+    [Fact]
+    public void LoadManifestHashes_ContainsKnownScriptsAsLowercaseSha256()
+    {
+        var map = ScriptExecutor.LoadManifestHashes();
+
+        map.Should().ContainKey("CommonFunctions.ps1");
+        map.Should().ContainKey("Privacy Security/revert-privacy.ps1");
+        // Hashes are normalized to lowercase 64-hex so they compare against ComputeFileHash.
+        map["CommonFunctions.ps1"].Should().MatchRegex("^[0-9a-f]{64}$");
+    }
+
+    [Theory]
+    [InlineData(@"C:\extract", @"C:\extract\CommonFunctions.ps1", "CommonFunctions.ps1")]
+    [InlineData(@"C:\extract", @"C:\extract\Privacy Security\revert-privacy.ps1", "Privacy Security/revert-privacy.ps1")]
+    [InlineData(@"C:\extract", @"C:\other\evil.ps1", null)]
+    public void ToManifestKey_NormalizesToForwardSlashRelativePath(string baseDir, string scriptPath, string? expected)
+    {
+        ScriptExecutor.ToManifestKey(baseDir, scriptPath).Should().Be(expected);
     }
 
     [Fact]
     public void CancelAllOperations_ClearsActiveStateAndRotatesToken()
     {
-        // With no active processes, CancelAllOperations must still be safe to call,
-        // leave HasActiveOperations false, and not throw. This guards the global-CTS
-        // swap + _activeProcesses.Clear() path used by "Cancel All".
+        // Allow cancellation when no processes are active.
         _executor.HasActiveOperations.Should().BeFalse();
 
         var act = () => _executor.CancelAllOperations();
@@ -259,12 +351,7 @@ public class ScriptExecutorTests
     [Fact]
     public void ConsolidatedScripts_AllExistAsEmbeddedResources()
     {
-        // ConsolidatedScripts is a hand-maintained list of script filenames that
-        // receive the -Action argument. If a script is renamed and this list isn't
-        // updated, Contains() silently returns false and the script runs without its
-        // action — no error, just wrong behavior. Embedded resource names end with
-        // ".<FileName>" (dirs -> '.', spaces -> '_'), so a leading-dot EndsWith match
-        // ties each entry to a real shipped script.
+        // Every action-dispatch script must map to a shipped embedded resource.
         var resources = typeof(ScriptExecutor).Assembly.GetManifestResourceNames();
 
         foreach (var name in ScriptExecutor.ConsolidatedScripts)
@@ -278,10 +365,7 @@ public class ScriptExecutorTests
     [Fact]
     public void ConsolidatedScripts_CoversEveryRegistryScript()
     {
-        // Every script the registry routes an -Action to must be listed in
-        // ConsolidatedScripts. If a category script is renamed without updating that
-        // list, Contains() silently returns false and the script runs WITHOUT its
-        // -Action argument. This converts that silent drift into a test failure.
+        // Registry-routed scripts must receive the -Action argument.
         var registry = new TweakRegistry();
 
         var registryScripts = registry.GetTweaks()
@@ -297,5 +381,57 @@ public class ScriptExecutorTests
                 .Should().BeTrue(
                     $"registry script '{name}' must be listed in ScriptExecutor.ConsolidatedScripts so it receives its -Action argument (a rename silently drops it otherwise)");
         }
+    }
+
+    // Consolidated scripts receive the action and the protected embedded-mode paths.
+    [Fact]
+    public void BuildPsi_ConsolidatedScript_IncludesActionAndEmbeddedEnv()
+    {
+        var psi = ScriptExecutor.BuildScriptProcessStartInfo(
+            @"C:\extract\privacy.ps1", "telemetry-off", @"C:\extract", @"C:\protected-state");
+
+        psi.ArgumentList.Should().ContainInOrder("-File", @"C:\extract\privacy.ps1");
+        psi.ArgumentList.Should().ContainInOrder("-Action", "telemetry-off");
+        psi.Environment["PTW_EMBEDDED"].Should().Be("1");
+        psi.Environment.Should().ContainKey("PTW_LOG_DIR");
+        psi.Environment.Should().ContainKey("PTW_STATE_DIR");
+        psi.Environment["PTW_STATE_DIR"].Should().Be(Path.GetFullPath(@"C:\protected-state"));
+        psi.Environment["PTW_SCRIPTS_DIR"].Should().Be(Path.GetFullPath(@"C:\extract"));
+        psi.Environment["PTW_RUNTIME_DIR"].Should().Be(
+            Path.Combine(Path.GetFullPath(@"C:\extract"), ".runtime"));
+        psi.Environment["TEMP"].Should().Be(psi.Environment["PTW_RUNTIME_DIR"]);
+        psi.Environment["TMP"].Should().Be(psi.Environment["PTW_RUNTIME_DIR"]);
+        psi.WorkingDirectory.Should().Be(Path.GetFullPath(@"C:\extract"));
+        psi.Environment["PATH"].Should().NotBeNullOrWhiteSpace();
+        psi.Environment["ComSpec"].Should().EndWith("cmd.exe");
+        psi.UseShellExecute.Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildPsi_NonConsolidatedScript_OmitsAction()
+    {
+        // create_restore_point.ps1 is the one script that intentionally runs WITHOUT -Action.
+        var psi = ScriptExecutor.BuildScriptProcessStartInfo(@"C:\extract\create_restore_point.ps1", "anything");
+
+        psi.ArgumentList.Should().NotContain("-Action");
+        psi.ArgumentList.Should().NotContain("anything");
+    }
+
+    [Fact]
+    public void BuildPsi_AlwaysHardensInvocation_AndNullActionOmitsAction()
+    {
+        var psi = ScriptExecutor.BuildScriptProcessStartInfo(@"C:\extract\privacy.ps1", null);
+
+        psi.ArgumentList.Should().ContainInOrder(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File");
+        // null action → no -Action even for a consolidated script.
+        psi.ArgumentList.Should().NotContain("-Action");
+    }
+
+    [Fact]
+    public void InstallerActions_GetLongerTimeout()
+    {
+        ScriptExecutor.GetTimeout("nvidia-driver-install").Should().Be(TimeSpan.FromMinutes(45));
+        ScriptExecutor.GetTimeout("telemetry-off").Should().Be(TimeSpan.FromMinutes(10));
     }
 }

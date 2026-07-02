@@ -1,8 +1,4 @@
-# Debloat
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File debloat.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-18
+﻿# Debloat
 #Requires -RunAsAdministrator
 
 param(
@@ -16,14 +12,18 @@ param(
         "widgets-enable",
         "background-apps-disable",
         "background-apps-enable",
+        "capabilities-remove-legacy",
+        "capabilities-restore-legacy",
+        "features-virtualization-enable",
+        "features-virtualization-disable",
+        "reserved-storage-disable",
+        "reserved-storage-enable",
         "services-disable",
         "services-restore",
         "menu"
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 #region Logging
 function Write-PTWLog {
@@ -49,12 +49,11 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
-# Apps protected from removal: core shell, Store/app infrastructure, security, GPU
-# drivers and a few useful apps. Shared by the one-shot 'bloatware-remove' action AND
-# the persistent 'bloatware-persist-on' scheduled task so the two never drift apart.
+# Protect core Windows, security, driver, Store, and utility packages from removal.
 $script:PtwProtectedPrefixes = @(
     # Core Windows Shell
     'Microsoft.Windows.ShellExperienceHost',
@@ -108,6 +107,25 @@ $script:PtwProtectedPrefixes = @(
     'Microsoft.ScreenSketch'
 )
 
+# Share removable legacy capabilities between Apply and Restore Default.
+$script:PtwLegacyCapabilities = @(
+    'Browser.InternetExplorer~~~~0.0.11.0',
+    'Microsoft.Windows.WordPad~~~~0.0.1.0',
+    'App.StepsRecorder~~~~0.0.1.0',
+    'Microsoft.Windows.PowerShell.ISE~~~~0.0.1.0',
+    'App.Support.QuickAssist~~~~0.0.1.0',
+    'Media.WindowsMediaPlayer~~~~0.0.12.0'
+)
+
+# Optional Windows virtualization features toggled by 'features-virtualization-enable/disable'.
+$script:PtwVirtualizationFeatures = @(
+    'Microsoft-Hyper-V-All',
+    'Microsoft-Windows-Subsystem-Linux',
+    'VirtualMachinePlatform',
+    'HypervisorPlatform',
+    'Containers-DisposableClientVM'
+)
+
 #region Action Dispatcher
 switch ($Action.ToLowerInvariant()) {
 
@@ -132,7 +150,12 @@ switch ($Action.ToLowerInvariant()) {
             return $false
         }
 
-        $allApps = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+        try {
+            $allApps = Get-AppxPackage -AllUsers -ErrorAction Stop
+        } catch {
+            Write-Output "[-] ERROR: Could not enumerate installed Store apps: $($_.Exception.Message)"
+            exit 1
+        }
         $appsToRemove = @()
         foreach ($app in $allApps) {
             if (Test-ProtectedApp -App $app -Prefixes $protectedPrefixes) { continue }
@@ -180,39 +203,63 @@ foreach (`$app in `$apps) {
 "@
         Set-Content -Path $restoreScriptPath -Value $restoreScript -Encoding UTF8
 
-        # Deprovision matching packages FIRST so Windows Update and freshly-created user
-        # profiles do not re-add them after this removal. Previously only Remove-AppxPackage
-        # ran, so removed apps reappeared on the next feature update / new account.
+        # Deprovision first so updates and new profiles do not restore the packages.
         $removeNames = @($appsToRemove | ForEach-Object { $_.Name })
-        Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($removeNames -contains $_.DisplayName) {
-                Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null
+        $failed = 0
+        try {
+            Get-AppxProvisionedPackage -Online -ErrorAction Stop | ForEach-Object {
+                if ($removeNames -contains $_.DisplayName) {
+                    $provisioned = $_
+                    try {
+                        Remove-AppxProvisionedPackage -Online -PackageName $provisioned.PackageName -ErrorAction Stop | Out-Null
+                    } catch {
+                        $failed++
+                        Write-Output "[!] Could not de-provision $($provisioned.DisplayName): $($_.Exception.Message)"
+                    }
+                }
             }
+        } catch {
+            Write-Output "[-] ERROR: Could not enumerate provisioned Store apps: $($_.Exception.Message)"
+            exit 1
         }
 
         $removed = 0
         foreach ($app in $appsToRemove) {
             try {
-                Remove-AppxPackage -Package $app.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                Remove-AppxPackage -Package $app.PackageFullName -AllUsers -ErrorAction Stop
                 $removed++
             } catch {
-                Write-Verbose "Failed to remove $($app.Name): $($_.Exception.Message)"
+                $failed++
+                Write-Output "[!] Could not remove $($app.Name): $($_.Exception.Message)"
             }
         }
-        Stop-Process -Force -Name OneDrive -ErrorAction SilentlyContinue
-        cmd /c "$env:SystemRoot\SysWOW64\OneDriveSetup.exe -uninstall >nul 2>&1"
-        Write-Output "[+] SUCCESS: Removed $removed apps (restart required)"
         Write-Output "[i] Backup list: $backupPath"
         Write-Output "[i] Restore script: $restoreScriptPath"
+        if ($failed -gt 0) {
+            Write-Output "[-] PARTIAL: Removed $removed apps, but $failed package operation(s) failed. Review the output above."
+            exit 1
+        }
+        Write-Output "[+] SUCCESS: Removed $removed apps (restart required)"
         Exit-PTW
     }
 
     "store-install" {
         Write-Output "[*] Reinstalling Microsoft Store..."
-        Get-AppxPackage -AllUsers *Microsoft.WindowsStore* -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($_.InstallLocation -and (Test-Path "$($_.InstallLocation)\AppXManifest.xml")) {
-                Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue
+        $registered = 0
+        try {
+            Get-AppxPackage -AllUsers *Microsoft.WindowsStore* -ErrorAction Stop | ForEach-Object {
+                if ($_.InstallLocation -and (Test-Path "$($_.InstallLocation)\AppXManifest.xml")) {
+                    Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction Stop
+                    $registered++
+                }
             }
+        } catch {
+            Write-Output "[-] ERROR: Microsoft Store registration failed: $($_.Exception.Message)"
+            exit 1
+        }
+        if ($registered -eq 0) {
+            Write-Output "[-] ERROR: No installed Microsoft Store package was available to register."
+            exit 1
         }
         Write-Output "[+] SUCCESS: Microsoft Store reinstalled"
         Exit-PTW
@@ -251,7 +298,7 @@ foreach (`$app in `$apps) {
 
     "bloatware-persist-on" {
         Write-Output "[*] Enabling persistent bloatware removal..."
-        Write-Output "[!] WARNING: this installs a SYSTEM scheduled task that, at EVERY logon, removes and de-provisions all non-protected Store apps. Apps Windows re-adds via updates will be removed again. Turn it off with the Revert button."
+        Write-Output "[!] WARNING: this installs a SYSTEM scheduled task that, at EVERY logon, removes and de-provisions all non-protected Store apps. Apps Windows re-adds via updates will be removed again. Turn it off with Restore Default."
         $ProgressPreference = 'SilentlyContinue'
 
         $prefixLiteral = ($script:PtwProtectedPrefixes | ForEach-Object { "    '$_'" }) -join ",`n"
@@ -298,15 +345,23 @@ Get-AppxPackage -AllUsers | ForEach-Object {
         $persistDir = Join-Path $ptwRoot "Scripts"
         $persistScript = Join-Path $persistDir "BloatRemoval.ps1"
         try {
-            # This script runs as SYSTEM at every logon, so the file it runs from must not be
-            # modifiable OR pre-stageable by a non-admin, or it is a privilege-escalation vector.
-            # C:\ProgramData is Users-writable by default, and a pre-created file keeps its
-            # creator as OWNER (an owner implicitly holds WRITE_DAC). So harden the whole PTW tree:
-            #   1) ensure it exists, 2) SEIZE OWNERSHIP to Administrators recursively, 3) RESET
-            #   child ACLs (clears any attacker-set or broken-inheritance ACEs), 4) lock the DACL
-            #   to SYSTEM + Administrators full, Users read-only. Then recreate the script dir
-            #   fresh (drops any planted file / reparse point) before writing.
+            # Protect the scheduled-task payload from standard-user replacement.
+            $existingRoot = Get-Item -LiteralPath $ptwRoot -Force -ErrorAction SilentlyContinue
+            if ($existingRoot -and ($existingRoot.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                Write-Output "[!] '$ptwRoot' is a reparse point (junction/symlink) — removing the link before hardening."
+                cmd /c rmdir "$ptwRoot" 2>&1 | Out-Null
+                if ((Test-Path -LiteralPath $ptwRoot) -or (Get-Item -LiteralPath $ptwRoot -Force -ErrorAction SilentlyContinue)) {
+                    Write-Output "[-] ERROR: could not remove the reparse point at $ptwRoot. Aborting to avoid an unsafe privileged operation."
+                    exit 1
+                }
+            }
             New-Item -ItemType Directory -Path $ptwRoot -Force | Out-Null
+            # Recheck for a reparse point immediately before recursive ACL changes.
+            $rootFinal = Get-Item -LiteralPath $ptwRoot -Force -ErrorAction SilentlyContinue
+            if ((-not $rootFinal) -or ($rootFinal.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                Write-Output "[-] ERROR: '$ptwRoot' is missing or a reparse point right before lockdown. Aborting."
+                exit 1
+            }
             & icacls.exe "$ptwRoot" /setowner "*S-1-5-32-544" /T /C 2>&1 | Out-Null
             & icacls.exe "$ptwRoot" /reset /T /C 2>&1 | Out-Null
             & icacls.exe "$ptwRoot" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" 2>&1 | Out-Null
@@ -314,9 +369,7 @@ Get-AppxPackage -AllUsers | ForEach-Object {
                 Write-Output "[-] ERROR: could not lock $ptwRoot (icacls exit $LASTEXITCODE). Aborting to avoid an unsafe SYSTEM auto-run script."
                 exit 1
             }
-            # Best-effort re-stamp of any pre-existing children (e.g. an earlier logs\ dir) with the
-            # tightened ACL. Uses /T and is intentionally NOT failure-checked: /C can return non-zero
-            # on a transient locked child, which must not abort the already-verified root lock above.
+            # Apply the protected ACL to existing children without failing on transient locks.
             & icacls.exe "$ptwRoot" /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" /T /C 2>&1 | Out-Null
             Remove-Item -LiteralPath $persistDir -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $persistDir -Force | Out-Null
@@ -349,7 +402,67 @@ Get-AppxPackage -AllUsers | ForEach-Object {
         Unregister-ScheduledTask -TaskName 'BloatRemoval' -TaskPath '\PleaseTweakWindows\' -Confirm:$false -ErrorAction SilentlyContinue
         $persistScript = Join-Path $env:ProgramData "PleaseTweakWindows\Scripts\BloatRemoval.ps1"
         Remove-Item -Path $persistScript -Force -ErrorAction SilentlyContinue
+        $remainingTask = Get-ScheduledTask -TaskName 'BloatRemoval' -TaskPath '\PleaseTweakWindows\' -ErrorAction SilentlyContinue
+        if ($remainingTask -or (Test-Path -LiteralPath $persistScript)) {
+            Write-Output "[-] ERROR: The scheduled task or persistence script could not be fully removed."
+            exit 1
+        }
         Write-Output "[+] SUCCESS: persistent bloatware removal disabled (the scheduled task and its script were removed)"
+        Exit-PTW
+    }
+
+    "capabilities-remove-legacy" {
+        Write-Output "[*] Removing legacy Windows capabilities (IE11, WordPad, Steps Recorder, PowerShell ISE, Quick Assist, Windows Media Player)..."
+        Write-Output "[!] NOTE: these are optional, re-installable Windows capabilities. Restore Default adds them back (requires internet or a Features-on-Demand source)."
+        Remove-WindowsCapabilitiesSafe -Patterns $script:PtwLegacyCapabilities
+        Write-Output "[+] SUCCESS: legacy capabilities removed (those that were present)"
+        Exit-PTW
+    }
+
+    "capabilities-restore-legacy" {
+        Write-Output "[*] Restoring legacy Windows capabilities..."
+        Add-WindowsCapabilitiesSafe -Patterns $script:PtwLegacyCapabilities
+        Write-Output "[+] SUCCESS: legacy capabilities restored (those available from the configured source)"
+        Exit-PTW
+    }
+
+    "features-virtualization-enable" {
+        Write-Output "[*] Enabling Windows virtualization features (Hyper-V, WSL, Virtual Machine Platform, Windows Hypervisor Platform, Windows Sandbox)..."
+        Write-Output "[!] WARNING: enabling Hyper-V turns on the hypervisor, which can break third-party hypervisors (VMware/VirtualBox older versions) and some anti-cheat games, and REQUIRES A REBOOT. Restore Default disables them again."
+        Enable-OptionalFeaturesSafe -Names $script:PtwVirtualizationFeatures
+        Write-Output "[+] SUCCESS: virtualization features enabled (reboot required)"
+        Exit-PTW
+    }
+
+    "features-virtualization-disable" {
+        Write-Output "[*] Disabling Windows virtualization features..."
+        Disable-OptionalFeaturesSafe -Names $script:PtwVirtualizationFeatures
+        Write-Output "[+] SUCCESS: virtualization features disabled (reboot required)"
+        Exit-PTW
+    }
+
+    "reserved-storage-disable" {
+        Write-Output "[*] Disabling Windows Reserved Storage (frees the ~7 GB set aside for updates)..."
+        Write-Output "[!] NOTE: Set-ReservedStorageState fails if a feature update is mid-flight; rerun after updates settle. Restore Default re-enables it."
+        try {
+            Set-ReservedStorageState -State Disabled -ErrorAction Stop
+            Write-Output "[+] SUCCESS: Reserved Storage disabled"
+        } catch {
+            Write-Output "[-] ERROR: could not disable Reserved Storage: $($_.Exception.Message)"
+            exit 1
+        }
+        Exit-PTW
+    }
+
+    "reserved-storage-enable" {
+        Write-Output "[*] Re-enabling Windows Reserved Storage..."
+        try {
+            Set-ReservedStorageState -State Enabled -ErrorAction Stop
+            Write-Output "[+] SUCCESS: Reserved Storage enabled"
+        } catch {
+            Write-Output "[-] ERROR: could not enable Reserved Storage: $($_.Exception.Message)"
+            exit 1
+        }
         Exit-PTW
     }
 
@@ -369,28 +482,25 @@ Get-AppxPackage -AllUsers | ForEach-Object {
         $defaultRegPath = Join-Path $PSScriptRoot "regs\servicesDefault.reg"
         if (Test-Path $regPath) {
             try {
-                $proc = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$regPath`"" -Wait -PassThru -NoNewWindow
-                if ($proc.ExitCode -ne 0) {
-                    throw "regedit.exe exited with code $($proc.ExitCode)"
+                if (-not (Import-RegistryFile -RegFile $regPath)) {
+                    throw 'The service configuration failed integrity verification or reg.exe import.'
                 }
                 Start-Sleep -Seconds 2
-                # regedit.exe /s can return 0 even on a partial/access-denied import,
-                # so spot-check a service this tweak is supposed to DISABLE (Spooler -> Start=4).
+                # Treat missing or enabled target services as failures.
                 $spoolerStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Spooler" -Name "Start" -ErrorAction SilentlyContinue).Start
-                if ($null -ne $spoolerStart -and $spoolerStart -ne 4) {
-                    Write-Output "[!] WARNING: Verification failed - Spooler Start is '$spoolerStart' (expected 4)."
-                    Write-Output "[!] The services import may have been partially blocked. Review with care."
+                if ($spoolerStart -ne 4) {
+                    Write-Output "[-] ERROR: Services optimization did not fully apply - Spooler Start is '$spoolerStart' (expected 4)."
+                    throw 'The service configuration was only partially applied.'
                 }
                 Write-Output "[+] SUCCESS: Services optimization applied (restart required)"
             } catch {
                 Write-Output "[-] ERROR during services optimization: $($_.Exception.Message)"
                 Write-Output "[!] Attempting rollback with default services registry..."
                 if (Test-Path $defaultRegPath) {
-                    $rb = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$defaultRegPath`"" -Wait -PassThru -NoNewWindow
-                    if ($rb.ExitCode -ne 0) {
-                        Write-Output "[-] Rollback FAILED (regedit exit code $($rb.ExitCode)). Services may remain disabled - run 'Restore Default Services'."
-                    } else {
+                    if (Import-RegistryFile -RegFile $defaultRegPath) {
                         Write-Output "[+] Rollback applied. Restart to restore defaults."
+                    } else {
+                        Write-Output "[-] Rollback FAILED. Services may remain disabled - run 'Restore Default Services'."
                     }
                 } else {
                     Write-Output "[-] Rollback file not found: $defaultRegPath"
@@ -408,15 +518,16 @@ Get-AppxPackage -AllUsers | ForEach-Object {
         Write-Output "[*] Restoring Services to Default..."
         $regPath = Join-Path $PSScriptRoot "regs\servicesDefault.reg"
         if (Test-Path $regPath) {
-            $proc = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "`"$regPath`"" -Wait -PassThru -NoNewWindow
+            if (-not (Import-RegistryFile -RegFile $regPath)) {
+                Write-Output "[-] ERROR: services default import failed integrity verification or reg.exe import."
+                exit 1
+            }
             Start-Sleep -Seconds 2
-            # regedit.exe /s can report exit 0 even on a partial/blocked import, so
-            # re-validate a couple of key services actually returned to their defaults
-            # (Spooler -> 2 / Automatic, Themes -> 2 / Automatic).
+            # Treat missing or incorrectly configured key services as failures.
             $spoolerStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Spooler" -Name "Start" -ErrorAction SilentlyContinue).Start
             $themesStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Themes" -Name "Start" -ErrorAction SilentlyContinue).Start
-            if (($proc.ExitCode -ne 0) -or ($spoolerStart -ne 2) -or ($themesStart -ne 2)) {
-                Write-Output "[-] ERROR: Services restore did not fully apply (regedit exit $($proc.ExitCode); Spooler Start='$spoolerStart', Themes Start='$themesStart', expected 2)."
+            if (($spoolerStart -ne 2) -or ($themesStart -ne 2)) {
+                Write-Output "[-] ERROR: Services restore did not fully apply (Spooler Start='$spoolerStart', Themes Start='$themesStart', expected 2)."
                 Write-Output "[!] Some services may still be disabled. Try running 'Restore Default Services' again as Administrator."
                 exit 1
             }
@@ -429,7 +540,7 @@ Get-AppxPackage -AllUsers | ForEach-Object {
     }
 
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 

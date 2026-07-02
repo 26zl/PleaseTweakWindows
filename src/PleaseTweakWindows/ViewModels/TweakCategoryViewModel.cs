@@ -22,12 +22,10 @@ public partial class TweakCategoryViewModel : ViewModelBase
     private bool _isExpanded;
 
     public string Title => _model.Title;
+    public bool CanRunAll => _model.CanRunAll;
     public ObservableCollection<SubTweakViewModel> SubTweaks { get; } = new();
 
-    /// <summary>
-    /// True while ANY operation is running. Bound to the "Run All" button's
-    /// IsEnabled so it is disabled during other runs.
-    /// </summary>
+    /// <summary>Indicates whether any tweak operation is running.</summary>
     public bool IsGloballyRunning => _isGloballyRunning();
 
     public TweakCategoryViewModel(
@@ -63,10 +61,7 @@ public partial class TweakCategoryViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Pushes a change notification for <see cref="IsGloballyRunning"/> to this
-    /// category and all of its sub-tweaks so their button IsEnabled bindings update.
-    /// </summary>
+    /// <summary>Refreshes global running state for the category and its sub-tweaks.</summary>
     public void OnGlobalRunningChanged()
     {
         OnPropertyChanged(nameof(IsGloballyRunning));
@@ -88,11 +83,11 @@ public partial class TweakCategoryViewModel : ViewModelBase
         // Clear any stale error before starting a new sweep.
         _setError(null);
 
-        // One batch confirmation up front instead of up to N per-action dialogs.
-        // Decline = do nothing.
-        var actionableCount = _model.SubTweaks.Count(s => !string.IsNullOrEmpty(s.ApplyAction));
-        var highRiskCount = _model.SubTweaks.Count(s =>
-            !string.IsNullOrEmpty(s.ApplyAction) && _dialogService.IsHighRisk(s.ApplyAction));
+        var batchTweaks = _model.RunAllSubTweaks
+            .Where(s => !string.IsNullOrEmpty(s.ApplyAction))
+            .ToList();
+        var actionableCount = batchTweaks.Count;
+        var highRiskCount = batchTweaks.Count(s => _dialogService.IsHighRisk(s.ApplyAction));
         if (actionableCount == 0) return;
 
         var batchAction = highRiskCount > 0 ? "run-all-batch-high-risk" : "run-all-batch";
@@ -103,42 +98,60 @@ public partial class TweakCategoryViewModel : ViewModelBase
                 : $"{Title}: {actionableCount} tweaks");
         if (!batchConfirmed) return;
 
-        // Ensure a restore point once for the whole sweep, then skip it inside the loop.
-        var proceed = await _restorePointGuard.EnsureRestorePointAsync(
-            _scriptDirectory,
-            line => UiDispatcher.Post(() => _logPanel.AppendLine(line)),
-            isHighRisk: highRiskCount > 0);
-        if (!proceed) return;
-
+        // Block other actions while both the restore point and the batch run.
         _setGloballyRunning(true);
-
         try
         {
+            // Ensure a restore point once for the whole sweep, then skip it inside the loop.
+            var proceed = await _restorePointGuard.EnsureRestorePointAsync(
+                _scriptDirectory,
+                line => UiDispatcher.Post(() => _logPanel.AppendLine(line)),
+                isHighRisk: highRiskCount > 0);
+            if (!proceed)
+            {
+                // Surface creation failures; user cancellations are already logged.
+                if (_restorePointGuard.LastStatus == RestorePointStatus.Failed)
+                    _setError("Restore point creation failed — batch aborted. See the output panel.");
+                return;
+            }
+
             var scriptPath = Path.Combine(_scriptDirectory, _model.ApplyScript);
             Action<string> onOutput = line => UiDispatcher.Post(() => _logPanel.AppendLine(line));
 
-            foreach (var sub in _model.SubTweaks)
+            foreach (var sub in batchTweaks)
             {
                 var action = sub.ApplyAction;
-                if (string.IsNullOrEmpty(action)) continue;
 
+                // Leave runtime-only prerequisite checks to the scripts.
+                if (!RegistryState.IsSatisfied(sub.Requires))
+                {
+                    onOutput($"[!] Skipped '{sub.Name}' — prerequisite not met: {sub.Requires?.UnmetMessage}");
+                    continue;
+                }
+
+                // Keep per-action warnings for high-risk batch items only.
+                var skipConfirm = !_dialogService.IsHighRisk(action);
                 var result = await ScriptRunner.RunAsync(
                     scriptPath, action, sub.Name, _scriptDirectory,
                     _executor, _dialogService, _restorePointGuard, _logPanel,
                     ensureRestorePoint: false,
-                    skipConfirmation: true);
+                    skipConfirmation: skipConfirm);
 
-                // User cancelled a confirmation dialog — stop the whole batch rather
-                // than silently skipping into the next destructive tweak and leaving
-                // the machine in a half-applied state.
+                // Stop the batch when an action confirmation is cancelled.
                 if (result.Outcome == ScriptRunOutcome.ConfirmationCancelled)
                 {
                     onOutput("[!] Batch cancelled by user — stopping remaining tweaks.");
                     break;
                 }
 
-                // A script failed mid-batch. Continuing would apply more tweaks on top
-                // of an incomplete state; bail out so the user can investigate.
+                // User hit Stop on a running tweak — halt the sweep without flagging a failure.
+                if (result.Outcome == ScriptRunOutcome.Cancelled)
+                {
+                    onOutput("[!] Stopped by user — remaining tweaks not applied.");
+                    break;
+                }
+
+                // Stop the batch after the first script failure.
                 if (result.Outcome == ScriptRunOutcome.Applied && result.ExitCode != 0)
                 {
                     onOutput($"[!] '{sub.Name}' exited with code {result.ExitCode} — stopping batch.");
@@ -146,6 +159,11 @@ public partial class TweakCategoryViewModel : ViewModelBase
                     break;
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            UiDispatcher.Post(() => _logPanel.AppendLine($"[-] ERROR: Batch failed: {ex.Message}"));
+            _setError($"'{Title}' batch could not be completed — check the output panel.");
         }
         finally
         {

@@ -1,10 +1,4 @@
-# Device Guard Revert Script
-# Purpose: Reverts the changes made by device-guard.ps1 (v2.1.0) back to Windows defaults where possible.
-# Usage:
-#   powershell -File revert-device-guard.ps1 -Mode <Revert|Repair|RevertAndRepair> [-Action "<action-id>"]
-# Notes:
-#   - Revert: removes policy/override registry values created by the security hardening actions (returns to "not configured"/defaults).
-#   - Repair: re-enables optional features/capabilities/services that the hardening actions may have disabled/removed.
+﻿# Device Guard Revert Script
 
 #Requires -RunAsAdministrator
 
@@ -18,15 +12,14 @@ param(
     [string]$Action = ''
 )
 
-$script:ScriptVersion = "2.1.0"
-
 # Dot-source common functions
 $scriptsRoot = Split-Path $PSScriptRoot -Parent
 $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-Output "[!] CommonFunctions.ps1 not found - some features may not work"
+    Write-Output "[-] CommonFunctions.ps1 not found; refusing to continue"
+    exit 1
 }
 
 # Admin check (kept explicit for nicer message)
@@ -44,14 +37,20 @@ function Restore-LsaProtection {
     Write-PTWLog "Reverted LSA protection (RunAsPPL removed; reboot to take effect)" "SUCCESS"
 }
 
-# HVCI and Credential Guard share the VBS master switches under DeviceGuard. Only clear them
-# when NEITHER scenario is still enabled, so reverting one feature does not tear VBS out from
-# under the other.
+# Clear shared VBS switches only when neither HVCI nor Credential Guard remains enabled.
 function Clear-VbsMasterIfUnused {
     $dg = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
     $hvci = $null; $cg = $null
-    try { $hvci = (Get-ItemProperty -Path "$dg\Scenarios\HypervisorEnforcedCodeIntegrity" -Name 'Enabled' -ErrorAction SilentlyContinue).Enabled } catch {}
-    try { $cg = (Get-ItemProperty -Path "$dg\Scenarios\CredentialGuard" -Name 'Enabled' -ErrorAction SilentlyContinue).Enabled } catch {}
+    try {
+        $hvci = (Get-ItemProperty -Path "$dg\Scenarios\HypervisorEnforcedCodeIntegrity" -Name 'Enabled' -ErrorAction Stop).Enabled
+    } catch {
+        Write-Verbose "Could not read HVCI state: $($_.Exception.Message)"
+    }
+    try {
+        $cg = (Get-ItemProperty -Path "$dg\Scenarios\CredentialGuard" -Name 'Enabled' -ErrorAction Stop).Enabled
+    } catch {
+        Write-Verbose "Could not read Credential Guard state: $($_.Exception.Message)"
+    }
     if (($hvci -ne 1) -and ($cg -ne 1)) {
         Remove-RegValueSafe -Path $dg -Name 'EnableVirtualizationBasedSecurity'
         Remove-RegValueSafe -Path $dg -Name 'RequirePlatformSecurityFeatures'
@@ -66,10 +65,11 @@ function Restore-HvciEnable {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert Memory Integrity (HVCI)")) { return }
     $hvciKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity'
-    Set-RegValueSafe -Path $hvciKey -Name 'Enabled' -Type 'DWord' -Value 0
+    # Remove HVCI overrides instead of disabling the default-on feature.
+    Remove-RegValueSafe -Path $hvciKey -Name 'Enabled'
     Remove-RegValueSafe -Path $hvciKey -Name 'WasEnabledBy'
     Clear-VbsMasterIfUnused
-    Write-PTWLog "Reverted Memory Integrity / HVCI (Enabled=0; reboot to take effect)" "SUCCESS"
+    Write-PTWLog "Reverted Memory Integrity / HVCI to Windows default (values removed; reboot to take effect)" "SUCCESS"
 }
 
 function Restore-CredentialGuardEnable {
@@ -95,8 +95,7 @@ function Restore-WDigestDisable {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert WDigest credential caching")) { return }
-    # The Windows default is ABSENT (= caching disabled). Removing restores that; setting 1 would
-    # actively turn ON plaintext credential caching, leaving the machine worse than a clean install.
+    # Remove the WDigest override to retain the default of disabled plaintext caching.
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' -Name 'UseLogonCredential'
     Write-PTWLog "Reverted WDigest credential caching to Windows default (value removed)" "SUCCESS"
 }
@@ -104,9 +103,10 @@ function Restore-WDigestDisable {
 function Restore-HvciMandatory {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Revert Mandatory Memory Integrity lock")) { return }
-    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -Name 'Locked' -Type 'DWord' -Value 0
-    Write-PTWLog "Reverted Mandatory HVCI lock (Locked=0). NOTE: a UEFI-applied lock may persist until cleared in firmware; reboot to take effect." "SUCCESS"
+    if (-not $PSCmdlet.ShouldProcess("System", "Remove HVCI UEFI lock configuration")) { return }
+    # Removing the value cancels a not-yet-committed lock; a firmware-committed lock needs Microsoft's UEFI removal procedure.
+    Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -Name 'Locked'
+    Write-PTWLog "Removed the HVCI UEFI lock configuration value. If the lock was already committed to firmware on a prior boot, clear it with Microsoft's documented UEFI lock removal procedure." "WARNING"
 }
 
 function Restore-SecureLaunch {
@@ -118,6 +118,15 @@ function Restore-SecureLaunch {
     Write-PTWLog "Reverted System Guard Secure Launch (Enabled=0, ConfigureSystemGuardLaunch=0; reboot to take effect)" "SUCCESS"
 }
 
+function Restore-KernelDmaProtection {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess("System", "Revert Kernel DMA Protection policy")) { return }
+    # Remove the policy so hardware controls Kernel DMA Protection.
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Kernel DMA Protection' -Name 'DeviceEnumerationPolicy'
+    Write-PTWLog "Reverted Kernel DMA Protection enumeration policy to Windows default (value removed)" "SUCCESS"
+}
+
 $actionMap = @{
     'security-lsa-protection-enable'        = @{ Revert = { Restore-LsaProtection } ; Repair = { } }
     'security-hvci-enable'                  = @{ Revert = { Restore-HvciEnable } ; Repair = { } }
@@ -126,6 +135,7 @@ $actionMap = @{
     'security-wdigest-disable'              = @{ Revert = { Restore-WDigestDisable } ; Repair = { } }
     'security-hvci-mandatory'               = @{ Revert = { Restore-HvciMandatory } ; Repair = { } }
     'security-secure-launch'                = @{ Revert = { Restore-SecureLaunch } ; Repair = { } }
+    'security-kernel-dma-protection'        = @{ Revert = { Restore-KernelDmaProtection } ; Repair = { } }
 }
 
 function Invoke-Mode {
@@ -140,7 +150,7 @@ function Invoke-Mode {
     }
 }
 
-Write-PTWLog "Note: revert restores Windows DEFAULTS, not any prior custom/hardened values you may have had on shared SYSTEM keys (e.g. LmCompatibilityLevel, restrictanonymous, AutoShareWks, NetbiosOptions). Original values are captured in the registry-backup .reg files under the registry-backups folder of PTW_LOG_DIR if you need to restore them manually." "INFO"
+Write-PTWLog "Restore Default applies Windows defaults; it does not reconstruct prior custom or organization-managed values." "INFO"
 
 if ([string]::IsNullOrWhiteSpace($Action)) {
     Write-PTWLog "No -Action provided; running Mode=$Mode for all security revert actions." "INFO"
@@ -153,13 +163,13 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
     Invoke-Mode -RevertBlock { Restore-WDigestDisable } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-HvciMandatory } -RepairBlock { }
     Invoke-Mode -RevertBlock { Restore-SecureLaunch } -RepairBlock { }
+    Invoke-Mode -RevertBlock { Restore-KernelDmaProtection } -RepairBlock { }
 
     Write-PTWLog "Done. A restart may be required for some changes to fully take effect." "SUCCESS"
     Exit-PTW
 }
 
-# Strip -revert suffix: Java sends revert action IDs like 'security-improve-network-revert'
-# but actionMap keys use the base apply IDs like 'security-improve-network'
+# Strip the -revert suffix before action-map lookup.
 $k = $Action.ToLowerInvariant().Trim() -replace '-revert$', ''
 if (-not $actionMap.ContainsKey($k)) {
     Write-PTWLog "Unknown action: $Action" "ERROR"

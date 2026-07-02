@@ -4,10 +4,10 @@ Thanks for your interest in contributing. This guide covers everything you need 
 
 ## Prerequisites
 
-- **.NET 9 SDK** ([download](https://dotnet.microsoft.com/download)). SDK selection is pinned by `global.json` (baseline 9.0.100, rolls forward to a newer major if 9.x is absent — so a .NET 10 SDK also works for building).
-- **Windows 10/11** (WPF targets `net9.0-windows`; scripts only work on Windows)
+- **.NET 10 SDK** ([download](https://dotnet.microsoft.com/download)). SDK selection stays within the latest installed .NET 10 feature band through `global.json`.
+- **Windows 11** (build 22000+; Windows 10 is not supported — WPF targets `net10.0-windows`; scripts only work on Windows)
 - **Windows PowerShell 5.1** (built-in — the app does not use PowerShell 7)
-- Off-Windows you can only **build** (`dotnet build … -p:EnableWindowsTargeting=true`); `dotnet test` needs the **.NET 9 Windows Desktop Runtime**, so tests run on Windows/CI only.
+- Off-Windows you can only **build**; `dotnet test` needs the **.NET 10 Windows Desktop Runtime**, so tests run on Windows/CI only.
 
 ## Getting Started
 
@@ -26,17 +26,21 @@ dotnet test PleaseTweakWindows.sln
 | `dotnet build -c Release` | Release build |
 | `Build.bat` | Full build + single-file EXE + distribution ZIP |
 
+Production releases are created only from an explicit `v<Version>` tag. The tag must match
+`<Version>` in `PleaseTweakWindows.csproj`; ordinary pushes to `main` build and test but never publish.
+Tagged releases also require `CODE_SIGN_PFX_BASE64` and `CODE_SIGN_PASSWORD` secrets in the
+protected `release` environment; the workflow refuses to publish an unsigned EXE.
+
 ## Project Structure
 
 ```text
 /
   PleaseTweakWindows.sln
   src/
-    PleaseTweakWindows/                     WPF app (net9.0-windows)
+    PleaseTweakWindows/                     WPF app (net10.0-windows)
       App.xaml / App.xaml.cs                Entry point, DI container, Serilog
       Views/                                XAML windows + user controls
       ViewModels/                           CommunityToolkit.Mvvm
-      Services/                             ScriptExecutor, DialogService, etc.
       Models/                               Tweak, SubTweak, SubTweakType, SubTweakRisk, SubTweakRequirement
       Services/                             ScriptExecutor, ResourceExtractor, DialogService,
                                             TweakRegistry (+ Categories/*.cs), RegistryState,
@@ -44,22 +48,22 @@ dotnet test PleaseTweakWindows.sln
       Converters/                           IValueConverter implementations
       Themes/AppTheme.xaml                  Styles / brushes
       app.manifest                          UAC + DPI declarations
-    PleaseTweakWindows.Tests/               xUnit + FluentAssertions + Moq
+    PleaseTweakWindows.Tests/               xUnit v3 + FluentAssertions + Moq
   scripts/                                  PowerShell scripts (embedded in EXE)
     CommonFunctions.ps1                     Shared toolkit (reg helpers, downloads, Exit-PTW, …)
     index.txt                               Resource manifest (forward + reverse checked in CI)
     file-checksums.json                     SHA256 hashes for scripts + downloads
-    Gaming optimizations/                   Gaming-Optimizations.ps1 + revert-gaming.ps1
-    Performance/                            performance.ps1 + revert + regs/
-    Network optimizations/                  Network-Optimizations.ps1 + revert
-    Debloat/                                debloat.ps1 + revert + regs/
-    Privacy Security/                       privacy.ps1 + revert-privacy.ps1
+    Gaming optimizations/                   Gaming-Optimizations.ps1 (restore cases inline) + reg/nvidia_profile.xml
+    Performance/                            performance.ps1 (restore cases inline) + regs/
+    Network optimizations/                  Network-Optimizations.ps1 (apply + restore inline)
+    Debloat/                                debloat.ps1 (restore cases inline) + regs/
+    Privacy Security/                       privacy.ps1 + revert-privacy.ps1 + regs/ooshutup10.cfg
     Defender/                               defender.ps1 + revert-defender.ps1
     Exploit Protection/                     exploit-protection.ps1 + revert
     Device Guard/                           device-guard.ps1 + revert
     Network Security/                       network-security.ps1 + revert
     System Security/                        system-security.ps1 + revert
-    Customize/                              Customize.ps1 (apply + revert in one script)
+    Customize/                              Customize.ps1 (apply + restore in one script)
     Maintenance/                            maintenance.ps1
     Windows Update/                         windows-update.ps1
     Edge/                                   Edge.ps1
@@ -79,9 +83,10 @@ Adding one action id touches several files in lockstep — miss one and a test/C
    list to edit.
 2. **The category's apply script** — add the id to the `ValidateSet`, add a `switch` case
    (call `Backup-RegistryPath` before destructive registry writes), end the case with `Exit-PTW`.
-3. **The category's revert** — for Toggles add a `Restore-*`/`$actionMap` entry (or a revert
-   case in single-script categories like Customize/Gaming). Reverts must restore the *true
-   Windows default* — when the default is "value absent", use `Remove-RegValueSafe`.
+3. **The category's restore path** — for Toggles add a `Restore-*`/`$actionMap` entry (or a
+   restore case in single-script categories like Customize/Gaming). Restore Default must return
+   the setting to the documented Windows default; when that is "value absent", use
+   `Remove-RegValueSafe`. Do not claim that it reconstructs an unknown pre-existing value.
 4. **`scripts/file-checksums.json`** — recompute the touched script's SHA256
    (`shasum -a 256 <file> | tr a-z A-Z`, UPPERCASE). New script files also go in
    **`scripts/index.txt`**, **`ScriptExecutor.ConsolidatedScripts`**, and the **`build.yml`**
@@ -106,19 +111,19 @@ Adding one action id touches several files in lockstep — miss one and a test/C
 - Dot-source `CommonFunctions.ps1` for shared utilities
 - Exit 0 on success, non-zero on error
 
-### Revert Scripts
+### Restore Scripts
 
 - A category with its own `revert-*.ps1` uses `param([ValidateSet('Revert','Repair','RevertAndRepair')]$Mode, [string]$Action)` plus an `$actionMap` keyed by the *apply* id (revert ids strip a trailing `-revert`) and `Invoke-Mode`
-- Single-script categories (Customize, Gaming, …) put both apply and revert cases in the one script
+- Single-script categories (Customize, Gaming, …) put both apply and restore cases in the one script
 - Require `#Requires -RunAsAdministrator`
 - Dot-source `CommonFunctions.ps1`
-- A revert must restore the **true Windows default**, not a hardcoded value that leaves the machine below default
+- A restore must return the setting to the **documented Windows default**, not a hardcoded value that leaves the machine below default
 
 ### Downloads
 
 - **HTTPS only** — enforced by `Get-FileFromWeb` in `CommonFunctions.ps1`
-- Domain whitelist: `microsoft.com`, `github.com`, `githubusercontent.com`, etc.
-- Add SHA256 checksums to `file-checksums.json` for new downloads
+- Domain allowlist: the authoritative list is `$trustedDomains` in `CommonFunctions.ps1` (a new download host MUST be added there, or the download is refused — the redirect target is re-checked too)
+- Pin the download in `file-checksums.json`: either a SHA256 (preferred) or `DYNAMIC` for a URL the server rotates in place — `DYNAMIC` then relies on `Test-SignedFile` Authenticode verification as the supply-chain defence
 
 ### Shared Functions
 
@@ -144,7 +149,9 @@ Use functions from `CommonFunctions.ps1` instead of defining local copies:
 dotnet test
 ```
 
-Tests cover: `ScriptExecutor` (action/path validation, hash integrity, rejection paths), `DialogService` (destructive/high-risk classification, warnings), `TweakRegistry` (category/sub-tweak counts, action ID format, Toggle/Button invariants, path shape), `UpdateChecker` (JSON parsing, semver comparison).
+Tests cover the executor/process boundary, resource extraction and path containment, restore-point
+orchestration, registry-state requirements, config import/export limits, dialogs, tweak catalog and
+PowerShell routing, update parsing/preferences, view-model error handling, and log presentation.
 
 Tests run on Windows only (WPF target). Access private members via the existing `InternalsVisibleTo("PleaseTweakWindows.Tests")` attribute in the main csproj.
 

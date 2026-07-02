@@ -1,8 +1,4 @@
-# Microsoft Defender Tweaks
-# Purpose: Non-interactive action dispatcher.
-# Usage: powershell -File defender.ps1 -Action "<action-id>"
-# Version: 2.1.0
-# Last Updated: 2026-01-21
+﻿# Microsoft Defender Tweaks
 #Requires -RunAsAdministrator
 
 param(
@@ -20,8 +16,6 @@ param(
     )]
     [string]$Action = "Menu"
 )
-
-$script:ScriptVersion = "2.1.0"
 
 function Write-PTWLog {
     param([string]$Message, [string]$Level = "INFO")
@@ -45,7 +39,8 @@ $commonFunctionsPath = Join-Path $scriptsRoot "CommonFunctions.ps1"
 if (Test-Path $commonFunctionsPath) {
     . $commonFunctionsPath
 } else {
-    Write-PTWLog "CommonFunctions.ps1 not found - some features may not work" "WARNING"
+    Write-PTWLog "CommonFunctions.ps1 not found; refusing to continue" "ERROR"
+    exit 1
 }
 
 function Set-DefenderControlledFolderAccessEnabled {
@@ -117,9 +112,10 @@ function Set-DefenderCloudTuned {
         Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction Stop
         Set-MpPreference -CloudBlockLevel High -ErrorAction Stop
         Set-MpPreference -CloudExtendedTimeout 50 -ErrorAction Stop
-        # Read back one value to confirm the change actually stuck before reporting success.
-        if ((Get-MpPreference -ErrorAction Stop).CloudBlockLevel -ne 'High') {
-            Write-Warning "[WARN] Defender cloud tuning did not persist (CloudBlockLevel not High)"
+        # Verify CloudBlockLevel using both its numeric and named representations.
+        $cbl = [string](Get-MpPreference -ErrorAction Stop).CloudBlockLevel
+        if ($cbl -ne 'High' -and $cbl -ne '2') {
+            Write-Warning "[WARN] Defender cloud tuning did not persist (CloudBlockLevel='$cbl', expected High/2)"
             exit 1
         }
         Write-Output "[+] SUCCESS: Defender cloud protection tuned (MAPS Advanced, BAFS on, Cloud Block High)"
@@ -135,15 +131,16 @@ function Set-DefenderSandboxEnabled {
     if (-not $PSCmdlet.ShouldProcess("Defender", "Enable sandbox mode")) { return }
     Write-Output "[*] Enabling Defender sandbox mode..."
     & setx.exe /M MP_FORCE_USE_SANDBOX 1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "[WARN] setx returned $LASTEXITCODE"
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+        Write-Warning "[WARN] setx returned $rc; Defender sandbox flag was NOT set"
+        $script:PTWErrorCount++
+        return
     }
     Write-Output "[+] SUCCESS: Defender sandbox flag set (requires REBOOT to take effect)"
 }
 
-# ---------------------------------------------------------------------------
 # Defender hardening functions.
-# ---------------------------------------------------------------------------
 
 # All 19 standard ASR rule GUIDs (17 Block + 2 false-positive-prone Warn).
 $script:PtwAsrBlock = @(
@@ -162,7 +159,7 @@ $script:PtwAsrWarn = @(
 )
 $script:PtwAsrRegBase = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Windows Defender Exploit Guard\ASR\Rules'
 
-function Set-AsrRules {
+function Set-AsrRule {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("Microsoft Defender", "Enable Attack Surface Reduction rules")) { return }
@@ -174,11 +171,9 @@ function Set-AsrRules {
     Write-Output "[!] WARNING: aggressive rules (block untrusted executables from USB, block Office child processes, block executables by prevalence) can block some legitimate installers, macros and tools. Two false-positive-prone rules are set to Warn instead of Block."
     Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Windows Defender Exploit Guard\ASR' -Name 'ExploitGuard_ASR_Rules' -Value 1
     foreach ($g in $script:PtwAsrBlock) {
-        Add-MpPreference -AttackSurfaceReductionRules_Ids $g -AttackSurfaceReductionRules_Actions Enabled -ErrorAction SilentlyContinue
         Set-RegSz -Path $script:PtwAsrRegBase -Name $g -Value '1'
     }
     foreach ($g in $script:PtwAsrWarn) {
-        Add-MpPreference -AttackSurfaceReductionRules_Ids $g -AttackSurfaceReductionRules_Actions Warn -ErrorAction SilentlyContinue
         Set-RegSz -Path $script:PtwAsrRegBase -Name $g -Value '6'
     }
     Write-Output "[+] SUCCESS: ASR rules enabled (17 Block, 2 Warn)"
@@ -194,6 +189,10 @@ function Set-DefenderMaxProtection {
     }
     Write-Output "[*] Applying maximum Microsoft Defender protection..."
     Write-Output "[!] WARNING: ZeroTolerance cloud blocking and full sample submission are aggressive; first-run of unsigned apps may be delayed or blocked, and all suspicious samples are sent to Microsoft."
+    # Ensure the three default protection engines are enabled.
+    Invoke-MpPrefSafe @{ DisableRealtimeMonitoring = $false }
+    Invoke-MpPrefSafe @{ DisableBehaviorMonitoring = $false }
+    Invoke-MpPrefSafe @{ DisableScriptScanning = $false }
     # Cloud depth (negated -Disable* flags use $false to ENABLE the scanning).
     Invoke-MpPrefSafe @{ CloudBlockLevel = 'ZeroTolerance' }
     Invoke-MpPrefSafe @{ CloudExtendedTimeout = 50 }
@@ -217,7 +216,21 @@ function Set-DefenderMaxProtection {
     Invoke-MpPrefSafe @{ BruteForceProtectionLocalNetworkBlocking = $true }
     Invoke-MpPrefSafe @{ BruteForceProtectionAggressiveness = 2 }
     Invoke-MpPrefSafe @{ RemoteEncryptionProtectionAggressiveness = 2 }
-    Write-Output "[+] SUCCESS: Defender maximum protection applied"
+    # Verify a signature preference before reporting max protection as applied.
+    try {
+        $mp = Get-MpPreference -ErrorAction Stop
+        # Compare CloudBlockLevel using both its numeric and named representations.
+        $cbl = [string]$mp.CloudBlockLevel
+        if ($cbl -ne 'ZeroTolerance' -and $cbl -ne '6') {
+            Write-Output "[!] WARNING: CloudBlockLevel read back as '$cbl' (expected ZeroTolerance/6) — Defender may have ignored these settings (managing policy/conflict)."
+            $script:PTWErrorCount++
+        } else {
+            Write-Output "[+] SUCCESS: Defender maximum protection applied (verified CloudBlockLevel=ZeroTolerance)"
+        }
+    } catch {
+        Write-Output "[!] WARNING: could not read back Defender settings to verify they applied: $($_.Exception.Message)"
+        $script:PTWErrorCount++
+    }
 }
 
 function Set-DefenderGamingScan {
@@ -233,7 +246,19 @@ function Set-DefenderGamingScan {
     Invoke-MpPrefSafe @{ ScanOnlyIfIdleEnabled = $true }
     Invoke-MpPrefSafe @{ ScanAvgCPULoadFactor = 30 }
     Invoke-MpPrefSafe @{ DisableCpuThrottleOnIdleScans = $false }
-    Write-Output "[+] SUCCESS: Defender scans set to idle-only with a 30% CPU cap (real-time protection unchanged)"
+    # Read-back verification (see Set-DefenderMaxProtection): confirm the CPU cap actually took.
+    try {
+        $mp = Get-MpPreference -ErrorAction Stop
+        if ($mp.ScanAvgCPULoadFactor -ne 30) {
+            Write-Output "[!] WARNING: ScanAvgCPULoadFactor read back as '$($mp.ScanAvgCPULoadFactor)' (expected 30) — Defender may have ignored these settings."
+            $script:PTWErrorCount++
+        } else {
+            Write-Output "[+] SUCCESS: Defender scans set to idle-only with a 30% CPU cap (verified; real-time protection unchanged)"
+        }
+    } catch {
+        Write-Output "[!] WARNING: could not read back Defender scan settings to verify: $($_.Exception.Message)"
+        $script:PTWErrorCount++
+    }
 }
 
 switch ($Action.ToLowerInvariant()) {
@@ -266,7 +291,7 @@ switch ($Action.ToLowerInvariant()) {
         Backup-RegistryPath -Action $Action -Paths @(
             'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Windows Defender Exploit Guard'
         )
-        Set-AsrRules
+        Set-AsrRule
         Exit-PTW
     }
 
@@ -281,7 +306,7 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "menu" {
-        Write-Output "[i] No interactive menu - use JavaFX GUI to select tweaks"
+        Write-Output "[i] No interactive menu - use the PleaseTweakWindows app to select tweaks"
         Exit-PTW
     }
 
