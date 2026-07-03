@@ -28,8 +28,7 @@ dotnet test PleaseTweakWindows.sln
 
 Production releases are created only from an explicit `v<Version>` tag. The tag must match
 `<Version>` in `PleaseTweakWindows.csproj`; ordinary pushes to `main` build and test but never publish.
-Tagged releases also require `CODE_SIGN_PFX_BASE64` and `CODE_SIGN_PASSWORD` secrets in the
-protected `release` environment; the workflow refuses to publish an unsigned EXE.
+Release EXEs are not code-signed; downloads are verified against the published `SHA256SUMS.txt`.
 
 ## Project Structure
 
