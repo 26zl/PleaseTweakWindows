@@ -16,9 +16,8 @@ This tool modifies Windows registry settings, services, and system configuration
 
 ## Verifying your download
 
-Releases through v2.1.2 were not Authenticode-signed. Starting with v2.1.3, the release workflow
-refuses to publish a tag unless the EXE has a valid Authenticode signature. Development artifacts
-may remain unsigned. Always verify the archive against the checksum from the same release:
+Releases are not code-signed, so Windows SmartScreen may warn the first time you run the EXE — that
+is expected. Verify the archive against the checksum published with the same release:
 
 ```powershell
 # Compare against SHA256SUMS.txt from the same release
@@ -117,7 +116,7 @@ Build.bat
 `Build.bat` runs `dotnet test` → `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true` → packages the EXE, project notices, and dependency licenses under `dist\PleaseTweakWindows\` → zips it. Scripts are embedded inside the EXE; no loose `scripts\` folder ships with the release.
 
 This local package is unsigned. Production releases are created by the tagged GitHub Actions
-workflow, which requires and verifies the project code-signing certificate.
+workflow and are also unsigned; verify them against the published `SHA256SUMS.txt`.
 
 ## Logging & Privacy
 

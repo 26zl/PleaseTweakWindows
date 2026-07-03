@@ -744,45 +744,6 @@ jobs:
           name: please-tweak-windows-exe
           path: ./artifacts
 
-      - name: Sign release EXE (Authenticode)
-        if: steps.version.outputs.release == 'true'
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:CODE_SIGN_PFX_BASE64) -or
-              [string]::IsNullOrWhiteSpace($env:CODE_SIGN_PASSWORD)) {
-            Write-Error "The protected release environment must provide CODE_SIGN_PFX_BASE64 and CODE_SIGN_PASSWORD."
-            exit 1
-          }
-
-          $pfx = Join-Path $env:RUNNER_TEMP 'ptw-codesign.pfx'
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CODE_SIGN_PFX_BASE64))
-            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-              Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -Last 1
-            if (-not $signtool) { throw "signtool.exe not found on the runner" }
-
-            & $signtool.FullName sign /f $pfx /p $env:CODE_SIGN_PASSWORD /fd SHA256 `
-              /tr http://timestamp.digicert.com /td SHA256 "./artifacts/PleaseTweakWindows.exe"
-            if ($LASTEXITCODE -ne 0) { throw "signtool failed (exit $LASTEXITCODE)" }
-          }
-          finally {
-            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
-          }
-        env:
-          CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
-          CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
-        shell: pwsh
-
-      - name: Verify release signature
-        if: steps.version.outputs.release == 'true'
-        run: |
-          $signature = Get-AuthenticodeSignature "./artifacts/PleaseTweakWindows.exe"
-          if ($signature.Status -ne 'Valid') {
-            Write-Error "Release EXE is not validly Authenticode-signed: $($signature.StatusMessage)"
-            exit 1
-          }
-          Write-Host "[+] Valid release signature: $($signature.SignerCertificate.Subject)"
-        shell: pwsh
-
       - name: Create distribution package
         if: steps.version.outputs.release == 'true'
         run: |
@@ -833,7 +794,7 @@ jobs:
       - name: Generate SHA256SUMS
         if: steps.version.outputs.release == 'true'
         run: |
-          # Publish an archive checksum in addition to the EXE's Authenticode signature.
+          # Publish an archive checksum so downloads can be verified.
           $h = (Get-FileHash -Algorithm SHA256 -Path "PleaseTweakWindows.zip").Hash
           "$h  PleaseTweakWindows.zip" | Out-File -Encoding ascii -FilePath "SHA256SUMS.txt"
           Get-Content "SHA256SUMS.txt"
