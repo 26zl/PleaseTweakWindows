@@ -130,6 +130,7 @@ function Restore-ImproveNetworkSecurity {
         @{ Path='HKLM:\SYSTEM\CurrentControlSet\Control\LSA'; Name='restrictanonymous' },
         @{ Path='HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance'; Name='fAllowToGetHelp' },
         @{ Path='HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance'; Name='fAllowFullControl' },
+        @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'; Name='fAllowToGetHelp' },
         @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client'; Name='AllowBasic' },
         @{ Path='HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'; Name='AllowBasic' }
     )
@@ -213,7 +214,7 @@ function Restore-SmbModernEnforce {
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name 'Smb2DialectMin'
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters' -Name 'Smb2DialectMin'
     try {
-        Set-SmbServerConfiguration -EncryptData $false -Confirm:$false -ErrorAction Stop | Out-Null
+        Set-SmbServerConfiguration -EncryptData $false -RequireSecuritySignature $false -Confirm:$false -ErrorAction Stop | Out-Null
         Set-SmbClientConfiguration -RequireSecuritySignature $false -Confirm:$false -ErrorAction Stop | Out-Null
     } catch {
         Write-PTWLog "SMB cmdlet revert failed: $($_.Exception.Message)" "WARNING"
@@ -284,7 +285,7 @@ function Restore-NetworkRpcHardening {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert RPC/LMHOSTS hardening")) { return }
-    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Rpc' -Name 'EnableAuthEpResolution'
+    Remove-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc' -Name 'EnableAuthEpResolution'
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters' -Name 'EnableLMHOSTS'
     Write-PTWLog "Reverted RPC endpoint-mapper / LMHOSTS hardening" "SUCCESS"
 }
@@ -329,6 +330,11 @@ function Restore-RdpNla {
     Set-RegValueSafe -Path $rdp -Name 'UserAuthentication' -Type 'DWord' -Value 1
     Remove-RegValueSafe -Path $rdp -Name 'SecurityLayer'
     Remove-RegValueSafe -Path $rdp -Name 'MinEncryptionLevel'
+    # Remove the Group Policy overrides (default is "not configured"/absent).
+    $rdpPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+    Remove-RegValueSafe -Path $rdpPolicy -Name 'UserAuthentication'
+    Remove-RegValueSafe -Path $rdpPolicy -Name 'SecurityLayer'
+    Remove-RegValueSafe -Path $rdpPolicy -Name 'MinEncryptionLevel'
     Write-PTWLog "Reverted RDP NLA tweak (UserAuthentication restored to default 1; SecurityLayer/MinEncryptionLevel removed)" "SUCCESS"
 }
 

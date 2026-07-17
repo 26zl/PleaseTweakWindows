@@ -25,11 +25,11 @@ public sealed partial class TweakRegistry
                     "A driver update can require a reboot and may temporarily disrupt the display. Close games and save work first.",
             },
             new SubTweak("AMD Driver", "amd-driver-install",
-                "Install/update AMD Radeon driver")
+                "Open AMD's driver download page (Auto-Detect installer)")
             {
                 Risk = SubTweakRisk.Confirm,
                 Warning =
-                    "AMD's driver download page will open in your browser.\n\n" +
+                    "'{0}' opens AMD's driver download page in your browser.\n\n" +
                     "Click 'Download Windows Drivers' on the AMD page to get the latest Auto-Detect installer.\n" +
                     "The installer will detect your GPU and download the correct driver.",
             },

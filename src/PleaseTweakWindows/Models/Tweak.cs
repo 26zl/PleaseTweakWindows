@@ -11,6 +11,7 @@ public sealed record Tweak(
     public IEnumerable<SubTweak> RunAllSubTweaks =>
         SubTweaks.Where(sub =>
             sub.Type == SubTweakType.Toggle &&
+            sub.IncludeInRunAll &&
             !string.IsNullOrWhiteSpace(sub.RevertAction));
 
     public bool CanRunAll => RunAllSubTweaks.Any();

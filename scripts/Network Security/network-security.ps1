@@ -108,6 +108,8 @@ function Set-ImproveNetworkSecurity {
         [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance'; Name = 'fAllowToGetHelp'; Type = 'DWord'; Value = 0 },
         # Disable Remote Assistance full control.
         [pscustomobject]@{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance'; Name = 'fAllowFullControl'; Type = 'DWord'; Value = 0 },
+        # Disable Solicited Remote Assistance via the Group Policy path a STIG scanner reads (WN11-CC-000155).
+        [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'; Name = 'fAllowToGetHelp'; Type = 'DWord'; Value = 0 },
         # Disable basic authentication in WinRM.
         [pscustomobject]@{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client'; Name = 'AllowBasic'; Type = 'DWord'; Value = 0 },
         # Disable basic authentication in RDP (Terminal Services).
@@ -332,7 +334,7 @@ function Set-SmbModernEnforced {
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name 'Smb2DialectMin' -Type 'DWord' -Value 0x0311
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters' -Name 'Smb2DialectMin' -Type 'DWord' -Value 0x0311
     try {
-        Set-SmbServerConfiguration -EncryptData $true -RejectUnencryptedAccess $false -Confirm:$false -ErrorAction Stop | Out-Null
+        Set-SmbServerConfiguration -EncryptData $true -RejectUnencryptedAccess $false -RequireSecuritySignature $true -EnableSecuritySignature $true -Confirm:$false -ErrorAction Stop | Out-Null
         Set-SmbClientConfiguration -RequireSecuritySignature $true -EnableSecuritySignature $true -Confirm:$false -ErrorAction Stop | Out-Null
     } catch {
         $script:PTWErrorCount++
@@ -446,7 +448,8 @@ function Set-NetworkRpcHardening {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Harden RPC endpoint mapper and disable LMHOSTS")) { return }
     Write-Output "[*] Requiring RPC endpoint-mapper client authentication and disabling LMHOSTS lookup..."
-    Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Rpc' -Name 'EnableAuthEpResolution' -Value 1
+    # Group Policy path ("Enable RPC Endpoint Mapper Client Authentication") that STIG/CIS scanners read.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc' -Name 'EnableAuthEpResolution' -Value 1
     Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters' -Name 'EnableLMHOSTS' -Value 0
     Write-Output "[+] SUCCESS: RPC/LMHOSTS network hardening applied"
 }
@@ -528,6 +531,11 @@ function Set-RdpNla {
     Set-RegDword -Path $rdp -Name 'UserAuthentication' -Value 1
     Set-RegDword -Path $rdp -Name 'SecurityLayer' -Value 2
     Set-RegDword -Path $rdp -Name 'MinEncryptionLevel' -Value 3
+    # Group Policy path (Terminal Services) that STIG WN11-CC-000280 and CIS scanners read.
+    $rdpPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+    Set-RegDword -Path $rdpPolicy -Name 'UserAuthentication' -Value 1
+    Set-RegDword -Path $rdpPolicy -Name 'SecurityLayer' -Value 2
+    Set-RegDword -Path $rdpPolicy -Name 'MinEncryptionLevel' -Value 3
     Write-Output "[+] SUCCESS: RDP Network Level Authentication required"
 }
 
@@ -543,8 +551,9 @@ function Set-WinRmHarden {
     Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service' -Name 'DisableRunAs' -Value 1
     # CredSSP encryption-oracle remediation: 0 = Force Updated Clients (most secure).
     Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\CredSSP\Parameters' -Name 'AllowEncryptionOracle' -Value 0
-    # Restrict unauthenticated remote RPC clients (2 = authenticated only, no exceptions).
-    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc' -Name 'RestrictRemoteClients' -Value 2
+    # Restrict unauthenticated remote RPC clients. STIG WN11-CC-000165 requires exactly 1 ("Authenticated");
+    # 2 ("no exceptions") is stricter but the SCAP check tests for =1, so use the benchmark value.
+    Set-RegDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc' -Name 'RestrictRemoteClients' -Value 1
     Write-Output "[+] SUCCESS: WinRM / RPC remote access hardened (inbound remote management restricted)"
 }
 
@@ -692,7 +701,7 @@ switch ($Action.ToLowerInvariant()) {
 
     "security-network-rpc-harden" {
         Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Rpc',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Rpc',
             'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters'
         )
         Set-NetworkRpcHardening

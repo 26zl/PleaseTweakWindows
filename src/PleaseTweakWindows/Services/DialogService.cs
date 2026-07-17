@@ -61,6 +61,8 @@ public sealed class DialogService : IDialogService
         }
 
         // Add batch actions and the high-risk network-profile revert.
+        _destructiveActions.Add("run-all-batch");
+        _destructiveActions.Add("run-all-batch-high-risk");
         _highRiskActions.Add("run-all-batch-high-risk");
         _destructiveActions.Add("network-all-private");
         _highRiskActions.Add("network-all-private");

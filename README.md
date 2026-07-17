@@ -36,7 +36,7 @@ Starting with v2.1.3, releases also ship `SHA256SUMS.txt` and a CycloneDX **SBOM
 
 ## Categories
 
-14 categories, 148 sub-tweaks.
+15 categories, 150 sub-tweaks.
 
 | Category | Sub-tweaks | Description |
 | --- | --- | --- |
@@ -50,12 +50,15 @@ Starting with v2.1.3, releases also ship `SHA256SUMS.txt` and a CycloneDX **SBOM
 | **Device Guard** | 8 | HVCI / Memory Integrity, Credential Guard, LSA protection, vulnerable-driver blocklist, WDigest |
 | **Network Security** | 24 | Firewall hardening + logging, TLS / SMB / NTLM / LLMNR / mDNS, country-IP blocking, LOLBin block, RDP NLA, WinRM, PrintNightmare |
 | **System Security** | 19 | UAC level, SmartScreen, binary integrity, lock screen, account lockout, audit policy, PowerShell logging, WSH |
+| **STIG / CIS Baselines** | 2 | Curated Windows 11 STIG V2R9- and CIS Level 1-aligned Apply/Restore bundles with protected progress state |
 | **Customize** | 13 | Dark mode, taskbar, Explorer, context menu, lock screen, Start menu, keyboard shortcuts |
 | **Maintenance & Tools** | 4 | Disk cleanup, DDU installer, Autoruns, C++ redistributables |
 | **Windows Update** | 5 | Default / feature deferral / pause / off / secure modes |
 | **Edge** | 2 | Security baseline + HardCore hardening |
 
 Each toggle sub-tweak exposes **Apply** and **Restore Default** buttons individually. Restore Default returns the affected setting to the documented Windows default; it does not generally reconstruct a custom or organization-managed value that existed before Apply. Snapshot-backed actions, such as Smart Network Optimization, restore their captured adapter state. A toggle that depends on another tweak greys out until its prerequisite is applied (live registry check). "Run All" applies toggles sequentially and stops on cancellation or failure. It deliberately excludes one-shot actions such as installers, cleanup, and mutually exclusive Windows Update modes.
+
+The STIG/CIS category composes existing security actions into versioned profiles. Only one compliance profile can be active at a time, and both are excluded from Run All so the choice is explicit. Completed routes are recorded under the protected state directory so Apply can roll back after a partial failure and Restore can resume after interruption. These profiles automate a documented subset; they are not a compliance certification. See [`STIG/`](STIG/) and [`CIS/`](CIS/) for scope and source guidance.
 
 ## How It Works
 

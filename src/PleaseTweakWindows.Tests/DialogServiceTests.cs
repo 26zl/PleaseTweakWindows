@@ -49,6 +49,8 @@ public class DialogServiceTests
     [InlineData("power-plan-on", false)]
     [InlineData("power-plan-default", true)]
     [InlineData("security-defender-cfa-enable-revert", true)]
+    [InlineData("run-all-batch", true)]
+    [InlineData("run-all-batch-high-risk", true)]
     [InlineData("unknown-action", false)]
     public void RequiresConfirmation_IdentifiesDestructiveActions(string action, bool expected)
     {

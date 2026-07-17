@@ -66,6 +66,9 @@ Release EXEs are not code-signed; downloads are verified against the published `
     Maintenance/                            maintenance.ps1
     Windows Update/                         windows-update.ps1
     Edge/                                   Edge.ps1
+    Compliance/                             STIG/CIS profile dispatcher
+  STIG/                                     Embedded STIG V2R9 profile
+  CIS/                                      Embedded CIS Level 1 profile
 ```
 
 Each `TweakRegistry` category is one `partial class` file under `Services/Categories/*.cs`.

@@ -103,7 +103,13 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Disable OneDrive sync (policy)", SubTweakType.Toggle,
                 "onedrive-policy-disable", "onedrive-policy-disable-revert",
-                "Disable OneDrive file sync via policy (DisableFileSyncNGSC=1) so removal stays durable across reinstall"),
+                "Disable OneDrive file sync via policy (DisableFileSyncNGSC=1) so removal stays durable across reinstall")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' disables OneDrive file sync via policy (DisableFileSyncNGSC=1).\n\n" +
+                    "WARNING: OneDrive will stop syncing on this PC. Files stay on disk and in the cloud, but changes won't sync until Restore Default removes the policy.",
+            },
             new SubTweak("Disable Windows Recall (native)", SubTweakType.Toggle,
                 "privacy-recall-disable", "privacy-recall-disable-revert",
                 "Suppress Windows Recall / AI snapshot saving via native policy (DisableAIDataAnalysis=1, AllowRecallEnablement=0) — does not depend on running the O&O ShutUp10 profile"),
@@ -144,7 +150,7 @@ public sealed partial class TweakRegistry
             new SubTweak("Set Quad9 DNS (malware-blocking)", "dns-quad9",
                 "Set DNS to Quad9 (9.9.9.9, 149.112.112.112) — blocks known-malicious domains at the resolver"),
             new SubTweak("Reset DNS to automatic", "dns-reset",
-                "Reset all adapters' DNS to automatic (DHCP) - undoes Cloudflare/Google DNS"),
+                "Reset all adapters' DNS to automatic (DHCP) - undoes Cloudflare/Google/Quad9 DNS"),
             new SubTweak("Enable DNS over HTTPS (DoH)", SubTweakType.Toggle,
                 "doh-enable", "doh-enable-revert",
                 "Enable encrypted DNS for common DNS providers"),

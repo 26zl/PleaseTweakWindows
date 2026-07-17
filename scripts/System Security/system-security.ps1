@@ -248,9 +248,10 @@ function Set-AccountLockoutPolicy {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Apply account lockout policy")) { return }
-    Write-Output "[*] Applying account lockout policy (10 bad attempts, 15-minute lockout + window)..."
-    Write-Output "[!] WARNING: after 10 failed sign-ins an account (including a local admin) is locked for 15 minutes. Mistyping your password repeatedly will lock you out temporarily."
-    & net.exe accounts /lockoutthreshold:10 /lockoutduration:15 /lockoutwindow:15 2>&1 | Out-Null
+    Write-Output "[*] Applying account lockout policy (3 bad attempts, 15-minute lockout + window)..."
+    Write-Output "[!] WARNING: after 3 failed sign-ins an account (including a local admin) is locked for 15 minutes. Mistyping your password repeatedly will lock you out temporarily."
+    # Threshold 3 satisfies both DISA STIG WN11-AC-000010 (<=3) and CIS L1 (<=5).
+    & net.exe accounts /lockoutthreshold:3 /lockoutduration:15 /lockoutwindow:15 2>&1 | Out-Null
     $netRc = $LASTEXITCODE
     if ($netRc -ne 0) {
         Write-Warning "[WARN] net accounts returned $netRc"
@@ -474,7 +475,9 @@ switch ($Action.ToLowerInvariant()) {
     "security-binary-integrity-harden" {
         Backup-RegistryPath -Action $Action -Paths @(
             'HKLM:\SOFTWARE\Microsoft\Cryptography\Wintrust\Config',
-            'HKLM:\SOFTWARE\Microsoft\AMSI'
+            'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Cryptography\Wintrust\Config',
+            'HKLM:\SOFTWARE\Microsoft\AMSI',
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit'
         )
         Set-BinaryIntegrityHardening
         Exit-PTW
@@ -494,7 +497,8 @@ switch ($Action.ToLowerInvariant()) {
 
     "security-lock-screen-harden" {
         Backup-RegistryPath -Action $Action -Paths @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
         )
         Set-LockScreenHardening
         Exit-PTW

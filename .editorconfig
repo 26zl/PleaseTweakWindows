@@ -1,0 +1,25 @@
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{bat,cmd,sln}]
+end_of_line = crlf
+
+[*.{cs,csproj,xaml,axaml,json,yml,yaml,md,manifest,cfg,ps1,psm1,psd1}]
+end_of_line = lf
+indent_style = space
+indent_size = 4
+
+[*.{csproj,xaml,axaml,xml,manifest,config}]
+indent_size = 2
+
+[*.{md,yml,yaml}]
+indent_size = 2
+
+[*.reg]
+end_of_line = unset
+charset = unset

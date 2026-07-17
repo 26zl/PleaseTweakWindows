@@ -26,6 +26,9 @@ public sealed record SubTweak(
     /// <summary>Warning template where <c>{0}</c> is replaced with the action name.</summary>
     public string? Warning { get; init; }
 
+    /// <summary>Whether this toggle is eligible for its category's Run All command.</summary>
+    public bool IncludeInRunAll { get; init; } = true;
+
     public SubTweak(string name, string applyAction, string? description)
         : this(name, SubTweakType.Button, applyAction, null, description) { }
 }

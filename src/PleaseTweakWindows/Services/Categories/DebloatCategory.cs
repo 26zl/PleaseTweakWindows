@@ -68,6 +68,12 @@ public sealed partial class TweakRegistry
                     "A system restore point is STRONGLY recommended.",
             },
             new SubTweak("Restore Default Services", "services-restore",
-                "Restore all Windows services to default state"),
+                "Restore all Windows services to default state")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' rewrites Windows service start types to their defaults.\n\n" +
+                    "WARNING: any custom or organization-managed service configuration will be overwritten. Continue only if restoring Windows defaults is what you intend.",
+            },
         ]);
 }

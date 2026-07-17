@@ -98,9 +98,11 @@ function Restore-LockScreenCameraDisable {
 function Restore-LmHashDisable {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Revert LM hash storage override")) { return }
-    Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'NoLMHash'
-    Write-PTWLog "Reverted LM hash storage override (where present)" "SUCCESS"
+    if (-not $PSCmdlet.ShouldProcess("System", "Restore default LM hash storage policy")) { return }
+    # Windows 11 default is NoLMHash=1 (LM hash storage disabled); also STIG WN11-SO-000195. Removing it
+    # would drop below the documented default, so restore the value rather than deleting it.
+    Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'NoLMHash' -Type 'DWord' -Value 1
+    Write-PTWLog "Restored LM hash storage policy to the Windows default (NoLMHash=1)" "SUCCESS"
 }
 
 function Restore-AlwaysInstallElevatedDisable {

@@ -10,11 +10,11 @@ public class TweakRegistryTests
     private readonly TweakRegistry _registry = new();
 
     [Fact]
-    public void GetTweaks_ReturnsFourteenCategories()
+    public void GetTweaks_ReturnsFifteenCategories()
     {
         var tweaks = _registry.GetTweaks();
-        tweaks.Should().HaveCount(14);
-        tweaks.Sum(t => t.SubTweaks.Count).Should().Be(148);
+        tweaks.Should().HaveCount(15);
+        tweaks.Sum(t => t.SubTweaks.Count).Should().Be(150);
     }
 
     [Fact]
@@ -34,6 +34,7 @@ public class TweakRegistryTests
             "Device Guard",
             "Network Security",
             "System Security",
+            "STIG / CIS Baselines",
             "Customize",
             "Maintenance & Tools",
             "Windows Update",
@@ -126,6 +127,17 @@ public class TweakRegistryTests
         var tweaks = _registry.GetTweaks();
         var systemSecurity = tweaks.First(t => t.Title == "System Security");
         systemSecurity.SubTweaks.Should().HaveCount(19);
+    }
+
+    [Fact]
+    public void ComplianceBaselines_HasCorrectSubTweakCount()
+    {
+        var tweaks = _registry.GetTweaks();
+        var compliance = tweaks.First(t => t.Title == "STIG / CIS Baselines");
+        compliance.SubTweaks.Should().HaveCount(2);
+        compliance.SubTweaks.Should().OnlyContain(s => s.Risk == SubTweakRisk.High);
+        compliance.RunAllSubTweaks.Should().BeEmpty("the mutually exclusive baselines require an explicit choice");
+        compliance.CanRunAll.Should().BeFalse();
     }
 
     [Fact]
