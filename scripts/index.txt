@@ -21,6 +21,9 @@ Network Security/network-security.ps1
 Network Security/revert-network-security.ps1
 System Security/system-security.ps1
 System Security/revert-system-security.ps1
+Compliance/compliance-baselines.ps1
+Compliance/Profiles/STIG-Windows-11-V2R9.psd1
+Compliance/Profiles/CIS-Windows-11-24H2-L1.psd1
 Customize/Customize.ps1
 Maintenance/maintenance.ps1
 Windows Update/windows-update.ps1

@@ -46,6 +46,7 @@ jobs:
             "scripts/Device Guard/device-guard.ps1",
             "scripts/Network Security/network-security.ps1",
             "scripts/System Security/system-security.ps1",
+            "scripts/Compliance/compliance-baselines.ps1",
             "scripts/Debloat/debloat.ps1",
             "scripts/Maintenance/maintenance.ps1",
             "scripts/Customize/Customize.ps1",
@@ -98,6 +99,7 @@ jobs:
             "scripts/Device Guard/device-guard.ps1",
             "scripts/Network Security/network-security.ps1",
             "scripts/System Security/system-security.ps1",
+            "scripts/Compliance/compliance-baselines.ps1",
             "scripts/Debloat/debloat.ps1",
             "scripts/Maintenance/maintenance.ps1",
             "scripts/Customize/Customize.ps1",
@@ -142,11 +144,21 @@ jobs:
 
           $indexContent = Get-Content $indexFile | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 
+          # Compliance profiles live in their policy folders at repository root but are linked
+          # into the embedded Scripts/Compliance/Profiles namespace by the project file.
+          $externalPayloads = @{
+            "Compliance/Profiles/STIG-Windows-11-V2R9.psd1" = "STIG/STIG-Windows-11-V2R9.psd1"
+            "Compliance/Profiles/CIS-Windows-11-24H2-L1.psd1" = "CIS/CIS-Windows-11-24H2-L1.psd1"
+          }
+
           # Every file under scripts/ (except index.txt) must be listed in index.txt or ResourceExtractor can't extract it.
           $scriptsRoot = (Resolve-Path "scripts").Path
-          $actual = Get-ChildItem -Path "scripts" -Recurse -File |
+          $actual = @(
+            Get-ChildItem -Path "scripts" -Recurse -File |
             Where-Object { $_.Name -ne 'index.txt' } |
             ForEach-Object { $_.FullName.Substring($scriptsRoot.Length + 1) -replace '\\','/' }
+            $externalPayloads.Keys
+          )
 
           $missing = $actual | Where-Object { $indexContent -notcontains $_ }
           if ($missing) {
@@ -158,7 +170,11 @@ jobs:
           foreach ($entry in $indexContent) {
             $trimmed = $entry.Trim()
             if (-not $trimmed) { continue }
-            $fullPath = Join-Path $scriptsDir $trimmed
+            $fullPath = if ($externalPayloads.ContainsKey($trimmed)) {
+              $externalPayloads[$trimmed]
+            } else {
+              Join-Path $scriptsDir $trimmed
+            }
             if (-not (Test-Path $fullPath)) {
               Write-Error "index.txt references non-existent file: $trimmed"
               exit 1
@@ -172,9 +188,17 @@ jobs:
         run: |
           # Every shipped file's hash must match file-checksums.json (regenerate with the command in the manifest notes).
           $manifest = Get-Content "scripts/file-checksums.json" -Raw | ConvertFrom-Json
+          $externalPayloads = @{
+            "Compliance/Profiles/STIG-Windows-11-V2R9.psd1" = "STIG/STIG-Windows-11-V2R9.psd1"
+            "Compliance/Profiles/CIS-Windows-11-24H2-L1.psd1" = "CIS/CIS-Windows-11-24H2-L1.psd1"
+          }
           $bad = 0
           foreach ($prop in $manifest.scripts.PSObject.Properties) {
-            $path = Join-Path "scripts" $prop.Name
+            $path = if ($externalPayloads.ContainsKey($prop.Name)) {
+              $externalPayloads[$prop.Name]
+            } else {
+              Join-Path "scripts" $prop.Name
+            }
             if (-not (Test-Path $path)) {
               Write-Error "Checksummed file missing: $($prop.Name)"
               $bad++
@@ -298,6 +322,7 @@ jobs:
             "scripts/Device Guard/device-guard.ps1",
             "scripts/Network Security/network-security.ps1",
             "scripts/System Security/system-security.ps1",
+            "scripts/Compliance/compliance-baselines.ps1",
             "scripts/Debloat/debloat.ps1",
             "scripts/Maintenance/maintenance.ps1",
             "scripts/Customize/Customize.ps1",
@@ -620,6 +645,7 @@ jobs:
             "Network Security/revert-network-security.ps1",
             "System Security/system-security.ps1",
             "System Security/revert-system-security.ps1",
+            "Compliance/compliance-baselines.ps1",
             "Debloat/debloat.ps1",
             "Maintenance/maintenance.ps1",
             "create_restore_point.ps1"
@@ -667,9 +693,9 @@ jobs:
           $scriptResources = $asm.GetManifestResourceNames() | Where-Object { $_ -like '*Scripts*' }
 
           Write-Host "Embedded script resources: $($scriptResources.Count)"
-          # Inventory: 22 .ps1 + index.txt + file-checksums.json + 4 .reg + nvidia_profile.xml + ooshutup10.cfg = 30.
-          if ($scriptResources.Count -lt 30) {
-            Write-Error "Expected at least 30 embedded script resources, found $($scriptResources.Count)"
+          # Inventory: existing payloads + compliance dispatcher + two linked profile data files.
+          if ($scriptResources.Count -lt 33) {
+            Write-Error "Expected at least 33 embedded script resources, found $($scriptResources.Count)"
             exit 1
           }
           Write-Host "[+] Scripts are embedded in the assembly"

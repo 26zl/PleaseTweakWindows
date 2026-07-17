@@ -41,9 +41,12 @@ nuget.exe
 .cursor/
 .cursorrules
 .claude/
-CLAUDE.md
 AGENTS.md
 .github/instructions/
+
+# DISA STIG / SCAP reference downloads (used to derive Compliance profiles; not shipped)
+U_MS_Windows_11_*_STIG*/
+U_MS_Windows_11_*_Benchmark.xml
 
 # Log files
 /logs/

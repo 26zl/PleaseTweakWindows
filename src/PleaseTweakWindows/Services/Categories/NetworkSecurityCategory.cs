@@ -110,7 +110,13 @@ public sealed partial class TweakRegistry
                 "Disable IPv4/IPv6 source routing and ICMP redirects, keep NetBIOS name on demand, and force safe DLL search mode"),
             new SubTweak("Disable mDNS", SubTweakType.Toggle,
                 "security-mdns-disable", "security-mdns-disable-revert",
-                "Close the mDNS LAN spoofing vector (same class as LLMNR) by disabling multicast DNS"),
+                "Close the mDNS LAN spoofing vector (same class as LLMNR) by disabling multicast DNS")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' disables multicast DNS (mDNS).\n\n" +
+                    "WARNING: local discovery that relies on mDNS/Bonjour — Chromecast/Cast-to-Device, AirPlay, some smart-home devices and network printers — may stop working. Restore Default re-enables mDNS.",
+            },
             new SubTweak("Harden Print Spooler (PrintNightmare)", SubTweakType.Toggle,
                 "security-print-nightmare", "security-print-nightmare-revert",
                 "Restrict Point-and-Print driver installation to admins (mitigates CVE-2021-34527) without disabling printing"),

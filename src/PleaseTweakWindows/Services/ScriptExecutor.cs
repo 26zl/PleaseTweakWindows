@@ -17,7 +17,11 @@ public sealed partial class ScriptExecutor : IScriptExecutor, IDisposable
     {
         "cpp-install",
         "directx-install",
-        "nvidia-driver-install"
+        "nvidia-driver-install",
+        "compliance-stig-v2r9-apply",
+        "compliance-stig-v2r9-revert",
+        "compliance-cis-l1-apply",
+        "compliance-cis-l1-revert"
     };
 
     // STATUS_CONTROL_C_EXIT marks cancellation initiated by Stop.
@@ -42,6 +46,7 @@ public sealed partial class ScriptExecutor : IScriptExecutor, IDisposable
         "revert-network-security.ps1",
         "system-security.ps1",
         "revert-system-security.ps1",
+        "compliance-baselines.ps1",
         "customize.ps1",
         "windows-update.ps1",
         "edge.ps1"

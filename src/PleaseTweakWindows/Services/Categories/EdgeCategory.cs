@@ -14,6 +14,9 @@ public sealed partial class TweakRegistry
                 "Enhanced Security Mode (Strict, disables JIT), Strict tracking prevention, block insecure private-network requests. WARNING: can slow/break some sites and intranet web UIs; Restore Default removes the policies")
             {
                 Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' enables Edge Enhanced Security Mode (Strict, disables JIT), strict tracking prevention, and blocks insecure private-network requests.\n\n" +
+                    "WARNING: this can slow or break some sites and intranet web UIs. Restore Default removes the policies.",
             },
         ]);
 }

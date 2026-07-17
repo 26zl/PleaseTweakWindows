@@ -22,6 +22,7 @@ public sealed partial class TweakRegistry
         BuildDeviceGuard(),
         BuildNetworkSecurity(),
         BuildSystemSecurity(),
+        BuildComplianceBaselines(),
         BuildCustomize(),
         BuildMaintenance(),
         BuildWindowsUpdate(),

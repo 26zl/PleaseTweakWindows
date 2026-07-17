@@ -91,14 +91,17 @@ public sealed partial class TweakRegistry
                 "Don't show the last/locked user name, require Ctrl+Alt+Del to sign in, hide the lock-screen network UI, set a 2-min inactivity lock. WARNING: changes the sign-in UX")
             {
                 Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' hides the last user name, requires Ctrl+Alt+Del to sign in, hides the lock-screen network UI, and sets a 2-minute inactivity lock.\n\n" +
+                    "WARNING: this changes the sign-in experience for everyone on this PC. Restore Default returns to the Windows defaults.",
             },
             new SubTweak("Account lockout policy", SubTweakType.Toggle,
                 "security-account-lockout", "security-account-lockout-revert",
-                "Lock an account for 15 minutes after 10 failed sign-ins (anti brute-force). WARNING: repeated password mistakes will temporarily lock you out; Restore Default disables lockout")
+                "Lock an account for 15 minutes after 3 failed sign-ins (anti brute-force; STIG/CIS threshold). WARNING: repeated password mistakes will temporarily lock you out; Restore Default disables lockout")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
-                    "'{0}' locks an account for 15 minutes after 10 failed sign-ins.\n\n" +
+                    "'{0}' locks an account for 15 minutes after 3 failed sign-ins.\n\n" +
                     "WARNING: repeatedly mistyping your password — including a local administrator — will lock you out temporarily. Restore Default disables lockout.",
             },
             new SubTweak("PowerShell audit logging", SubTweakType.Toggle,

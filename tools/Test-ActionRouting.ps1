@@ -17,6 +17,7 @@ $dispatchers = @(
     'scripts/Device Guard/device-guard.ps1',
     'scripts/Network Security/network-security.ps1',
     'scripts/System Security/system-security.ps1',
+    'scripts/Compliance/compliance-baselines.ps1',
     'scripts/Debloat/debloat.ps1',
     'scripts/Maintenance/maintenance.ps1',
     'scripts/Customize/Customize.ps1',
@@ -34,6 +35,7 @@ $catalogRoutes = @(
     @{ Catalog = 'DeviceGuardCategory.cs'; Script = 'scripts/Device Guard/device-guard.ps1' },
     @{ Catalog = 'NetworkSecurityCategory.cs'; Script = 'scripts/Network Security/network-security.ps1' },
     @{ Catalog = 'SystemSecurityCategory.cs'; Script = 'scripts/System Security/system-security.ps1' },
+    @{ Catalog = 'ComplianceBaselinesCategory.cs'; Script = 'scripts/Compliance/compliance-baselines.ps1' },
     @{ Catalog = 'DebloatCategory.cs'; Script = 'scripts/Debloat/debloat.ps1' },
     @{ Catalog = 'MaintenanceCategory.cs'; Script = 'scripts/Maintenance/maintenance.ps1' },
     @{ Catalog = 'CustomizeCategory.cs'; Script = 'scripts/Customize/Customize.ps1' },
@@ -125,6 +127,58 @@ foreach ($pair in $catalogRoutes) {
     }
 }
 
+# Compliance profiles compose existing toggle routes. Validate all four fields together so a
+# renamed action or script cannot silently turn a baseline into a partial apply/restore.
+$profileCatalogs = @(
+    @{ Catalog = 'DefenderCategory.cs'; ApplyScript = 'Defender/defender.ps1'; RevertScript = 'Defender/revert-defender.ps1' },
+    @{ Catalog = 'DeviceGuardCategory.cs'; ApplyScript = 'Device Guard/device-guard.ps1'; RevertScript = 'Device Guard/revert-device-guard.ps1' },
+    @{ Catalog = 'ExploitProtectionCategory.cs'; ApplyScript = 'Exploit Protection/exploit-protection.ps1'; RevertScript = 'Exploit Protection/revert-exploit-protection.ps1' },
+    @{ Catalog = 'NetworkSecurityCategory.cs'; ApplyScript = 'Network Security/network-security.ps1'; RevertScript = 'Network Security/revert-network-security.ps1' },
+    @{ Catalog = 'SystemSecurityCategory.cs'; ApplyScript = 'System Security/system-security.ps1'; RevertScript = 'System Security/revert-system-security.ps1' },
+    @{ Catalog = 'EdgeCategory.cs'; ApplyScript = 'Edge/Edge.ps1'; RevertScript = 'Edge/Edge.ps1' }
+)
+$validProfileRoutes = @{}
+foreach ($catalog in $profileCatalogs) {
+    $catalogContent = Get-Content -LiteralPath (Join-Path $categoryRoot $catalog.Catalog) -Raw
+    foreach ($match in $togglePattern.Matches($catalogContent)) {
+        $key = @(
+            $catalog.ApplyScript,
+            $match.Groups['apply'].Value,
+            $catalog.RevertScript,
+            $match.Groups['revert'].Value
+        ) -join '|'
+        $validProfileRoutes[$key] = $true
+    }
+}
+
+$profilePaths = @(
+    'STIG/STIG-Windows-11-V2R9.psd1',
+    'CIS/CIS-Windows-11-24H2-L1.psd1'
+)
+foreach ($relativeProfilePath in $profilePaths) {
+    $baselineProfile = Import-PowerShellDataFile -LiteralPath (Join-Path $repoRoot $relativeProfilePath)
+    if ($baselineProfile.SchemaVersion -ne 1 -or @($baselineProfile.Routes).Count -eq 0) {
+        $failures.Add("${relativeProfilePath}: invalid schema or empty route list")
+        continue
+    }
+    $profileKeys = @{}
+    foreach ($route in @($baselineProfile.Routes)) {
+        $key = @(
+            $route.ApplyScript,
+            $route.ApplyAction,
+            $route.RevertScript,
+            $route.RevertAction
+        ) -join '|'
+        if (-not $validProfileRoutes.ContainsKey($key)) {
+            $failures.Add("${relativeProfilePath}: unknown composed route [$key]")
+        }
+        if ($profileKeys.ContainsKey($key)) {
+            $failures.Add("${relativeProfilePath}: duplicate composed route [$key]")
+        }
+        $profileKeys[$key] = $true
+    }
+}
+
 $revertPairs = @(
     @{ Catalog = 'DefenderCategory.cs'; Script = 'scripts/Defender/revert-defender.ps1' },
     @{ Catalog = 'DeviceGuardCategory.cs'; Script = 'scripts/Device Guard/revert-device-guard.ps1' },
@@ -196,4 +250,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "[+] Action routing validation passed for $($dispatchers.Count) catalog dispatchers and $($revertPairs.Count) revert maps."
+Write-Host "[+] Action routing validation passed for $($dispatchers.Count) catalog dispatchers, $($revertPairs.Count) revert maps, and $($profilePaths.Count) compliance profiles."

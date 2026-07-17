@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
-    <Version>2.1.3</Version>
+    <Version>2.2.0</Version>
     <AssemblyName>PleaseTweakWindows</AssemblyName>
     <RootNamespace>PleaseTweakWindows</RootNamespace>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
@@ -37,6 +37,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\scripts\**\*" Link="Scripts\%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\STIG\STIG-Windows-11-V2R9.psd1" Link="Scripts\Compliance\Profiles\STIG-Windows-11-V2R9.psd1" />
+    <EmbeddedResource Include="..\..\CIS\CIS-Windows-11-24H2-L1.psd1" Link="Scripts\Compliance\Profiles\CIS-Windows-11-24H2-L1.psd1" />
   </ItemGroup>
 
   <ItemGroup>

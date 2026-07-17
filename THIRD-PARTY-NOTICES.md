@@ -24,6 +24,21 @@ respective owners and are **not** covered by this project's MIT license. Their o
   facts (registry keys, ASR GUIDs, `Set-MpPreference` names) re-implemented with this project's own
   toolkit; this attribution is included to satisfy the MIT notice requirement for any adapted material.
 
+## DISA Windows 11 STIG / SCAP content
+
+- **Source:** https://www.cyber.mil/stigs/downloads/
+- **Use:** The Windows 11 V2R9 SCAP benchmark is the traceable source for the curated
+  STIG-aligned profile. It is not embedded in release binaries, and PleaseTweakWindows
+  does not claim that the automated subset establishes compliance.
+
+## HardeningKitty / windows_hardening (MIT)
+
+- **Source:** https://github.com/0x6d69636b/windows_hardening — © Michael Schneider and contributors, MIT License
+- **Use:** The public Windows 11 24H2 CIS finding-list structure was consulted when selecting the
+  project's CIS Level 1-aligned action bundle. HardeningKitty code and CIS benchmark text are not
+  redistributed in PleaseTweakWindows release binaries. Users must obtain the official CIS
+  benchmark under the applicable CIS terms.
+
 ## Bundled .NET libraries
 The release is a single-file, self-contained `win-x64` build, so the following NuGet packages and
 the .NET 10 runtime assemblies are **redistributed inside `PleaseTweakWindows.exe`**. Their licenses

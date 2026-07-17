@@ -35,7 +35,13 @@ public sealed partial class TweakRegistry
             new SubTweak("Disable Lock Screen", SubTweakType.Toggle, "lockscreen-disable", "lockscreen-enable",
                 "Skip lock screen on sign-in"),
             new SubTweak("Clean Start Menu & Taskbar", "startmenu-clean",
-                "Remove default pinned items from Start Menu and Taskbar"),
+                "Remove default pinned items from Start Menu and Taskbar")
+            {
+                Risk = SubTweakRisk.Confirm,
+                Warning =
+                    "'{0}' removes pinned items from Start and the taskbar.\n\n" +
+                    "WARNING: this cannot be undone — your current pin layout is not saved and there is no Restore for it.",
+            },
             new SubTweak("Add Start Menu Shortcuts", "shortcuts-add",
                 "Add useful shortcuts to Start Menu"),
             new SubTweak("Disable Keyboard Shortcuts", SubTweakType.Toggle, "keyboard-disable", "keyboard-enable",
