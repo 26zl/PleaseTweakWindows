@@ -508,19 +508,19 @@ jobs:
         run: dotnet restore PleaseTweakWindows.sln --locked-mode
 
       - name: Run tests
-        run: dotnet test PleaseTweakWindows.sln -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true --collect:"XPlat Code Coverage" --results-directory TestResults
+        run: dotnet test --solution PleaseTweakWindows.sln -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true --results-directory TestResults -- --coverlet --coverlet-output-format cobertura
 
       - name: Upload test coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-coverage
-          path: TestResults/**/coverage.cobertura.xml
+          path: TestResults/**/coverage.cobertura*.xml
           if-no-files-found: error
 
       - name: Enforce test coverage floor
         run: |
-          $reports = @(Get-ChildItem "TestResults" -Recurse -Filter "coverage.cobertura.xml")
+          $reports = @(Get-ChildItem "TestResults" -Recurse -Filter "coverage.cobertura*.xml")
           # Fail on zero or multiple reports so a second test project can't hide low coverage.
           if ($reports.Count -ne 1) {
             Write-Error "Expected exactly one coverage report, found $($reports.Count)."
