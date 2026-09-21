@@ -508,7 +508,7 @@ jobs:
         run: dotnet restore PleaseTweakWindows.sln --locked-mode
 
       - name: Run tests
-        run: dotnet test --solution PleaseTweakWindows.sln -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true --results-directory TestResults -- --coverlet --coverlet-output-format cobertura
+        run: dotnet test --solution PleaseTweakWindows.sln -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true --results-directory TestResults -- --coverlet --coverlet-output-format cobertura --coverlet-exclude-assemblies-without-sources MissingAll
 
       - name: Upload test coverage
         if: always()
