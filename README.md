@@ -100,8 +100,8 @@ REM Run the full test suite
 dotnet test PleaseTweakWindows.sln
 
 REM Run a single test class / single method
-dotnet test PleaseTweakWindows.sln --filter "FullyQualifiedName~ScriptExecutorTests"
-dotnet test PleaseTweakWindows.sln --filter "FullyQualifiedName=PleaseTweakWindows.Tests.ScriptExecutorTests.IsValidAction_ValidatesCorrectly"
+dotnet test PleaseTweakWindows.sln -- --filter-class PleaseTweakWindows.Tests.ScriptExecutorTests
+dotnet test PleaseTweakWindows.sln -- --filter-method PleaseTweakWindows.Tests.ScriptExecutorTests.IsValidAction_ValidatesCorrectly
 
 REM Debug build (no publish, no UAC)
 dotnet build PleaseTweakWindows.sln
