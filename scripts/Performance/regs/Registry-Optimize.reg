@@ -958,10 +958,8 @@ Windows Registry Editor Version 5.00
 ; disable automatic maintenance
 
 
-[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance]
 
 
-"MaintenanceDisabled"=dword:00000001
 
 
 
@@ -973,10 +971,8 @@ Windows Registry Editor Version 5.00
 ; disable report problems
 
 
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting]
 
 
-"Disabled"=dword:00000001
 
 
 
@@ -2388,10 +2384,8 @@ E0,F6,C5,D5,0E,CA,50,00,00
 ; disable update apps automatically
 
 
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\WindowsStore]
 
 
-"AutoDownload"=dword:00000002
 
 
 
@@ -2418,28 +2412,22 @@ E0,F6,C5,D5,0E,CA,50,00,00
 
 
 
-[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\GoogleChromeElevationService]
-
-
-"Start"=dword:00000004
 
 
 
 
 
-[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\gupdate]
-
-
-"Start"=dword:00000004
 
 
 
 
 
-[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\gupdatem]
 
 
-"Start"=dword:00000004
+
+
+
+
 
 
 
