@@ -305,7 +305,26 @@ function Invoke-TelemetryPolicyEnforce {
 
 function Invoke-BlockMsAccount {
     Write-Output "[*] Blocking Microsoft account sign-in..."
-    Write-Output "[!] WARNING: NoConnectedUser=3 blocks adding OR using a Microsoft account on this PC. This breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in. Restore Default removes the block."
+
+    # NoConnectedUser=3 blocks EXISTING Microsoft-account users from signing in, not only new ones;
+    # refuse when any Microsoft-account user is present so the only sign-in cannot be locked out of Windows.
+    try {
+        $msaUsers = @(Get-LocalUser -ErrorAction Stop | Where-Object { $_.Enabled -and $_.PrincipalSource -eq 'MicrosoftAccount' })
+    } catch {
+        Write-Output "[-] ERROR: Could not enumerate local accounts to check for Microsoft-account sign-ins: $($_.Exception.Message). Refusing to block Microsoft accounts to avoid a lockout."
+        $script:PTWErrorCount++
+        return
+    }
+    if ($msaUsers.Count -gt 0) {
+        $names = ($msaUsers | ForEach-Object { $_.Name }) -join ', '
+        Write-Output "[-] ERROR: This PC has Microsoft-account sign-in(s): $names."
+        Write-Output "[!] NoConnectedUser=3 would stop them from signing in to Windows, which can lock you out. Not applying."
+        Write-Output "[i] Convert those users to local accounts first (Settings > Accounts), then retry."
+        $script:PTWErrorCount++
+        return
+    }
+
+    Write-Output "[!] WARNING: NoConnectedUser=3 blocks adding OR signing in with a Microsoft account on this PC. This breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in. Restore Default removes the block."
     Set-RegDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'NoConnectedUser' -Value 3
     Write-Output "[+] SUCCESS: Microsoft account sign-in blocked"
 }

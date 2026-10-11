@@ -49,8 +49,9 @@ function Set-LsaProtection {
     if (-not $PSCmdlet.ShouldProcess("System", "Enable LSA protection (RunAsPPL)")) { return }
     Write-Output "[*] Enabling LSA protection (RunAsPPL) to block credential theft from LSASS memory..."
     Write-Output "[!] WARNING: requires a REBOOT. Rare legacy authentication providers, smartcard middleware or SSO plugins that inject into LSASS may stop working; use Restore Default and reboot if so."
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPL' -Value 1
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPLBoot' -Value 1
+    # Value 2 = enabled WITHOUT a UEFI lock so Restore Default can remove it; value 1 persists in a UEFI variable the registry revert cannot clear.
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPL' -Value 2
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPLBoot' -Value 2
     Write-Output "[+] SUCCESS: LSA protection enabled (reboot required)"
 }
 
@@ -74,13 +75,13 @@ function Set-CredentialGuardEnable {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enable Credential Guard")) { return }
     Write-Output "[*] Enabling Credential Guard (isolated LSA via VBS)..."
-    Write-Output "[!] WARNING: requires a REBOOT and CPU virtualization/SLAT support. Can break legacy SSO, some VPN/credential providers, and Wi-Fi/RADIUS using unsupported protocols. Configured WITHOUT a UEFI lock (LsaCfgFlags=1) so it stays reversible from Windows."
+    Write-Output "[!] WARNING: requires a REBOOT and CPU virtualization/SLAT support. Can break legacy SSO, some VPN/credential providers, and Wi-Fi/RADIUS using unsupported protocols. Configured WITHOUT a UEFI lock (LsaCfgFlags=2) so it stays reversible from Windows."
     $dg = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
     Set-RegDword -Path $dg -Name 'EnableVirtualizationBasedSecurity' -Value 1
     Set-RegDword -Path $dg -Name 'RequirePlatformSecurityFeatures' -Value 1
     Set-RegDword -Path "$dg\Scenarios\CredentialGuard" -Name 'Enabled' -Value 1
-    # LsaCfgFlags: 1 = enabled without UEFI lock (reversible); 2 = with UEFI lock (hard to revert).
-    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LsaCfgFlags' -Value 1
+    # LsaCfgFlags: 1 = enabled WITH a UEFI lock (persisted in a UEFI variable the registry revert cannot clear); 2 = enabled WITHOUT a lock (reversible). Use 2 so Restore Default works.
+    Set-RegDword -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LsaCfgFlags' -Value 2
     Write-Output "[+] SUCCESS: Credential Guard enabled (reboot required)"
 }
 

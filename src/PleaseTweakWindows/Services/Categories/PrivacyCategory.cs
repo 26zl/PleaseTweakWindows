@@ -94,12 +94,13 @@ public sealed partial class TweakRegistry
                 "Set the GPO-enforcing DWORDs that disable consumer content, tailored experiences, AIT/CEIP, implicit feedback, device-name telemetry and the advertising ID"),
             new SubTweak("Block Microsoft account sign-in", SubTweakType.Toggle,
                 "block-ms-account", "block-ms-account-revert",
-                "Block adding or using a Microsoft account (NoConnectedUser=3). WARNING: breaks Store/OneDrive/Copilot/Office sign-in; Restore Default removes the block")
+                "Block adding or signing in with a Microsoft account (NoConnectedUser=3). WARNING: also blocks EXISTING Microsoft-account users from signing in to Windows — can lock you out if your only admin is a Microsoft account. Breaks Store/OneDrive/Copilot/Office sign-in; Restore Default removes the block")
             {
                 Risk = SubTweakRisk.High,
+                IncludeInRunAll = false,
                 Warning =
-                    "'{0}' blocks adding or using a Microsoft account on this PC.\n\n" +
-                    "WARNING: this breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in (NoConnectedUser=3). Restore Default removes the block.",
+                    "'{0}' blocks adding or signing in with a Microsoft account on this PC.\n\n" +
+                    "WARNING: this also blocks EXISTING Microsoft-account users from signing in to Windows — if your only administrator is a Microsoft account you can be LOCKED OUT. It breaks Microsoft Store purchases, OneDrive, Copilot and Office sign-in (NoConnectedUser=3). To avoid a lockout the action refuses to run while a Microsoft-account user exists on this PC. Restore Default removes the block.",
             },
             new SubTweak("Disable OneDrive sync (policy)", SubTweakType.Toggle,
                 "onedrive-policy-disable", "onedrive-policy-disable-revert",
