@@ -153,14 +153,23 @@ function Restore-ImproveNetworkSecurity {
         Write-PTWLog "NetBIOS revert failed: $($_.Exception.Message)" "WARNING"
     }
 
-    # Restore LanmanWorkstation dependency list (includes SMB1 driver again).
+    # Restore LanmanWorkstation dependencies, listing only drivers present on this machine:
+    # Windows 11 ships no mrxsmb10 (SMB1) driver, and re-adding it makes the service fail to start (error 1075).
     try {
         $sc = Get-Command sc.exe -ErrorAction SilentlyContinue
         if ($sc) {
-            & $sc.Path config lanmanworkstation depend= bowser/mrxsmb10/mrxsmb20/nsi | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                $script:PTWErrorCount++
-                Write-PTWLog "LanmanWorkstation dependency restore failed (code: $LASTEXITCODE)" "WARNING"
+            $dependCandidates = @('bowser', 'mrxsmb10', 'mrxsmb20', 'nsi')
+            $dependPresent = @($dependCandidates | Where-Object {
+                Test-Path -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\$_"
+            })
+            if ($dependPresent.Count -gt 0) {
+                & $sc.Path config lanmanworkstation depend= ($dependPresent -join '/') | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    $script:PTWErrorCount++
+                    Write-PTWLog "LanmanWorkstation dependency restore failed (code: $LASTEXITCODE)" "WARNING"
+                }
+            } else {
+                Write-PTWLog "No LanmanWorkstation dependency drivers found; left dependencies unchanged" "WARNING"
             }
         }
     } catch {
