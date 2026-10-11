@@ -66,6 +66,7 @@ public sealed partial class TweakRegistry
                 "Set User Account Control to 'Never notify' so admin apps elevate without a prompt. WARNING: aggressive — malware that gains admin can act unattended (EnableLUA stays on). Restore Default restores the default prompt")
             {
                 Risk = SubTweakRisk.High,
+                IncludeInRunAll = false,
                 Warning =
                     "'{0}' sets User Account Control to 'Never notify'.\n\n" +
                     "WARNING: programs that request administrator rights will elevate WITHOUT a prompt, so malware that gets admin can act unattended. " +
