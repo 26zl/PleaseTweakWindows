@@ -20,7 +20,7 @@ the CycloneDX SBOM of each version are published on the
   Microsoft.NET.Test.Sdk 18.8.1 → 18.11.0, Moq 4.20.72 → 4.21.0; coverage is collected with
   coverlet.MTP 10.1.0 (was coverlet.collector 10.0.1) for the Microsoft.Testing.Platform runner.
 - CI actions: actions/checkout 7.0.0 → 7.0.1, actions/upload-artifact 7.0.1 → 7.0.2,
-  actions/download-artifact 8.0.1 → 8.0.2, step-security/harden-runner 2.20.0 → 2.22.2,
+  actions/download-artifact 8.0.1 → 8.0.2, step-security/harden-runner 2.20.0 → 2.22.3,
   softprops/action-gh-release 3.0.2 → 3.0.3.
 - Both `packages.lock.json` files are regenerated with `dotnet restore --force-evaluate` after the
   package bumps so the locked-mode restore in CI passes.
