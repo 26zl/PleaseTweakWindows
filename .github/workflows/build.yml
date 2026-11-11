@@ -20,6 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # harden-runner stays in audit mode: GitHub-hosted Windows runners support audit mode only, and every job
+  # here runs on windows-latest because the scripts and the WPF build need Windows.
   validate-scripts:
     name: Validate PowerShell Scripts
     runs-on: windows-latest
@@ -226,6 +228,11 @@ jobs:
           }
 
           Write-Host "[+] All script checksums current and every payload is attested"
+        shell: pwsh
+
+      - name: Verify security-weakening changes are allowlisted
+        # Windows Update, Defender, UAC, credential and service weakenings in scripts/ need a reviewed entry in tools/security-weakening-allowlist.json.
+        run: ./tools/Test-SecurityWeakening.ps1
         shell: pwsh
 
   functional-testing:
@@ -723,6 +730,9 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
+      # Build provenance attestation: OIDC token for Sigstore signing, and permission to store the attestation.
+      id-token: write
+      attestations: write
 
     steps:
       - name: Harden Runner
@@ -825,6 +835,15 @@ jobs:
           "$h  PleaseTweakWindows.zip" | Out-File -Encoding ascii -FilePath "SHA256SUMS.txt"
           Get-Content "SHA256SUMS.txt"
         shell: pwsh
+
+      - name: Attest build provenance
+        if: steps.version.outputs.release == 'true'
+        # Verify a download with: gh attestation verify PleaseTweakWindows.zip --repo 26zl/PleaseTweakWindows
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            PleaseTweakWindows.zip
+            dist/PleaseTweakWindows.exe
 
       - name: Create Release
         if: steps.version.outputs.release == 'true'

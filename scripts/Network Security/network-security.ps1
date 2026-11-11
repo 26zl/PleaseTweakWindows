@@ -415,7 +415,7 @@ function Set-TlsCipherOrder {
         'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256'
     )
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002' -Name 'Functions' -Type 'String' -Value ($suites -join ',')
-    # ECC curve priority (NIST P-256 first, then P-384; curve25519 last for compat).
+    # ECC curve priority: curve25519 first, then NIST P-256 and NIST P-384.
     $curves = @('curve25519','NistP256','NistP384')
     Set-RegValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010003' -Name 'EccCurves' -Type 'MultiString' -Value $curves
     Write-Output "[+] SUCCESS: TLS cipher + ECC curve order configured"
@@ -798,6 +798,13 @@ switch ($Action.ToLowerInvariant()) {
                 Write-Output "[-] ERROR: No network profiles were found."
                 exit 1
             }
+            # Save each network's current category so Restore Default can put it back.
+            try {
+                Save-PTWNetworkCategorySnapshot -Profiles $profiles
+            } catch {
+                Write-Output "[-] ERROR: Could not save the current network categories ($($_.Exception.Message)). Nothing was changed."
+                exit 1
+            }
             $failed = 0
             $profiles | ForEach-Object {
                 try {
@@ -821,41 +828,29 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "network-all-private" {
-        Write-Output "[*] Setting all network profiles to Private..."
+        # Restore Default for 'Set all networks to Public': put back the categories saved at Apply.
+        Write-Output "[*] Restoring the network categories saved before 'Set all networks to Public'..."
         try {
-            $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
-            if ($profiles.Count -eq 0) {
-                Write-Output "[-] ERROR: No network profiles were found."
-                exit 1
-            }
-            $failed = 0
-            $profiles | ForEach-Object {
-                try {
-                    Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
-                    Write-Output "  [+] $($_.Name) -> Private"
-                } catch {
-                    $failed++
-                    Write-Warning "  [WARN] Could not set $($_.Name) to Private: $($_.Exception.Message)"
-                }
-            }
-            if ($failed -gt 0) {
-                Write-Output "[-] ERROR: $failed of $($profiles.Count) network profile(s) could not be changed."
-                exit 1
-            }
-            Write-Output "[+] SUCCESS: All network profiles restored to Private"
+            Restore-PTWNetworkCategorySnapshot
         } catch {
-            Write-Error "Failed to enumerate network profiles: $($_.Exception.Message)"
+            Write-Output "[-] ERROR: Could not restore network categories: $($_.Exception.Message)"
             exit 1
+        }
+        if ($script:PTWErrorCount -gt 0) {
+            Write-Output "[-] ERROR: Some network categories could not be restored."
+        } else {
+            Write-Output "[+] SUCCESS: Network categories restored"
         }
         Exit-PTW
     }
 
     "country-ip-block" {
         Write-Output "[*] Blocking sanctioned-region IP ranges in Windows Firewall..."
-        Write-Output "[!] WARNING: this blocks inbound AND outbound traffic to entire countries' IP ranges (State Sponsors of Terrorism + OFAC sanctioned). A VPN/VPS endpoint in another country bypasses it. Lists are fetched live from a curated IANA IP-block source and validated as CIDR before use."
+        Write-Output "[!] WARNING: this blocks inbound AND outbound traffic to entire countries' IP ranges (State Sponsors of Terrorism + OFAC sanctioned). A VPN/VPS endpoint in another country bypasses it. The lists come from a pinned commit of a curated IANA IP-block source, must match the SHA256 shipped with the app and are validated as CIDR before use."
+        # Bump the commit and the two SHA256 entries in file-checksums.json together when refreshing the lists.
         $bundles = @(
-            @{ Name = 'PTW Country IP Block - State Sponsors of Terrorism'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/main/Curated-Lists/StateSponsorsOfTerrorism.txt' },
-            @{ Name = 'PTW Country IP Block - OFAC Sanctioned'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/main/Curated-Lists/OFACSanctioned.txt' }
+            @{ Name = 'PTW Country IP Block - State Sponsors of Terrorism'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/93cc76888f6cb84c5f17c7c8633078b14b719ae4/Curated-Lists/StateSponsorsOfTerrorism.txt' },
+            @{ Name = 'PTW Country IP Block - OFAC Sanctioned'; Url = 'https://raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks/93cc76888f6cb84c5f17c7c8633078b14b719ae4/Curated-Lists/OFACSanctioned.txt' }
         )
         $resolvedBundles = @()
         foreach ($b in $bundles) {

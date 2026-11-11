@@ -132,6 +132,7 @@ switch ($Action.ToLowerInvariant()) {
         Test-SignedFile -Path $driverExe -PublisherPatterns @('NVIDIA Corporation')
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
+            Write-Output "[i] Installing 7-Zip (pinned installer, SHA256-verified) to unpack the package; it stays installed in Program Files."
             $sevenZipInstaller = Get-PTWRuntimePath "7z-setup.exe"
             Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File $sevenZipInstaller
             $sevenZipInstall = Start-Process -FilePath $sevenZipInstaller -ArgumentList "/S" -Wait -PassThru -ErrorAction Stop
@@ -175,8 +176,9 @@ switch ($Action.ToLowerInvariant()) {
             Write-Output "[-] ERROR: No AMD GPU detected. Cannot install AMD driver."
             exit 1
         }
-        # Open AMD's official page for the latest Auto-Detect installer.
-        Start-Process "https://www.amd.com/en/support/download/drivers.html"
+        # Open AMD's official page through Explorer so the browser runs without the app's admin rights.
+        $explorer = Join-Path ([Environment]::GetFolderPath('Windows')) 'explorer.exe'
+        Start-Process -FilePath $explorer -ArgumentList '"https://www.amd.com/en/support/download/drivers.html"'
         Write-Output "[+] SUCCESS: AMD driver download page opened - click 'Download Windows Drivers' to get the latest installer"
         Exit-PTW
     }
@@ -356,6 +358,7 @@ switch ($Action.ToLowerInvariant()) {
         Get-FileFromWeb -URL "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe" -File $directXExe
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
+            Write-Output "[i] Installing 7-Zip (pinned installer, SHA256-verified) to unpack the package; it stays installed in Program Files."
             $sevenZipInstaller = Get-PTWRuntimePath "7z-setup.exe"
             Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File $sevenZipInstaller
             $sevenZipInstall = Start-Process -FilePath $sevenZipInstaller -ArgumentList "/S" -Wait -PassThru -ErrorAction Stop

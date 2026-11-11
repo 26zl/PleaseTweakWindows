@@ -12,13 +12,13 @@ public sealed partial class TweakRegistry
                 "Restore normal automatic Windows Update — clears any mode set below"),
             new SubTweak("Defer Feature Updates", "wu-security-only",
                 "Defer feature updates up to 365 days while quality/security and other applicable updates keep flowing"),
-            new SubTweak("Pause Updates (long)", "wu-pause-updates",
-                "Pause all updates into the far future. Use Default to resume")
+            new SubTweak("Pause Updates (35 days)", "wu-pause-updates",
+                "Pause all updates for 35 days, the longest pause Windows itself offers. Updates resume automatically afterwards; use Default to resume earlier")
             {
-                Risk = SubTweakRisk.Confirm,
+                Risk = SubTweakRisk.High,
                 Warning =
-                    "'{0}' will pause all Windows updates into the far future.\n\n" +
-                    "Security patches will not install while paused. Use the 'Default' mode to resume.",
+                    "'{0}' pauses all Windows updates, including security patches, for 35 days.\n\n" +
+                    "No security patches install while paused. Updates resume automatically when the pause ends; use the 'Default' mode to resume earlier.",
             },
             new SubTweak("Turn Off Updates (aggressive)", "wu-disable",
                 "Stop ALL Windows updates and disable the update services. WARNING: blocks security patches; your PC becomes progressively more vulnerable. Use Default to turn updates back on")

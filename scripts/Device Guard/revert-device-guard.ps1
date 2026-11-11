@@ -32,12 +32,36 @@ function Restore-LsaProtection {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert LSA protection")) { return }
+    if (Test-PTWState -Name 'device-guard-lsa-protection.json') {
+        Restore-PTWRegistrySnapshot -StateName 'device-guard-lsa-protection.json'
+        Write-PTWLog "Restored the LSA protection values saved before Apply (reboot to take effect)" "SUCCESS"
+        return
+    }
+    # No snapshot: the tweak was applied by an older version, so the previous values are unknown.
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPL'
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RunAsPPLBoot'
-    Write-PTWLog "Reverted LSA protection (RunAsPPL removed; reboot to take effect)" "SUCCESS"
+    Write-PTWLog "No values were saved before Apply, so RunAsPPL/RunAsPPLBoot were removed. This turns LSA protection OFF after a reboot; if it was on before, turn it back on in Windows Security > Device security > Core isolation." "WARNING"
 }
 
-# Clear shared VBS switches only when neither HVCI nor Credential Guard remains enabled.
+# Shared VBS switches: while the other DeviceGuard tweak is still applied by this app they stay as
+# they are; otherwise the values saved before the first HVCI/Credential Guard Apply are restored.
+function Restore-VbsMasterIfUnused {
+    param([Parameter(Mandatory)][ValidateSet('hvci', 'credential-guard')][string]$RevertedFeature)
+
+    $otherState = if ($RevertedFeature -eq 'hvci') { 'device-guard-credential-guard.json' } else { 'device-guard-hvci.json' }
+    if (Test-PTWState -Name $otherState) {
+        Write-PTWLog "Left VBS master switches in place (the other DeviceGuard tweak is still applied)" "INFO"
+        return
+    }
+    if (Test-PTWState -Name 'device-guard-vbs.json') {
+        Restore-PTWRegistrySnapshot -StateName 'device-guard-vbs.json'
+        Write-PTWLog "Restored the VBS master switches saved before Apply" "INFO"
+        return
+    }
+    Clear-VbsMasterIfUnused
+}
+
+# Fallback without a snapshot: clear shared VBS switches only when neither HVCI nor Credential Guard remains enabled.
 function Clear-VbsMasterIfUnused {
     $dg = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
     $hvci = $null; $cg = $null
@@ -64,22 +88,35 @@ function Restore-HvciEnable {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert Memory Integrity (HVCI)")) { return }
+    if (Test-PTWState -Name 'device-guard-hvci.json') {
+        Restore-PTWRegistrySnapshot -StateName 'device-guard-hvci.json'
+        Restore-VbsMasterIfUnused -RevertedFeature 'hvci'
+        Write-PTWLog "Restored the Memory Integrity / HVCI values saved before Apply (reboot to take effect)" "SUCCESS"
+        return
+    }
+    # No snapshot: deleting the values turns Memory Integrity off; it is not a return to a default-on state.
     $hvciKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity'
-    # Remove HVCI overrides instead of disabling the default-on feature.
     Remove-RegValueSafe -Path $hvciKey -Name 'Enabled'
     Remove-RegValueSafe -Path $hvciKey -Name 'WasEnabledBy'
     Clear-VbsMasterIfUnused
-    Write-PTWLog "Reverted Memory Integrity / HVCI to Windows default (values removed; reboot to take effect)" "SUCCESS"
+    Write-PTWLog "No values were saved before Apply, so the HVCI values were removed. This turns Memory Integrity OFF after a reboot; if it was on before, turn it back on in Windows Security > Device security > Core isolation." "WARNING"
 }
 
 function Restore-CredentialGuardEnable {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Revert Credential Guard")) { return }
+    if (Test-PTWState -Name 'device-guard-credential-guard.json') {
+        Restore-PTWRegistrySnapshot -StateName 'device-guard-credential-guard.json'
+        Restore-VbsMasterIfUnused -RevertedFeature 'credential-guard'
+        Write-PTWLog "Restored the Credential Guard values saved before Apply (reboot to take effect)" "SUCCESS"
+        return
+    }
+    # No snapshot: disable explicitly, as earlier versions did.
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\CredentialGuard' -Name 'Enabled' -Type 'DWord' -Value 0
     Set-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LsaCfgFlags' -Type 'DWord' -Value 0
     Clear-VbsMasterIfUnused
-    Write-PTWLog "Reverted Credential Guard (LsaCfgFlags=0; reboot to take effect)" "SUCCESS"
+    Write-PTWLog "No values were saved before Apply, so Credential Guard was disabled explicitly (LsaCfgFlags=0; reboot to take effect). Where Windows enables Credential Guard by default, delete LsaCfgFlags to return to that default." "WARNING"
 }
 
 function Restore-VulnDriverBlocklist {
@@ -150,7 +187,7 @@ function Invoke-Mode {
     }
 }
 
-Write-PTWLog "Restore Default applies Windows defaults; it does not reconstruct prior custom or organization-managed values." "INFO"
+Write-PTWLog "Restore Default puts back the values saved before Apply for LSA protection, Memory Integrity and Credential Guard; other actions apply Windows defaults and do not reconstruct prior custom or organization-managed values." "INFO"
 
 if ([string]::IsNullOrWhiteSpace($Action)) {
     Write-PTWLog "No -Action provided; running Mode=$Mode for all security revert actions." "INFO"

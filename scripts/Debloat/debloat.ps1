@@ -95,6 +95,10 @@ $script:PtwProtectedPrefixes = @(
     'NVIDIA',
     'AdvancedMicroDevicesInc',
     'AMD',
+    # Xbox and PC gaming (Xbox app, Gaming Services, sign-in, Game Bar, TCUI)
+    'Microsoft.GamingApp',
+    'Microsoft.GamingServices',
+    'Microsoft.Xbox',
     # Useful Apps
     'Microsoft.HEVCVideoExtension',
     'Microsoft.Paint',
@@ -125,6 +129,40 @@ $script:PtwVirtualizationFeatures = @(
     'HypervisorPlatform',
     'Containers-DisposableClientVM'
 )
+
+# Protected state: service start types saved by 'services-disable', and the Store apps that
+# 'bloatware-remove' targeted (the only apps the persistent removal task may remove again).
+$script:PtwServicesStateName = 'services-start.json'
+$script:PtwRemovedAppsStateName = 'bloatware-removed-apps.json'
+
+# Service names listed in servicesTweaked.reg (UTF-16 LE).
+function Get-PtwTweakedServiceName {
+    param([Parameter(Mandatory)][string]$RegPath)
+
+    $prefix = '[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\'
+    foreach ($line in [IO.File]::ReadAllLines($RegPath, [Text.Encoding]::Unicode)) {
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and $trimmed.EndsWith(']')) {
+            $trimmed.Substring($prefix.Length, $trimmed.Length - $prefix.Length - 1)
+        }
+    }
+}
+
+# Appx package names are limited to letters, digits, '.' and '-'; anything else is never embedded
+# into the generated SYSTEM task script.
+function Test-PtwPackageName {
+    param([string]$Name)
+    return ($Name -match '^[A-Za-z0-9][A-Za-z0-9.\-]{1,49}$')
+}
+
+function Test-PtwProtectedName {
+    param([string]$Name, [string[]]$Prefixes)
+    $lower = "$Name".ToLowerInvariant()
+    foreach ($p in $Prefixes) {
+        if ($lower.StartsWith($p.ToLowerInvariant())) { return $true }
+    }
+    return $false
+}
 
 #region Action Dispatcher
 switch ($Action.ToLowerInvariant()) {
@@ -175,6 +213,22 @@ switch ($Action.ToLowerInvariant()) {
         $backupPath = Join-Path $logDir "bloatware-removed-$timestamp.json"
         $restoreScriptPath = Join-Path $logDir "bloatware-restore-$timestamp.ps1"
         $appsToRemove | ConvertTo-Json -Depth 4 | Set-Content -Path $backupPath -Encoding UTF8
+
+        # Record the targeted apps; 'Keep Bloatware Removed' only ever re-removes apps on this list.
+        try {
+            $previousRemoval = Read-PTWState -Name $script:PtwRemovedAppsStateName
+            $recordedNames = @()
+            if ($null -ne $previousRemoval) { $recordedNames = @($previousRemoval.Names) }
+            $recordedNames = @(@($recordedNames) + @($appsToRemove | ForEach-Object { $_.Name }) |
+                Where-Object { Test-PtwPackageName -Name $_ } | Sort-Object -Unique)
+            Write-PTWState -Name $script:PtwRemovedAppsStateName -Data ([ordered]@{
+                SchemaVersion = 1
+                UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
+                Names         = $recordedNames
+            })
+        } catch {
+            Write-Output "[!] Could not record the removed apps for 'Keep Bloatware Removed': $($_.Exception.Message)"
+        }
 
         $restoreScript = @"
 # Restore removed UWP apps for the current user (best effort).
@@ -298,19 +352,41 @@ foreach (`$app in `$apps) {
 
     "bloatware-persist-on" {
         Write-Output "[*] Enabling persistent bloatware removal..."
-        Write-Output "[!] WARNING: this installs a SYSTEM scheduled task that, at EVERY logon, removes and de-provisions all non-protected Store apps. Apps Windows re-adds via updates will be removed again. Turn it off with Restore Default."
         $ProgressPreference = 'SilentlyContinue'
 
+        # Keep only the apps 'Remove Non-Core Store Apps' targeted removed; apps installed later are not touched.
+        try {
+            $removedState = Read-PTWState -Name $script:PtwRemovedAppsStateName
+        } catch {
+            Write-Output "[-] ERROR: $($_.Exception.Message)"
+            exit 1
+        }
+        $removeOnlyNames = @()
+        if ($null -ne $removedState) { $removeOnlyNames = @($removedState.Names) }
+        $removeOnlyNames = @($removeOnlyNames | Where-Object {
+            (Test-PtwPackageName -Name $_) -and -not (Test-PtwProtectedName -Name $_ -Prefixes $script:PtwProtectedPrefixes)
+        } | Sort-Object -Unique)
+        if ($removeOnlyNames.Count -eq 0) {
+            Write-Output "[-] ERROR: No removed apps are recorded. Run 'Remove Non-Core Store Apps' first; this task only keeps the apps it removed from coming back."
+            exit 1
+        }
+        Write-Output "[!] WARNING: this installs a SYSTEM scheduled task that, at every logon, removes and de-provisions these $($removeOnlyNames.Count) app(s) again for all users if Windows re-adds them: $($removeOnlyNames -join ', '). Other apps are not touched. Turn it off with Restore Default."
+
         $prefixLiteral = ($script:PtwProtectedPrefixes | ForEach-Object { "    '$_'" }) -join ",`n"
-        # Literal here-string: $_ / $protected stay literal; __PREFIXES__ is substituted below.
+        $removeOnlyLiteral = ($removeOnlyNames | ForEach-Object { "    '$_'" }) -join ",`n"
+        # Literal here-string: $_ / $protected stay literal; __PREFIXES__ and __REMOVE_ONLY__ are substituted below.
         $genTemplate = @'
 # PleaseTweakWindows - persistent bloatware removal (auto-generated; do not edit).
-# Runs at each logon as SYSTEM to re-remove apps Windows re-provisions.
+# Runs at each logon as SYSTEM and removes only the listed apps when Windows re-provisions them.
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference = 'SilentlyContinue'
 
 $protected = @(
 __PREFIXES__
+)
+
+$removeOnly = @(
+__REMOVE_ONLY__
 )
 
 function Test-PtwProtected {
@@ -326,7 +402,7 @@ function Test-PtwProtected {
 
 Get-AppxProvisionedPackage -Online | ForEach-Object {
     $dn = "$($_.DisplayName)"
-    if (-not (Test-PtwProtected -Name $dn -Family $dn)) {
+    if (($removeOnly -contains $dn) -and -not (Test-PtwProtected -Name $dn -Family $dn)) {
         Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null
     }
 }
@@ -334,12 +410,12 @@ Get-AppxProvisionedPackage -Online | ForEach-Object {
 Get-AppxPackage -AllUsers | ForEach-Object {
     if ($_.IsFramework -or $_.NonRemovable) { return }
     if (-not $_.PackageFullName) { return }
-    if (-not (Test-PtwProtected -Name "$($_.Name)" -Family "$($_.PackageFamilyName)")) {
+    if (($removeOnly -contains "$($_.Name)") -and -not (Test-PtwProtected -Name "$($_.Name)" -Family "$($_.PackageFamilyName)")) {
         Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue
     }
 }
 '@
-        $generated = $genTemplate.Replace('__PREFIXES__', $prefixLiteral)
+        $generated = $genTemplate.Replace('__PREFIXES__', $prefixLiteral).Replace('__REMOVE_ONLY__', $removeOnlyLiteral)
 
         $ptwRoot = Join-Path $env:ProgramData "PleaseTweakWindows"
         $persistDir = Join-Path $ptwRoot "Scripts"
@@ -468,19 +544,34 @@ Get-AppxPackage -AllUsers | ForEach-Object {
 
     "services-disable" {
         Write-Output "[*] Applying Services Optimization (Minimal)..."
-        Write-Output "[!] NOTE: Wi-Fi and Bluetooth may not work with minimal services"
+        Write-Output "[!] NOTE: mobile broadband (cellular) and Mobile Hotspot stop working with minimal services"
         Write-Output "[!] WARNING: This aggressive service set will also:"
         Write-Output "[!]   - DISABLE PRINTING. The Print Spooler is turned off, so all local and"
         Write-Output "[!]     network printing will stop working until services are restored."
         Write-Output "[!]   - STOP FILE/PRINTER SHARING HOSTING. LanmanServer (the 'Server' service)"
         Write-Output "[!]     is disabled, so this PC can no longer host shared folders/printers,"
         Write-Output "[!]     and admin shares (C`$) used by some backup/management tools will break."
+        Write-Output "[!]   - STOP REMOTE DESKTOP HOSTING. SessionEnv and UmRdpService are disabled."
         Write-Output "[!]   - AFFECT VISUAL STYLES. The Themes service is disabled, which can revert"
         Write-Output "[!]     the desktop to a classic appearance and break Settings > Personalization."
-        Write-Output "[!] Use 'Restore Default Services' to undo all of these changes."
+        Write-Output "[!] Your current service start types are saved first; 'Restore Default Services' puts them back."
         $regPath = Join-Path $PSScriptRoot "regs\servicesTweaked.reg"
         $defaultRegPath = Join-Path $PSScriptRoot "regs\servicesDefault.reg"
         if (Test-Path $regPath) {
+            # Read the service list only from a verified payload.
+            if (-not (Test-PtwFileChecksum -Path $regPath)) {
+                Write-Output "[-] ERROR: $regPath failed integrity verification. Nothing was changed."
+                exit 1
+            }
+            try {
+                $serviceValues = @(Get-PtwTweakedServiceName -RegPath $regPath | Sort-Object -Unique | ForEach-Object {
+                    @{ Path = "HKLM:\SYSTEM\CurrentControlSet\Services\$_"; Name = 'Start' }
+                })
+                Save-PTWRegistrySnapshot -StateName $script:PtwServicesStateName -Values $serviceValues
+            } catch {
+                Write-Output "[-] ERROR: Could not save the current service start types ($($_.Exception.Message)). Nothing was changed."
+                exit 1
+            }
             try {
                 if (-not (Import-RegistryFile -RegFile $regPath)) {
                     throw 'The service configuration failed integrity verification or reg.exe import.'
@@ -495,15 +586,14 @@ Get-AppxPackage -AllUsers | ForEach-Object {
                 Write-Output "[+] SUCCESS: Services optimization applied (restart required)"
             } catch {
                 Write-Output "[-] ERROR during services optimization: $($_.Exception.Message)"
-                Write-Output "[!] Attempting rollback with default services registry..."
-                if (Test-Path $defaultRegPath) {
-                    if (Import-RegistryFile -RegFile $defaultRegPath) {
-                        Write-Output "[+] Rollback applied. Restart to restore defaults."
-                    } else {
-                        Write-Output "[-] Rollback FAILED. Services may remain disabled - run 'Restore Default Services'."
-                    }
+                Write-Output "[!] Rolling back to the service start types saved before Apply..."
+                if (Test-PTWState -Name $script:PtwServicesStateName) {
+                    Restore-PTWRegistrySnapshot -StateName $script:PtwServicesStateName
+                    Write-Output "[+] Rollback applied. Restart to finish restoring the services."
+                } elseif ((Test-Path $defaultRegPath) -and (Import-RegistryFile -RegFile $defaultRegPath)) {
+                    Write-Output "[+] Rollback applied with Windows defaults. Restart to finish restoring the services."
                 } else {
-                    Write-Output "[-] Rollback file not found: $defaultRegPath"
+                    Write-Output "[-] Rollback FAILED. Services may remain disabled - run 'Restore Default Services'."
                 }
                 exit 1
             }
@@ -515,7 +605,18 @@ Get-AppxPackage -AllUsers | ForEach-Object {
     }
 
     "services-restore" {
-        Write-Output "[*] Restoring Services to Default..."
+        if (Test-PTWState -Name $script:PtwServicesStateName) {
+            Write-Output "[*] Restoring the service start types saved before 'Disable Unnecessary Services'..."
+            $errorsBefore = $script:PTWErrorCount
+            Restore-PTWRegistrySnapshot -StateName $script:PtwServicesStateName
+            if ($script:PTWErrorCount -ne $errorsBefore) {
+                Write-Output "[-] ERROR: Some service start types could not be restored. Run 'Restore Default Services' again as Administrator."
+                exit 1
+            }
+            Write-Output "[+] SUCCESS: Services restored to their previous start types (restart required)"
+            Exit-PTW
+        }
+        Write-Output "[*] No saved service start types found; restoring Windows default start types..."
         $regPath = Join-Path $PSScriptRoot "regs\servicesDefault.reg"
         if (Test-Path $regPath) {
             if (-not (Import-RegistryFile -RegFile $regPath)) {

@@ -25,6 +25,12 @@ is expected. Verify the archive against the checksum published with the same rel
 ```
 
 Starting with v2.1.3, releases also ship `SHA256SUMS.txt` and a CycloneDX **SBOM** (`SBOM.json`).
+Starting with v2.2.1, the release workflow also publishes a signed build provenance attestation for the
+ZIP and the EXE. Check that a download was built by this repository's workflow with the GitHub CLI:
+
+```powershell
+gh attestation verify .\PleaseTweakWindows.zip --repo 26zl/PleaseTweakWindows
+```
 
 ## Quick Start
 
@@ -36,7 +42,7 @@ Starting with v2.1.3, releases also ship `SHA256SUMS.txt` and a CycloneDX **SBOM
 
 ## Categories
 
-15 categories, 150 sub-tweaks.
+15 categories, 151 sub-tweaks.
 
 | Category | Sub-tweaks | Description |
 | --- | --- | --- |
@@ -52,11 +58,11 @@ Starting with v2.1.3, releases also ship `SHA256SUMS.txt` and a CycloneDX **SBOM
 | **System Security** | 19 | UAC level, SmartScreen, binary integrity, lock screen, account lockout, audit policy, PowerShell logging, WSH |
 | **STIG / CIS Baselines** | 2 | Curated Windows 11 STIG V2R9- and CIS Level 1-aligned Apply/Restore bundles with protected progress state |
 | **Customize** | 13 | Dark mode, taskbar, Explorer, context menu, lock screen, Start menu, keyboard shortcuts |
-| **Maintenance & Tools** | 4 | Disk cleanup, DDU installer, Autoruns, C++ redistributables |
+| **Maintenance & Tools** | 5 | Temp-file cleanup, Recycle Bin, DDU installer, Autoruns, C++ redistributables |
 | **Windows Update** | 5 | Default / feature deferral / pause / off / secure modes |
 | **Edge** | 2 | Security baseline + HardCore hardening |
 
-Each toggle sub-tweak exposes **Apply** and **Restore Default** buttons individually. Restore Default returns the affected setting to the documented Windows default; it does not generally reconstruct a custom or organization-managed value that existed before Apply. Snapshot-backed actions, such as Smart Network Optimization, restore their captured adapter state. A toggle that depends on another tweak greys out until its prerequisite is applied (live registry check). "Run All" applies toggles sequentially and stops on cancellation or failure. It deliberately excludes one-shot actions such as installers, cleanup, and mutually exclusive Windows Update modes.
+Each toggle sub-tweak exposes **Apply** and **Restore Default** buttons individually. Restore Default returns the affected setting to the documented Windows default; it does not generally reconstruct a custom or organization-managed value that existed before Apply. Snapshot-backed actions restore the state captured at Apply: Smart Network Optimization (adapter settings), LSA protection, Memory Integrity and Credential Guard (their registry values), Set all networks to Public (each network's category) and Disable Unnecessary Services (each service's start type). A toggle that depends on another tweak greys out until its prerequisite is applied (live registry check). "Run All" applies toggles sequentially and stops on cancellation or failure. It deliberately excludes one-shot actions such as installers, cleanup, and mutually exclusive Windows Update modes.
 
 The STIG/CIS category composes existing security actions into versioned profiles. Only one compliance profile can be active at a time, and both are excluded from Run All so the choice is explicit. Completed routes are recorded under the protected state directory so Apply can roll back after a partial failure and Restore can resume after interruption. These profiles automate a documented subset; they are not a compliance certification. See [`STIG/`](STIG/) and [`CIS/`](CIS/) for scope and source guidance.
 
@@ -128,14 +134,20 @@ PleaseTweakWindows sends **no telemetry** off-device. It writes local logs under
 - App logs roll daily and are pruned automatically (≈14 days; error logs ≈30).
 - A local activity log records script name, action ID, exit code, and duration.
 - Convenience registry snapshots are stored below the logs directory and pruned after 30 days.
-- Persistent rollback state is stored in ACL-protected `%PROGRAMDATA%\PleaseTweakWindows\state`.
+- Persistent rollback state is stored in ACL-protected `%PROGRAMDATA%\PleaseTweakWindows\state`,
+  including the values saved at Apply for the snapshot-backed Restore Default actions listed above.
   Smart Network Optimization keeps at most five adapter snapshots and deletes the snapshot after
   a fully successful restore; incomplete restores retain it for manual recovery.
 - The full PowerShell **transcript** (which captures every cmdlet's output — adapter names, paths, installed-app info) is **off by default**. It is only written when `PTW_TRANSCRIPT=1` (debug builds), and those files are pruned after 14 days.
 - **Update check:** on startup the app makes a single anonymous HTTPS request to the GitHub Releases API (`api.github.com/repos/26zl/PleaseTweakWindows/releases/latest`) to see if a newer version exists. It sends only an `Accept` and a `User-Agent` header — no machine/user identifiers, no body. Set the environment variable `PTW_NO_UPDATE_CHECK=1` to disable it entirely (no outbound connection).
 - Actions that install vendor tools contact the vendor URL shown in the script only when you run
-  them. Country-IP blocking fetches its two validated CIDR lists from
-  `raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks` only when that action is run.
+  them. Country-IP blocking fetches its two CIDR lists from a pinned commit of
+  `raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks` only when that action is run; each list
+  must match the SHA256 in `scripts/file-checksums.json`, so the lists are as current as that commit.
+- **7-Zip:** the NVIDIA driver, DirectX runtime and DDU actions unpack their packages with 7-Zip. If
+  7-Zip is not installed, they download the pinned, SHA256-verified 7-Zip installer and install 7-Zip to
+  `Program Files` first. 7-Zip stays installed afterwards; remove it under Settings > Apps if you do not
+  want it.
 
 ## Security
 

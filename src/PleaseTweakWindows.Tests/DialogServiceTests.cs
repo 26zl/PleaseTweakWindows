@@ -85,7 +85,9 @@ public class DialogServiceTests
     [InlineData("nvidia-driver-install", true)]
     [InlineData("ooshutup-apply", true)]
     [InlineData("copilot-disable", false)]
-    [InlineData("wu-pause-updates", false)]
+    [InlineData("wu-pause-updates", true)]
+    [InlineData("recycle-bin-empty", true)]
+    [InlineData("cleanup-run", false)]
     [InlineData("nvidia-settings-on", false)]
     public void IsHighRisk_IdentifiesHighRiskActions(string action, bool expected)
     {
@@ -117,6 +119,28 @@ public class DialogServiceTests
         warning.Should().Contain("Windows default");
         warning.Should().Contain("not an exact undo");
         warning.Should().Contain("organization-managed");
+    }
+
+    [Theory]
+    [InlineData("security-lsa-protection-enable-revert")]
+    [InlineData("security-hvci-enable-revert")]
+    [InlineData("security-credential-guard-enable-revert")]
+    public void GetActionWarning_SnapshotRevertsDescribeSavedValues(string revertAction)
+    {
+        var warning = _service.GetActionWarning(revertAction, "Test");
+
+        warning.Should().Contain("before you applied it");
+        warning.Should().Contain("older version");
+        warning.Should().NotContain("not an exact undo");
+    }
+
+    [Fact]
+    public void GetActionWarning_NetworkRestoreDescribesSavedCategories()
+    {
+        var warning = _service.GetActionWarning("network-all-private", "Set all networks to Public");
+
+        warning.Should().Contain("category each network had");
+        warning.Should().NotContain("every connected network profile to Private");
     }
 
     [Fact]

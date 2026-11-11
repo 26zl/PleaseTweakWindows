@@ -197,8 +197,9 @@ function Import-RegistryFile {
     }
 
     # Verify registry payload integrity before importing it into HKLM.
+    # Write-Warning keeps the message out of the return value; callers test the result as a boolean.
     if (-not (Test-PtwFileChecksum -Path $RegFile)) {
-        Write-PTWError "Registry file integrity check FAILED for $RegFile. Refusing to import."
+        Write-Warning "Registry file integrity check FAILED for $RegFile. Refusing to import."
         $script:PTWErrorCount++
         return $false
     }
@@ -352,7 +353,8 @@ function Set-RegistryDefaultValueSafe {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
         [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Value
+        # The classic context menu override writes an empty (Default) value.
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value
     )
     $Path = ConvertTo-PSDrivePath $Path
     Write-PTWDetail "SET default $Path\(Default) = $Value"
@@ -600,6 +602,226 @@ function Stop-PTWTransaction {
     $script:PTWTransactionEntries = $null
     Write-Verbose "PTW Transaction stopped"
     Write-PTWDetail "TRANSACTION stopped"
+}
+#endregion
+
+#region Persistent pre-Apply state
+# Snapshots live in the protected state directory so Restore Default can put back the values that
+# existed before Apply instead of guessing a Windows default.
+function Test-PTWState {
+    param([Parameter(Mandatory)][string]$Name)
+    return [bool](Test-Path -LiteralPath (Get-PTWStatePath -Name $Name))
+}
+
+function Read-PTWState {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $path = Get-PTWStatePath -Name $Name
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        return Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "Protected state '$Name' is unreadable; refusing to guess its contents: $($_.Exception.Message)"
+    }
+}
+
+function Write-PTWState {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)]$Data
+    )
+
+    $path = Get-PTWStatePath -Name $Name
+    $tempPath = "$path.tmp"
+    $Data | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $tempPath -Encoding UTF8 -Force -ErrorAction Stop
+    Move-Item -LiteralPath $tempPath -Destination $path -Force -ErrorAction Stop
+}
+
+function Remove-PTWState {
+    param([Parameter(Mandatory)][string]$Name)
+    Remove-Item -LiteralPath (Get-PTWStatePath -Name $Name) -Force -ErrorAction SilentlyContinue
+}
+
+# Record registry values before the first Apply. An existing record is kept, so applying twice
+# cannot replace the original values with already-tweaked ones. Throws when the record cannot be
+# written; callers must then stop before changing anything.
+function Save-PTWRegistrySnapshot {
+    param(
+        [Parameter(Mandatory)][string]$StateName,
+        [Parameter(Mandatory)][object[]]$Values
+    )
+
+    if ($null -ne (Read-PTWState -Name $StateName)) {
+        Write-PTWDetail "SNAPSHOT ${StateName}: keeping the existing pre-Apply record"
+        return
+    }
+
+    $entries = @(foreach ($item in $Values) {
+        $path = ConvertTo-PSDrivePath ([string]$item.Path)
+        $entry = [ordered]@{
+            Path       = $path
+            Name       = [string]$item.Name
+            KeyExisted = $false
+            Existed    = $false
+            Kind       = $null
+            Value      = $null
+        }
+        $key = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+        if ($key) {
+            $entry.KeyExisted = $true
+            if (@($key.GetValueNames()) -contains $entry.Name) {
+                $kind = $key.GetValueKind($entry.Name).ToString()
+                $raw = $key.GetValue($entry.Name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                $entry.Existed = $true
+                $entry.Kind = $kind
+                $entry.Value = if ($kind -eq 'Binary') { [Convert]::ToBase64String([byte[]]$raw) } else { $raw }
+            }
+        }
+        [pscustomobject]$entry
+    })
+
+    Write-PTWState -Name $StateName -Data ([ordered]@{
+        SchemaVersion = 1
+        CreatedUtc    = [DateTime]::UtcNow.ToString('o')
+        Values        = $entries
+    })
+    Write-PTWDetail "SNAPSHOT ${StateName}: recorded $($entries.Count) value(s)"
+}
+
+# Put back every recorded value; values that did not exist before Apply are deleted, and keys that
+# Apply created are removed again when they are left empty. The record is deleted only when every
+# value was restored, so a failed restore can be retried.
+function Restore-PTWRegistrySnapshot {
+    param([Parameter(Mandatory)][string]$StateName)
+
+    $state = Read-PTWState -Name $StateName
+    if ($null -eq $state) { return }
+
+    $errorsBefore = $script:PTWErrorCount
+    foreach ($entry in @($state.Values)) {
+        $path = [string]$entry.Path
+        $name = [string]$entry.Name
+        if ($entry.Existed) {
+            $kind = [string]$entry.Kind
+            if ($kind -notin @('DWord', 'QWord', 'String', 'ExpandString', 'MultiString', 'Binary')) {
+                Write-Warning "Cannot restore ${path}\${name}: unsupported registry type '$kind'."
+                $script:PTWErrorCount++
+                continue
+            }
+            $value = switch ($kind) {
+                'Binary'      { [Convert]::FromBase64String([string]$entry.Value) }
+                'MultiString' { [string[]]@($entry.Value) }
+                default       { $entry.Value }
+            }
+            Set-RegValueSafe -Path $path -Name $name -Type $kind -Value $value
+        } else {
+            Remove-RegValueSafe -Path $path -Name $name
+            if (-not $entry.KeyExisted) {
+                $key = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+                if ($key -and $key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0) {
+                    Remove-RegKeySafe -Path $path
+                }
+            }
+        }
+    }
+
+    if ($script:PTWErrorCount -eq $errorsBefore) {
+        Remove-PTWState -Name $StateName
+    } else {
+        Write-Warning "Some values from '$StateName' could not be restored; the saved record was kept so Restore Default can be retried."
+    }
+}
+
+# Record the category of every connected network before 'Set all networks to Public'. Networks
+# already in the record keep their original category when Apply runs again.
+function Save-PTWNetworkCategorySnapshot {
+    param([Parameter(Mandatory)][object[]]$Profiles)
+
+    $stateName = 'network-categories.json'
+    $state = Read-PTWState -Name $stateName
+    $saved = New-Object System.Collections.Generic.List[object]
+    if ($null -ne $state) {
+        foreach ($existing in @($state.Profiles)) { $saved.Add($existing) }
+    }
+    foreach ($networkProfile in $Profiles) {
+        $known = @($saved | Where-Object {
+            $_.Name -eq [string]$networkProfile.Name -and $_.InterfaceAlias -eq [string]$networkProfile.InterfaceAlias
+        })
+        if ($known.Count -gt 0) { continue }
+        $saved.Add([pscustomobject]@{
+            Name           = [string]$networkProfile.Name
+            InterfaceAlias = [string]$networkProfile.InterfaceAlias
+            Category       = [string]$networkProfile.NetworkCategory
+        })
+    }
+    Write-PTWState -Name $stateName -Data ([ordered]@{
+        SchemaVersion = 1
+        UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
+        Profiles      = $saved.ToArray()
+    })
+}
+
+# Put back the categories saved by 'Set all networks to Public'. Networks without a saved category
+# keep their current one (Windows treats unknown networks as Public). Entries for networks that are
+# not connected right now stay in the record for a later Restore Default.
+function Restore-PTWNetworkCategorySnapshot {
+    $stateName = 'network-categories.json'
+    $state = Read-PTWState -Name $stateName
+    if ($null -eq $state) {
+        Write-Output "[i] No network categories were saved by this app (the tweak was applied by an older version or never applied)."
+        Write-Output "[i] Network categories were left unchanged. Windows treats new networks as Public; mark trusted networks as Private in Settings > Network & internet."
+        return
+    }
+
+    $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
+    $remaining = New-Object System.Collections.Generic.List[object]
+    $failed = 0
+    foreach ($saved in @($state.Profiles)) {
+        $current = @($profiles | Where-Object {
+            [string]$_.Name -eq $saved.Name -and [string]$_.InterfaceAlias -eq $saved.InterfaceAlias
+        }) | Select-Object -First 1
+        if (-not $current) {
+            $remaining.Add($saved)
+            Write-Output "  [i] $($saved.Name) ($($saved.InterfaceAlias)) is not connected; its saved category ($($saved.Category)) is kept for a later Restore Default."
+            continue
+        }
+        if ($saved.Category -notin @('Public', 'Private')) {
+            Write-Output "  [i] $($saved.Name): category '$($saved.Category)' is assigned by Windows; left as $($current.NetworkCategory)."
+            continue
+        }
+        if ([string]$current.NetworkCategory -eq $saved.Category) {
+            Write-Output "  [=] $($saved.Name) is already $($saved.Category)"
+            continue
+        }
+        try {
+            Set-NetConnectionProfile -InterfaceIndex $current.InterfaceIndex -NetworkCategory $saved.Category -ErrorAction Stop
+            Write-Output "  [+] $($saved.Name) -> $($saved.Category)"
+        } catch {
+            $failed++
+            $remaining.Add($saved)
+            Write-Warning "Could not set $($saved.Name) to $($saved.Category): $($_.Exception.Message)"
+        }
+    }
+
+    foreach ($networkProfile in $profiles) {
+        $wasSaved = @($state.Profiles | Where-Object {
+            $_.Name -eq [string]$networkProfile.Name -and $_.InterfaceAlias -eq [string]$networkProfile.InterfaceAlias
+        })
+        if ($wasSaved.Count -eq 0) {
+            Write-Output "  [i] $($networkProfile.Name): no saved category; left as $($networkProfile.NetworkCategory)."
+        }
+    }
+
+    if ($failed -gt 0) { $script:PTWErrorCount++ }
+    if ($remaining.Count -gt 0) {
+        Write-PTWState -Name $stateName -Data ([ordered]@{
+            SchemaVersion = 1
+            UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
+            Profiles      = $remaining.ToArray()
+        })
+    } else {
+        Remove-PTWState -Name $stateName
+    }
 }
 #endregion
 
@@ -941,20 +1163,24 @@ function Get-CidrListFromWeb {
     try { $uri = [System.Uri]$URL } catch { throw "Invalid URL: $URL" }
     if ($uri.Scheme -ne 'https') { throw "Only HTTPS is allowed for CIDR lists: $URL" }
     if ($uri.Host -ne 'raw.githubusercontent.com') { throw "CIDR lists may only be fetched from raw.githubusercontent.com: $URL" }
-    if ($uri.AbsolutePath -notlike '/HotCakeX/Official-IANA-IP-blocks/*') { throw "Unexpected CIDR list path: $($uri.AbsolutePath)" }
+    # Lists are pinned to one upstream commit and must match the SHA256 shipped in file-checksums.json,
+    # so a changed or compromised upstream file is refused instead of turned into firewall rules.
+    if ($uri.AbsolutePath -notmatch '^/HotCakeX/Official-IANA-IP-blocks/[0-9a-f]{40}/Curated-Lists/[A-Za-z0-9_-]+\.txt$') {
+        throw "CIDR lists must be fetched from a commit-pinned path: $($uri.AbsolutePath)"
+    }
+    $expectedHash = Get-ChecksumFromFile -URL $URL
+    if (-not $expectedHash -or $expectedHash -in @('DYNAMIC', 'REQUIRED')) {
+        throw "No pinned SHA256 for this CIDR list in file-checksums.json: $URL"
+    }
 
+    $listFile = Get-PTWRuntimePath ('cidr-' + [IO.Path]::GetFileName($uri.AbsolutePath))
     try {
-        [Net.ServicePointManager]::SecurityProtocol =
-            [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    } catch {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Get-FileFromWeb -URL $URL -File $listFile -ExpectedHash $expectedHash -MaxBytes 10MB | Out-Null
+        $content = [IO.File]::ReadAllText($listFile)
+    } finally {
+        Remove-Item -LiteralPath $listFile -Force -ErrorAction SilentlyContinue
     }
-
-    $resp = Invoke-WebRequest -Uri $URL -UseBasicParsing -UserAgent 'PleaseTweakWindows/1.0' -TimeoutSec 30 -ErrorAction Stop
-    if ($resp.RawContentLength -gt 10MB) {
-        throw "CIDR response is unexpectedly large ($($resp.RawContentLength) bytes): $URL"
-    }
-    $lines = ($resp.Content -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($_ -notmatch '^#') }
+    $lines = ($content -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($_ -notmatch '^#') }
 
     # Reject invalid, catch-all, and over-broad CIDR ranges.
     $valid = New-Object System.Collections.Generic.List[string]

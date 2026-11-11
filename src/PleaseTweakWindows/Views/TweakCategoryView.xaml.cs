@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using PleaseTweakWindows.ViewModels;
 
@@ -13,25 +12,10 @@ public partial class TweakCategoryView : UserControl
         InitializeComponent();
     }
 
-    private void OnHeaderPressed(object sender, MouseButtonEventArgs e)
-    {
-        ToggleExpand(sender as IInputElement);
-        e.Handled = true;
-    }
-
-    private void OnHeaderKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter && e.Key != Key.Space) return;
-        ToggleExpand(sender as IInputElement);
-        e.Handled = true;
-    }
-
-    private void ToggleExpand(IInputElement? focusTarget)
+    // Mouse, Enter/Space and UI Automation all arrive here through the header button's Click.
+    private void OnHeaderClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not TweakCategoryViewModel vm) return;
-
-        // Focus the header when the category is first activated.
-        focusTarget?.Focus();
 
         vm.ToggleExpandCommand.Execute(null);
 

@@ -158,20 +158,22 @@ switch ($Action.ToLowerInvariant()) {
     }
 
     "wu-pause-updates" {
-        Write-Output "[*] Pausing Windows Update for the maximum window..."
+        # Cap the pause at 35 days, the longest pause Windows itself offers, so security updates resume on their own.
+        $pauseDays = 35
+        Write-Output "[*] Pausing Windows Update for $pauseDays days..."
         Backup-RegistryPath -Action $Action -Paths @($WuPolicy)
         Clear-PtwWindowsUpdatePolicy
         Enable-WindowsUpdateService
         $start = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-        $end = (Get-Date).ToUniversalTime().AddDays(3500).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $end = (Get-Date).ToUniversalTime().AddDays($pauseDays).ToString("yyyy-MM-ddTHH:mm:ssZ")
         Set-RegSz -Path $WuPolicy -Name "PauseFeatureUpdatesStartTime" -Value $start
         Set-RegSz -Path $WuPolicy -Name "PauseFeatureUpdatesEndTime" -Value $end
         Set-RegSz -Path $WuPolicy -Name "PauseQualityUpdatesStartTime" -Value $start
         Set-RegSz -Path $WuPolicy -Name "PauseQualityUpdatesEndTime" -Value $end
         Set-RegSz -Path $WuPolicy -Name "PauseUpdatesStartTime" -Value $start
         Set-RegSz -Path $WuPolicy -Name "PauseUpdatesExpiryTime" -Value $end
-        Write-Output "[!] WARNING: updates are paused into the far future. Windows may still surface a 'resume updates' button; choose the 'Default' mode to fully resume."
-        Write-Output "[+] SUCCESS: Windows Update paused (use Default mode to resume)"
+        Write-Output "[!] WARNING: security updates do not install until the pause ends ($end UTC). Updates resume automatically then; choose the 'Default' mode to resume earlier."
+        Write-Output "[+] SUCCESS: Windows Update paused for $pauseDays days (use Default mode to resume earlier)"
         Exit-PTW
     }
 

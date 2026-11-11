@@ -116,9 +116,9 @@ function Restore-UiCameraOsd {
 
 function Restore-Copilot {
     $ProgressPreference = 'SilentlyContinue'
-    # Restore Copilot by removing its policy overrides.
-    Remove-RegKey -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot"
-    Remove-RegKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+    # Remove only the value Apply writes; other Copilot policies (for example organization-managed ones) stay.
+    Remove-RegValueSafe -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot"
+    Remove-RegValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot"
 
     Write-Output "[i] Copilot policy overrides cleared. The installed package was not modified."
 }

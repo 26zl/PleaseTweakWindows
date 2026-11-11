@@ -43,6 +43,47 @@ if (Test-Path $commonFunctionsPath) {
     exit 1
 }
 
+# Record every value a tweak writes before its first Apply, so Restore Default can put back exactly
+# what was there (Windows 11 can turn LSA protection and Memory Integrity on by default).
+function Save-DeviceGuardSnapshot {
+    param([Parameter(Mandatory)][ValidateSet('lsa-protection', 'hvci', 'credential-guard')][string]$Feature)
+
+    $dg = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
+    $lsa = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+    try {
+        switch ($Feature) {
+            'lsa-protection' {
+                Save-PTWRegistrySnapshot -StateName 'device-guard-lsa-protection.json' -Values @(
+                    @{ Path = $lsa; Name = 'RunAsPPL' },
+                    @{ Path = $lsa; Name = 'RunAsPPLBoot' }
+                )
+            }
+            'hvci' {
+                Save-PTWRegistrySnapshot -StateName 'device-guard-hvci.json' -Values @(
+                    @{ Path = "$dg\Scenarios\HypervisorEnforcedCodeIntegrity"; Name = 'Enabled' },
+                    @{ Path = "$dg\Scenarios\HypervisorEnforcedCodeIntegrity"; Name = 'WasEnabledBy' }
+                )
+            }
+            'credential-guard' {
+                Save-PTWRegistrySnapshot -StateName 'device-guard-credential-guard.json' -Values @(
+                    @{ Path = "$dg\Scenarios\CredentialGuard"; Name = 'Enabled' },
+                    @{ Path = $lsa; Name = 'LsaCfgFlags' }
+                )
+            }
+        }
+        if ($Feature -ne 'lsa-protection') {
+            # HVCI and Credential Guard share the VBS switches; whichever is applied first records them.
+            Save-PTWRegistrySnapshot -StateName 'device-guard-vbs.json' -Values @(
+                @{ Path = $dg; Name = 'EnableVirtualizationBasedSecurity' },
+                @{ Path = $dg; Name = 'RequirePlatformSecurityFeatures' }
+            )
+        }
+    } catch {
+        Write-Output "[-] ERROR: Could not save the current values before Apply ($($_.Exception.Message)). Nothing was changed."
+        exit 1
+    }
+}
+
 function Set-LsaProtection {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
@@ -60,7 +101,7 @@ function Set-HvciEnable {
     param()
     if (-not $PSCmdlet.ShouldProcess("System", "Enable Memory Integrity (HVCI)")) { return }
     Write-Output "[*] Enabling Virtualization-Based Security + Memory Integrity (HVCI)..."
-    Write-Output "[!] WARNING: requires a REBOOT and CPU virtualization/SLAT support. HVCI blocks unsigned and incompatible kernel drivers (some anti-cheat, old hardware drivers, virtualization tools). If a driver is incompatible it will be blocked. This is NOT Mandatory mode, so Restore Default plus a reboot removes it."
+    Write-Output "[!] WARNING: requires a REBOOT and CPU virtualization/SLAT support. HVCI blocks unsigned and incompatible kernel drivers (some anti-cheat, old hardware drivers, virtualization tools). If a driver is incompatible it will be blocked. This is NOT Mandatory mode, so Restore Default plus a reboot returns Memory Integrity to its previous setting."
     $dg = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard'
     Set-RegDword -Path $dg -Name 'EnableVirtualizationBasedSecurity' -Value 1
     Set-RegDword -Path $dg -Name 'RequirePlatformSecurityFeatures' -Value 1
@@ -157,12 +198,14 @@ function Set-KernelDmaProtection {
 switch ($Action.ToLowerInvariant()) {
     "security-lsa-protection-enable" {
         Backup-RegistryPath -Action $Action -Paths @('HKLM:\SYSTEM\CurrentControlSet\Control\Lsa')
+        Save-DeviceGuardSnapshot -Feature 'lsa-protection'
         Set-LsaProtection
         Exit-PTW
     }
 
     "security-hvci-enable" {
         Backup-RegistryPath -Action $Action -Paths @('HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard')
+        Save-DeviceGuardSnapshot -Feature 'hvci'
         Set-HvciEnable
         Exit-PTW
     }
@@ -172,6 +215,7 @@ switch ($Action.ToLowerInvariant()) {
             'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard',
             'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
         )
+        Save-DeviceGuardSnapshot -Feature 'credential-guard'
         Set-CredentialGuardEnable
         Exit-PTW
     }

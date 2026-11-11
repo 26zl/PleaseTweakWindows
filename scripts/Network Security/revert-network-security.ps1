@@ -222,13 +222,14 @@ function Restore-SmbModernEnforce {
     if (-not $PSCmdlet.ShouldProcess("System", "Revert SMB 3.1.1 minimum enforcement")) { return }
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name 'Smb2DialectMin'
     Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters' -Name 'Smb2DialectMin'
-    try {
-        Set-SmbServerConfiguration -EncryptData $false -RequireSecuritySignature $false -Confirm:$false -ErrorAction Stop | Out-Null
-        Set-SmbClientConfiguration -RequireSecuritySignature $false -Confirm:$false -ErrorAction Stop | Out-Null
-    } catch {
-        Write-PTWLog "SMB cmdlet revert failed: $($_.Exception.Message)" "WARNING"
+    # Remove the values Apply wrote so Windows uses its own defaults (Windows 11 24H2+ requires SMB signing).
+    foreach ($name in @('EncryptData', 'RejectUnencryptedAccess', 'RequireSecuritySignature', 'EnableSecuritySignature')) {
+        Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -Name $name
     }
-    Write-PTWLog "SMB modern enforcement reverted" "SUCCESS"
+    foreach ($name in @('RequireSecuritySignature', 'EnableSecuritySignature')) {
+        Remove-RegValueSafe -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters' -Name $name
+    }
+    Write-PTWLog "SMB modern enforcement reverted to Windows defaults (restart to apply)" "SUCCESS"
 }
 
 function Restore-SmbCipherSuiteOrder {
@@ -395,32 +396,19 @@ function Restore-SpoolerRpcDisable {
 function Restore-NetworkAllPrivate {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param()
-    if (-not $PSCmdlet.ShouldProcess("System", "Restore all network profiles to Private")) { return }
-    Write-Output "[*] Setting all network profiles to Private..."
+    if (-not $PSCmdlet.ShouldProcess("System", "Restore the network categories saved before 'Set all networks to Public'")) { return }
+    Write-Output "[*] Restoring the network categories saved before 'Set all networks to Public'..."
     try {
-        $profiles = @(Get-NetConnectionProfile -ErrorAction Stop)
-        if ($profiles.Count -eq 0) {
-            # Treat an offline system as a successful no-op.
-            Write-Output "[i] No active network profiles found; nothing to set to Private."
-            return
+        $errorsBefore = $script:PTWErrorCount
+        Restore-PTWNetworkCategorySnapshot
+        if ($script:PTWErrorCount -eq $errorsBefore) {
+            Write-PTWLog "Network categories restored" "SUCCESS"
+        } else {
+            Write-PTWLog "Some network categories could not be restored" "ERROR"
         }
-        $failures = 0
-        $profiles | ForEach-Object {
-            try {
-                Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction Stop
-                Write-Output "  [+] $($_.Name) -> Private"
-            } catch {
-                $failures++
-                Write-Warning "  [WARN] Could not set $($_.Name) to Private: $($_.Exception.Message)"
-            }
-        }
-        if ($failures -gt 0) {
-            throw "$failures of $($profiles.Count) network profile(s) could not be changed."
-        }
-        Write-PTWLog "All network profiles restored to Private" "SUCCESS"
     } catch {
         $script:PTWErrorCount++
-        Write-PTWLog "Could not restore all network profiles: $($_.Exception.Message)" "ERROR"
+        Write-PTWLog "Could not restore network categories: $($_.Exception.Message)" "ERROR"
     }
 }
 
@@ -485,7 +473,7 @@ function Invoke-Mode {
     }
 }
 
-Write-PTWLog "Restore Default applies Windows defaults; it does not reconstruct prior custom or organization-managed values." "INFO"
+Write-PTWLog "Restore Default applies Windows defaults; only 'Set all networks to Public' puts back state saved at Apply. Prior custom or organization-managed values are not reconstructed." "INFO"
 
 if ([string]::IsNullOrWhiteSpace($Action)) {
     Write-PTWLog "No -Action provided; running Mode=$Mode for all security revert actions." "INFO"

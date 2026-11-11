@@ -88,13 +88,19 @@ Adding one action id touches several files in lockstep — miss one and a test/C
 3. **The category's restore path** — for Toggles add a `Restore-*`/`$actionMap` entry (or a
    restore case in single-script categories like Customize/Gaming). Restore Default must return
    the setting to the documented Windows default; when that is "value absent", use
-   `Remove-RegValueSafe`. Do not claim that it reconstructs an unknown pre-existing value.
+   `Remove-RegValueSafe`. Do not claim that it reconstructs an unknown pre-existing value. Where
+   Windows may have the setting on by default, record the previous values at Apply with
+   `Save-PTWRegistrySnapshot` and put them back with `Restore-PTWRegistrySnapshot` (set `RevertWarning`
+   on the SubTweak so the confirmation text matches). Never delete whole policy keys on restore.
 4. **`scripts/file-checksums.json`** — recompute the touched script's SHA256
    (`shasum -a 256 <file> | tr a-z A-Z`, UPPERCASE). New script files also go in
    **`scripts/index.txt`**, **`ScriptExecutor.ConsolidatedScripts`**, and the **`build.yml`**
    verification lists.
 5. **`TweakRegistryTests.cs`** — update the per-category SubTweak count assertion.
-6. Run `dotnet test` (Windows / CI) to verify.
+6. If the change weakens a protection (Windows Update, Defender, UAC, credential or VBS
+   protections, security services), `tools/Test-SecurityWeakening.ps1` fails in CI until the line
+   is reviewed and listed with a reason in `tools/security-weakening-allowlist.json`.
+7. Run `dotnet test` (Windows / CI) to verify.
 
 ### Action ID Format
 

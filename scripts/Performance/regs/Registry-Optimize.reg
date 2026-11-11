@@ -814,7 +814,7 @@ Windows Registry Editor Version 5.00
 [HKEY_CURRENT_USER\Control Panel\Desktop]
 
 
-"UserPreferencesMask"=hex(2):90,12,03,80,10,00,00,00
+"UserPreferencesMask"=hex:90,12,03,80,10,00,00,00
 
 
 

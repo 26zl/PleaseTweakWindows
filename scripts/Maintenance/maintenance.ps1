@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "cleanup-run",
+        "recycle-bin-empty",
         "ddu-install",
         "autoruns-open",
         "cpp-install",
@@ -76,6 +77,7 @@ switch ($Action.ToLowerInvariant()) {
         # DDU distributes as a self-extracting 7z archive; extract with 7-Zip
         $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
+            Write-Output "[i] Installing 7-Zip (pinned installer, SHA256-verified) to unpack the package; it stays installed in Program Files."
             $sevenZipInstaller = Get-PTWRuntimePath "7z-setup.exe"
             Get-FileFromWeb -URL $PTWDownloadUrls.SevenZip -File $sevenZipInstaller
             $install = Start-Process -FilePath $sevenZipInstaller -ArgumentList "/S" `
@@ -119,18 +121,37 @@ switch ($Action.ToLowerInvariant()) {
         }
         $cleanupErrors = @()
         foreach ($p in $paths) {
-            Remove-Item -Path "$p\*" -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable +cleanupErrors
-        }
-        try {
-            Clear-RecycleBin -Force -ErrorAction Stop
-        } catch {
-            $cleanupErrors += $_
+            # Keep the app's extracted scripts; later actions in this session run from there.
+            Get-ChildItem -LiteralPath $p -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notlike 'pleasetweakwindows-scripts-*' } |
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable +cleanupErrors
         }
         if ($cleanupErrors.Count -gt 0) {
             Write-Output "[!] Cleanup completed with $($cleanupErrors.Count) item(s) skipped (typically files currently in use)."
         } else {
-            Write-Output "[+] SUCCESS: System cleanup complete"
+            Write-Output "[+] SUCCESS: System cleanup complete (the Recycle Bin was not touched)"
         }
+        Exit-PTW
+    }
+
+    "recycle-bin-empty" {
+        Write-Output "[*] Permanently emptying the Recycle Bin on all drives..."
+        try {
+            Clear-RecycleBin -Force -ErrorAction Stop
+        } catch {
+            # Clear-RecycleBin also fails when the bin is already empty; only report real leftovers.
+            $remainingItems = $null
+            try {
+                $remainingItems = (New-Object -ComObject Shell.Application).NameSpace(10).Items().Count
+            } catch {
+                Write-Verbose "Could not count Recycle Bin items: $($_.Exception.Message)"
+            }
+            if ($remainingItems -ne 0) {
+                Write-Output "[-] ERROR: The Recycle Bin could not be emptied: $($_.Exception.Message)"
+                exit 1
+            }
+        }
+        Write-Output "[+] SUCCESS: Recycle Bin emptied"
         Exit-PTW
     }
 

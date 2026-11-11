@@ -24,6 +24,8 @@
                     Content="Apply"
                     Style="{StaticResource ApplyButton}"
                     Command="{Binding ApplyCommand}"
+                    AutomationProperties.Name="{Binding Name, StringFormat='Apply {0}'}"
+                    AutomationProperties.HelpText="{Binding Description}"
                     ToolTip="{Binding RequirementMessage}"
                     ToolTipService.ShowOnDisabled="True"
                     Margin="8,0,0,0">
@@ -40,6 +42,8 @@
                     Content="Restore Default"
                     Style="{StaticResource RevertButton}"
                     Command="{Binding RevertCommand}"
+                    AutomationProperties.Name="{Binding Name, StringFormat='Restore Default for {0}'}"
+                    AutomationProperties.HelpText="{Binding Description}"
                     Visibility="{Binding HasRevert, Converter={StaticResource BoolToVisibility}}"
                     Margin="6,0,0,0">
                 <Button.IsEnabled>

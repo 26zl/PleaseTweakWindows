@@ -1,0 +1,30 @@
+name: Tweak or feature request
+description: Suggest a new tweak or a change to an existing one.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should change?
+      description: Name the setting, registry value, service or policy, and what Apply should do.
+    validations:
+      required: true
+  - type: textarea
+    id: restore
+    attributes:
+      label: How should Restore Default undo it?
+      description: Every toggle needs a way back. Describe the Windows default, ideally with a Microsoft documentation link.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risks and side effects
+      description: What can break (apps, devices, security features, updates)? Does it weaken any protection?
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: Links to Microsoft documentation or other references.

@@ -14,7 +14,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         tweaks.Should().HaveCount(15);
-        tweaks.Sum(t => t.SubTweaks.Count).Should().Be(150);
+        tweaks.Sum(t => t.SubTweaks.Count).Should().Be(151);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class TweakRegistryTests
     {
         var tweaks = _registry.GetTweaks();
         var maintenance = tweaks.First(t => t.Title == "Maintenance & Tools");
-        maintenance.SubTweaks.Should().HaveCount(4);
+        maintenance.SubTweaks.Should().HaveCount(5);
     }
 
     [Fact]

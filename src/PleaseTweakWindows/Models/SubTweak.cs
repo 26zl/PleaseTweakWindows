@@ -26,6 +26,9 @@ public sealed record SubTweak(
     /// <summary>Warning template where <c>{0}</c> is replaced with the action name.</summary>
     public string? Warning { get; init; }
 
+    /// <summary>Restore Default warning for toggles that put back a saved snapshot instead of a Windows default.</summary>
+    public string? RevertWarning { get; init; }
+
     /// <summary>Whether this toggle is eligible for its category's Run All command.</summary>
     public bool IncludeInRunAll { get; init; } = true;
 

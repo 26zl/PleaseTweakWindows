@@ -66,12 +66,14 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Configure TLS cipher suite + ECC curve order", SubTweakType.Toggle,
                 "security-tls-cipher-order", "security-tls-cipher-order-revert",
-                "Prefer TLS 1.3 suites and AES-256-GCM; set ECC curve priority")
+                "Limit Windows TLS (Schannel) to 10 cipher suites: TLS 1.3 AES-GCM and ECDHE with AES-GCM or AES-CBC SHA-256/384. Every other suite is disabled; ECC curve order curve25519, P-256, P-384")
             {
                 Risk = SubTweakRisk.Confirm,
                 Warning =
-                    "'{0}' will set the system-wide TLS cipher suite and ECC curve order.\n\n" +
-                    "Prefers TLS 1.3 suites and AES-256-GCM. Mostly safe but may affect apps that hardcoded specific cipher orders.",
+                    "'{0}' replaces the system-wide TLS cipher suite list with an allowlist of 10 suites and sets the ECC curve order to curve25519, NIST P-256, NIST P-384.\n\n" +
+                    "Windows stops using every suite that is not on the list, including all TLS_RSA_* suites (no forward secrecy), DHE suites, CBC suites with SHA-1 and TLS_CHACHA20_POLY1305_SHA256. " +
+                    "Apps and devices that only offer those suites (older NAS units, printers, appliances, legacy enterprise servers) can no longer connect through Windows TLS. " +
+                    "Browsers with their own TLS stack are not affected. Restore Default removes the policy; a reboot is needed either way.",
             },
             new SubTweak("Block INCOMING NTLM authentication (PAW only)", SubTweakType.Toggle,
                 "security-block-ntlm-incoming", "security-block-ntlm-incoming-revert",
@@ -164,22 +166,22 @@ public sealed partial class TweakRegistry
             },
             new SubTweak("Set all networks to Public", SubTweakType.Toggle,
                 "network-all-public", "network-all-private",
-                "Set all connected network profiles to Public (reduces trust to LAN devices; breaks local file sharing and printer discovery)")
+                "Set all connected network profiles to Public (reduces trust to LAN devices; breaks local file sharing and printer discovery). Restore Default puts back each network's previous category")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' will set every connected network profile to Public.\n\n" +
                     "WARNING: Breaks local file sharing, printer discovery, mDNS/Bonjour, network discovery, and Cast-to-Device on your LAN. " +
-                    "Only appropriate for coffee-shop / untrusted networks.",
+                    "Only appropriate for coffee-shop / untrusted networks. Each network's current category is saved first so Restore Default can put it back.",
             },
             new SubTweak("Block sanctioned-country IP ranges", SubTweakType.Toggle,
                 "country-ip-block", "country-ip-unblock",
-                "Create firewall rules that block inbound+outbound traffic to State-Sponsors-of-Terrorism + OFAC-sanctioned country IP ranges (CIDR lists fetched live from a third-party, community-maintained GitHub repo). WARNING: a VPN/VPS in another country bypasses it; Restore Default removes the rules")
+                "Create firewall rules that block inbound+outbound traffic to State-Sponsors-of-Terrorism + OFAC-sanctioned country IP ranges (CIDR lists from a pinned commit of a third-party, community-maintained GitHub repo, verified by SHA256). WARNING: a VPN/VPS in another country bypasses it; Restore Default removes the rules")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' blocks inbound and outbound traffic to entire sanctioned-country IP ranges.\n\n" +
-                    "The lists (State Sponsors of Terrorism + OFAC) are fetched live over HTTPS from a third-party, community-maintained GitHub repository and validated as CIDR before use. Only block rules are created, so a poisoned list can over-block connectivity but cannot open anything. A VPN/VPS endpoint in another country bypasses this. Restore Default removes the rules.",
+                    "The lists (State Sponsors of Terrorism + OFAC) are downloaded over HTTPS from a pinned commit of a third-party, community-maintained GitHub repository, must match the SHA256 hashes shipped with the app, and are validated as CIDR before use. They are as current as that commit, not live. Only block rules are created. A VPN/VPS endpoint in another country bypasses this. Restore Default removes the rules.",
             },
         ]);
 }

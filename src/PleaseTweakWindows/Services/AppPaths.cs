@@ -10,8 +10,18 @@ internal static class AppPaths
     // Shared identifier for storage paths, logs, dialogs, and the HTTP user agent.
     public const string ProductName = "PleaseTweakWindows";
 
+    // Tests redirect logs to a temporary folder so a test run never creates %LOCALAPPDATA%\PleaseTweakWindows.
+    // The application itself never sets this.
+    internal static string? LogsDirectoryOverride { get; set; }
+
     public static string GetLogsDirectory()
     {
+        if (LogsDirectoryOverride is { } overrideDirectory)
+        {
+            Directory.CreateDirectory(overrideDirectory);
+            return overrideDirectory;
+        }
+
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var candidates = string.IsNullOrWhiteSpace(localAppData)
             ? [Path.Combine(Path.GetTempPath(), ProductName, "logs")]

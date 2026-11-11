@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using PleaseTweakWindows.Services;
+using PleaseTweakWindows.Themes;
 using PleaseTweakWindows.ViewModels;
 using PleaseTweakWindows.Views;
 
@@ -17,6 +18,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Use Windows high-contrast colours when they are on; this must happen before any window loads the theme.
+        if (SystemParameters.HighContrast)
+            HighContrastTheme.Apply(Resources);
 
         // Require Windows 11 build 22000 or newer.
         if (Environment.OSVersion.Version.Build < 22000)

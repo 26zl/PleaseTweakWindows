@@ -15,8 +15,9 @@ public sealed class DialogService : IDialogService
         "'{0}' will apply multiple tweaks in sequence and includes high-risk changes.\n\n" +
         "Review the category contents first. These changes can affect services, networking, drivers, security policy, or app compatibility.";
     private const string NetworkAllPrivateWarning =
-        "'{0}' will set every connected network profile to Private.\n\n" +
-        "WARNING: This increases trust for LAN discovery and sharing. Only use on trusted home/work networks.";
+        "'{0}' puts back the category each network had before 'Set all networks to Public' was applied.\n\n" +
+        "Networks that were Private become Private again, which increases trust for LAN discovery and sharing on them. " +
+        "Networks without a saved category are left unchanged.";
 
     private const string GenericWarning =
         "'{0}' will make changes to your system.\n\n" +
@@ -56,7 +57,7 @@ public sealed class DialogService : IDialogService
                 _destructiveActions.Add(sub.RevertAction);
                 if (sub.Risk == SubTweakRisk.High)
                     _highRiskActions.Add(sub.RevertAction);
-                _warningTemplates[sub.RevertAction] = RestoreDefaultsWarning;
+                _warningTemplates[sub.RevertAction] = sub.RevertWarning ?? RestoreDefaultsWarning;
             }
         }
 

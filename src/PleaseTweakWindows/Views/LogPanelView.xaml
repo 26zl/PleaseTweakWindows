@@ -14,6 +14,7 @@
             <Button Content="Clear"
                     Style="{StaticResource GhostButton}"
                     Command="{Binding ClearCommand}"
+                    AutomationProperties.Name="Clear output"
                     Margin="12,0,0,0"
                     FontSize="12" />
             <Button Content="Open Logs Folder"
@@ -30,6 +31,7 @@
                 CornerRadius="14">
             <!-- Virtualized so verbose or long-running output doesn't realize thousands of TextBlocks. -->
             <ItemsControl ItemsSource="{Binding Lines}"
+                          AutomationProperties.Name="Verbose output"
                           VirtualizingStackPanel.IsVirtualizing="True"
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           ScrollViewer.CanContentScroll="True">

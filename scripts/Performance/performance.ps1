@@ -54,8 +54,46 @@ function Import-LocalRegistryFile {
         # Import the verified registry file with failure-aware reg.exe handling.
         return (Import-RegistryFile -RegFile $regPath)
     }
-    Write-Output "[-] WARNING: Registry file not found: $regPath"
+    # Write-Warning keeps the message out of the boolean return value.
+    Write-Warning "Registry file not found: $regPath"
     return $false
+}
+
+# Registry-Optimize.reg creates this per-user COM override to bring back the classic context menu.
+$script:ClassicContextMenuKey = 'HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}'
+
+# Delete the override only while it holds exactly what Apply wrote: an InprocServer32 subkey whose
+# only value is an empty (Default). Registry-Defaults.reg cannot express this check, so it never
+# deletes whole keys and this function handles the one key Apply creates as its mechanism.
+function Remove-ClassicContextMenuOverride {
+    $key = Get-Item -LiteralPath $script:ClassicContextMenuKey -ErrorAction SilentlyContinue
+    if (-not $key) { return }
+    $inproc = Get-Item -LiteralPath "$($script:ClassicContextMenuKey)\InprocServer32" -ErrorAction SilentlyContinue
+    $matchesApply = $key.ValueCount -eq 0 -and $key.SubKeyCount -eq 1 -and $inproc -and
+        $inproc.SubKeyCount -eq 0 -and $inproc.ValueCount -eq 1 -and
+        (@($inproc.GetValueNames()) -contains '') -and ([string]$inproc.GetValue('') -eq '')
+    if ($matchesApply) {
+        Remove-RegKeySafe -Path $script:ClassicContextMenuKey
+    } else {
+        Write-Output "[i] Left $($script:ClassicContextMenuKey) in place: it holds more than the registry batch wrote."
+    }
+}
+
+# Releases up to v2.2.0 disabled Chrome's update services in Registry-Optimize.reg. Re-enable them only
+# where Chrome is installed and they are still disabled; writing them from the .reg created stub keys.
+function Restore-LegacyChromeUpdateService {
+    $chromeDefaults = [ordered]@{ 'gupdate' = 'Automatic'; 'gupdatem' = 'Manual'; 'GoogleChromeElevationService' = 'Manual' }
+    foreach ($name in $chromeDefaults.Keys) {
+        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if (-not $svc -or $svc.StartType -ne 'Disabled') { continue }
+        try {
+            Set-Service -Name $name -StartupType $chromeDefaults[$name] -ErrorAction Stop
+            Write-Output "  [+] $name start type restored to $($chromeDefaults[$name])"
+        } catch {
+            $script:PTWErrorCount++
+            Write-Warning "Could not restore the start type of ${name}: $($_.Exception.Message)"
+        }
+    }
 }
 
 function Get-RegOptimizeBackupPath {
@@ -191,6 +229,7 @@ switch ($Action.ToLowerInvariant()) {
             Write-Output "[-] ERROR during registry tweaks: $($_.Exception.Message)"
             Write-Output "[!] Attempting rollback with default registry settings..."
             $rolledBack = Import-LocalRegistryFile -FileName "Registry-Defaults.reg"
+            Remove-ClassicContextMenuOverride
             Remove-ItemProperty -Path $markerPath -Name "RegistryOptimized" -ErrorAction SilentlyContinue
             if ($rolledBack) {
                 Write-Output "[+] Rollback applied. Restart to restore defaults."
@@ -207,6 +246,8 @@ switch ($Action.ToLowerInvariant()) {
         $markerPath = "HKCU:\Software\PleaseTweakWindows"
         # Same verified-import helper the registry-apply rollback uses for this file.
         if (Import-LocalRegistryFile -FileName "Registry-Defaults.reg") {
+            Remove-ClassicContextMenuOverride
+            Restore-LegacyChromeUpdateService
             Write-Output "[+] SUCCESS: Default registry settings restored (restart required)"
         } else {
             Write-Output "[-] ERROR: Registry-Defaults.reg failed its integrity check or reg.exe import"

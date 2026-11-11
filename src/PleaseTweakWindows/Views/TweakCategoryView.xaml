@@ -2,44 +2,54 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:PleaseTweakWindows.ViewModels"
-             xmlns:views="clr-namespace:PleaseTweakWindows.Views">
+             xmlns:views="clr-namespace:PleaseTweakWindows.Views"
+             xmlns:controls="clr-namespace:PleaseTweakWindows.Views.Controls">
 
     <Border Style="{StaticResource CategoryCard}" Margin="0,0,0,12">
         <StackPanel>
-            <Border Style="{StaticResource CategoryHeader}"
-                    MouseLeftButtonDown="OnHeaderPressed"
-                    KeyDown="OnHeaderKeyDown"
-                    Focusable="True"
-                    KeyboardNavigation.TabNavigation="Local"
-                    AutomationProperties.Name="{Binding Title}"
-                    AutomationProperties.HelpText="Press Enter or Space to expand or collapse this category.">
+            <Border Style="{StaticResource CategoryHeader}">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0"
-                               Text="{Binding IsExpanded, Converter={StaticResource ExpandArrow}}"
-                               FontSize="12"
-                               Foreground="{StaticResource PtwTextSecondaryBrush}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,10,0"
-                               Width="16" />
+                    <controls:ExpanderHeaderButton Grid.Column="0"
+                                                   Style="{StaticResource CategoryHeaderButton}"
+                                                   IsExpanded="{Binding IsExpanded, Mode=OneWay}"
+                                                   Click="OnHeaderClick"
+                                                   AutomationProperties.Name="{Binding Title}"
+                                                   AutomationProperties.HelpText="Press Enter or Space to expand or collapse this category.">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding Title}"
-                               Style="{StaticResource CategoryTitleText}"
-                               VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding IsExpanded, Converter={StaticResource ExpandArrow}}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource PtwTextSecondaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,10,0"
+                                       Width="16" />
 
-                    <Button Grid.Column="2"
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Title}"
+                                       Style="{StaticResource CategoryTitleText}"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </controls:ExpanderHeaderButton>
+
+                    <Button Grid.Column="1"
                             Content="Run All"
                             Style="{StaticResource RunFullButton}"
                             Command="{Binding RunFullScriptCommand}"
+                            AutomationProperties.Name="{Binding Title, StringFormat='Run all tweaks in {0}'}"
                             Visibility="{Binding CanRunAll, Converter={StaticResource BoolToVisibility}}"
                             IsEnabled="{Binding IsGloballyRunning, Converter={StaticResource InverseBool}}"
-                            VerticalAlignment="Center" />
+                            VerticalAlignment="Center"
+                            Margin="8,0,14,0" />
                 </Grid>
             </Border>
 

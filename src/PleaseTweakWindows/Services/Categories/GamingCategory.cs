@@ -17,11 +17,12 @@ public sealed partial class TweakRegistry
                     "The app cannot reconstruct your previous NVIDIA profile automatically. Export it first if you need an exact rollback.",
             },
             new SubTweak("Nvidia Driver", "nvidia-driver-install",
-                "Download and run the latest NVIDIA driver installer")
+                "Download and run the latest NVIDIA driver installer. Installs 7-Zip to Program Files first if it is missing (7-Zip stays installed)")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' downloads and runs NVIDIA's driver installer.\n\n" +
+                    "The driver package is unpacked with 7-Zip: if 7-Zip is not installed, the pinned 7-Zip installer is downloaded, verified and installed to Program Files first, and it stays installed. " +
                     "A driver update can require a reboot and may temporarily disrupt the display. Close games and save work first.",
             },
             new SubTweak("AMD Driver", "amd-driver-install",
@@ -44,7 +45,7 @@ public sealed partial class TweakRegistry
             new SubTweak("Unlock Background Polling Rate", SubTweakType.Toggle, "polling-unlock", "polling-default",
                 "Remove background mouse polling rate cap"),
             new SubTweak("DirectX Runtime", "directx-install",
-                "Install DirectX June 2010 Runtime"),
+                "Install DirectX June 2010 Runtime. Installs 7-Zip to Program Files first if it is missing (7-Zip stays installed)"),
             new SubTweak("Disable Multi-Plane Overlay (fix flicker/stutter)", SubTweakType.Toggle, "mpo-on", "mpo-default",
                 "Apply disables Multi-Plane Overlay (MPO) to fix screen flicker/stutter; Restore Default returns to the Windows default"),
             new SubTweak("Hardware-Accelerated GPU Scheduling (HAGS)", SubTweakType.Toggle, "hags-on", "hags-off",

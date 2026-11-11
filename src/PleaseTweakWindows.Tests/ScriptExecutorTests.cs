@@ -349,6 +349,32 @@ public class ScriptExecutorTests
     }
 
     [Fact]
+    public void MaintenanceCleanup_KeepsExtractedScriptsFolder()
+    {
+        // The app extracts its scripts under %TEMP%, so System Cleanup must not delete them mid-session.
+        ReadEmbeddedScript("Maintenance/maintenance.ps1")
+            .Should().Contain("-notlike 'pleasetweakwindows-scripts-*'");
+    }
+
+    [Fact]
+    public void SmbRevert_DoesNotTurnSigningOff()
+    {
+        // Windows 11 24H2+ requires SMB signing by default, so Restore Default must not disable it.
+        ReadEmbeddedScript("Network Security/revert-network-security.ps1")
+            .Should().NotContain("RequireSecuritySignature $false");
+    }
+
+    private static string ReadEmbeddedScript(string relativePath)
+    {
+        var asm = typeof(ScriptExecutor).Assembly;
+        var suffix = "Scripts." + relativePath.Replace('/', '.').Replace('\\', '.').Replace(' ', '_');
+        var name = asm.GetManifestResourceNames()
+            .First(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+        using var reader = new StreamReader(asm.GetManifestResourceStream(name)!);
+        return reader.ReadToEnd();
+    }
+
+    [Fact]
     public void ConsolidatedScripts_AllExistAsEmbeddedResources()
     {
         // Every action-dispatch script must map to a shipped embedded resource.

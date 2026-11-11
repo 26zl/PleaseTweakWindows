@@ -34,7 +34,13 @@ public partial class ConfirmationDialog : Window
 
         ConfirmButton.Content = ConfirmText;
         if (IsHighRisk)
+        {
             ConfirmButton.Style = (Style)FindResource("DangerButton");
+            // Enter must not confirm a high-risk action: Cancel is the default button and has focus.
+            ConfirmButton.IsDefault = false;
+            CancelButton.IsDefault = true;
+            Loaded += (_, _) => CancelButton.Focus();
+        }
 
         CancelButton.Content = CancelText;
         SkipButton.Content = SkipText;

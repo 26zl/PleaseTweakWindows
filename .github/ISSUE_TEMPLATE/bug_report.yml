@@ -1,0 +1,70 @@
+name: Bug report
+description: A tweak, Restore Default or the app does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use [private vulnerability reporting](https://github.com/26zl/PleaseTweakWindows/security/advisories/new) as described in SECURITY.md.
+        Remove personal information (user names, paths, network names) from logs before you paste them.
+  - type: input
+    id: version
+    attributes:
+      label: PleaseTweakWindows version
+      placeholder: "2.2.1"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows edition and build
+      description: Run `winver`.
+      placeholder: "Windows 11 Pro 24H2, build 26100.xxxx"
+    validations:
+      required: true
+  - type: input
+    id: tweak
+    attributes:
+      label: Category and tweak
+      placeholder: "Device Guard > Memory Integrity (HVCI)"
+    validations:
+      required: true
+  - type: dropdown
+    id: operation
+    attributes:
+      label: What did you run?
+      options:
+        - Apply
+        - Restore Default
+        - Run All
+        - Profile import
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+  - type: textarea
+    id: log
+    attributes:
+      label: Output panel or log excerpt
+      description: Logs are under %LOCALAPPDATA%\PleaseTweakWindows\logs (Open Logs Folder in the output panel).
+      render: text
+  - type: dropdown
+    id: restore-point
+    attributes:
+      label: Did you create a restore point before applying?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure

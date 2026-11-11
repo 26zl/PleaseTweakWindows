@@ -14,8 +14,9 @@ respective owners and are **not** covered by this project's MIT license. Their o
 
 ## HotCakeX — Official IANA IP blocks
 - **Source:** https://github.com/HotCakeX/Official-IANA-IP-blocks
-- **Use:** The Network Security country-IP-blocking tweak downloads curated CIDR lists from
-  `raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks` at runtime to build firewall rules.
+- **Use:** The Network Security country-IP-blocking tweak downloads curated CIDR lists from a pinned
+  commit of `raw.githubusercontent.com/HotCakeX/Official-IANA-IP-blocks` at runtime, verifies them
+  against SHA256 hashes in `scripts/file-checksums.json` and builds firewall rules from them.
 
 ## HotCakeX — Harden-Windows-Security (MIT)
 - **Source:** https://github.com/HotCakeX/Harden-Windows-Security — © HotCakeX, MIT License

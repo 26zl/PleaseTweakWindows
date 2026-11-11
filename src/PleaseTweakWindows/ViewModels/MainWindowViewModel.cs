@@ -234,20 +234,25 @@ public partial class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            // Pass the URL as one rundll32 argument.
-            var psi = new ProcessStartInfo
-            {
-                FileName = Path.Combine(Environment.SystemDirectory, "rundll32.exe"),
-                UseShellExecute = false
-            };
-            psi.ArgumentList.Add("url.dll,FileProtocolHandler");
-            psi.ArgumentList.Add(UpdateUrl);
-            using var process = Process.Start(psi);
+            using var process = Process.Start(BuildOpenUrlStartInfo(uri));
         }
         catch (Exception ex)
         {
             _logger.LogWarning("Failed to open browser: {Message}", ex.Message);
         }
+    }
+
+    // The app runs elevated. Explorer hands the URL to the user's running, non-elevated shell,
+    // so the browser opens with normal user rights instead of inheriting admin rights.
+    internal static ProcessStartInfo BuildOpenUrlStartInfo(Uri uri)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"),
+            UseShellExecute = false
+        };
+        psi.ArgumentList.Add(uri.AbsoluteUri);
+        return psi;
     }
 
     // Map Apply action IDs to display names and scripts for profile import and export.

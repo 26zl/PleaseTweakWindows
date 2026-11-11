@@ -1,0 +1,125 @@
+{
+  "comment": "Reviewed security-weakening matches found by tools/Test-SecurityWeakening.ps1. Each entry must match one line exactly. Add an entry only after review, with the reason it is acceptable.",
+  "entries": [
+    {
+      "file": "scripts/Device Guard/revert-device-guard.ps1",
+      "rule": "credential-protection-off",
+      "match": "Set-RegValueSafe -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name 'LsaCfgFlags' -Type 'DWord' -Value 0",
+      "reason": "Restore Default fallback for Credential Guard when no pre-Apply snapshot exists (applied by an older version); the confirmation text says it then turns the feature off."
+    },
+    {
+      "file": "scripts/Device Guard/revert-device-guard.ps1",
+      "rule": "vbs-hvci-off",
+      "match": "Set-RegValueSafe -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard' -Name 'ConfigureSystemGuardLaunch' -Type 'DWord' -Value 0",
+      "reason": "Restore Default for the opt-in System Guard Secure Launch tweak, which is off by default."
+    },
+    {
+      "file": "scripts/Device Guard/revert-device-guard.ps1",
+      "rule": "vbs-hvci-off",
+      "match": "Set-RegValueSafe -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\CredentialGuard' -Name 'Enabled' -Type 'DWord' -Value 0",
+      "reason": "Restore Default fallback for Credential Guard when no pre-Apply snapshot exists; with a snapshot the saved values are restored instead."
+    },
+    {
+      "file": "scripts/Device Guard/revert-device-guard.ps1",
+      "rule": "vbs-hvci-off",
+      "match": "Set-RegValueSafe -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\SystemGuard' -Name 'Enabled' -Type 'DWord' -Value 0",
+      "reason": "Restore Default for the opt-in System Guard Secure Launch tweak, which is off by default."
+    },
+    {
+      "file": "scripts/Exploit Protection/exploit-protection.ps1",
+      "rule": "exploit-mitigation-off",
+      "match": "Set-ProcessMitigation -Name $exe -Disable ForceRelocateImages -ErrorAction Stop",
+      "reason": "Opt-in compatibility exclusion of a fixed list of developer tools (Git, MSYS2, GitHub Desktop) from mandatory ASLR."
+    },
+    {
+      "file": "scripts/Exploit Protection/revert-exploit-protection.ps1",
+      "rule": "exploit-mitigation-off",
+      "match": "Set-ProcessMitigation -System -Disable ForceRelocateImages -ErrorAction Stop",
+      "reason": "Restore Default for system-wide mandatory ASLR, which Windows ships turned off."
+    },
+    {
+      "file": "scripts/Exploit Protection/revert-exploit-protection.ps1",
+      "rule": "exploit-mitigation-off",
+      "match": "try { Set-ProcessMitigation -Name $exe -Disable DisableExtensionPoints, BlockLowLabelImageLoads -ErrorAction Stop }",
+      "reason": "Restore Default for the per-app Office/Acrobat mitigations the Apply side adds; they are off by default."
+    },
+    {
+      "file": "scripts/Network Security/network-security.ps1",
+      "rule": "smb-ntlm-weakened",
+      "match": "Set-SmbServerConfiguration -EncryptData $true -RejectUnencryptedAccess $false -RequireSecuritySignature $true -EnableSecuritySignature $true -Confirm:$false -ErrorAction Stop | Out-Null",
+      "reason": "Hardening Apply: turns SMB encryption and signing on; RejectUnencryptedAccess stays off only so clients without SMB 3 encryption can still connect with signing."
+    },
+    {
+      "file": "scripts/Privacy Security/regs/ooshutup10.cfg",
+      "rule": "ooshutup-security-setting",
+      "match": "W001\t+\t# Disable Windows Update via peer-to-peer (Category: Windows Update)",
+      "reason": "Only turns off peer-to-peer delivery; updates still download from Microsoft."
+    },
+    {
+      "file": "scripts/Privacy Security/regs/ooshutup10.cfg",
+      "rule": "ooshutup-security-setting",
+      "match": "W011\t+\t# Disable updates to the speech recognition and speech synthesis modules. (Category: Windows Update)",
+      "reason": "Speech model downloads only; security updates are not affected."
+    },
+    {
+      "file": "scripts/System Security/system-security.ps1",
+      "rule": "uac-weakened",
+      "match": "Set-RegValueSafe -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name 'ConsentPromptBehaviorAdmin' -Type 'DWord' -Value 0",
+      "reason": "UAC 'Never notify' tweak: High risk, explicit warning, excluded from Run All; Restore Default restores the Windows prompt."
+    },
+    {
+      "file": "scripts/System Security/system-security.ps1",
+      "rule": "uac-weakened",
+      "match": "Set-RegValueSafe -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name 'PromptOnSecureDesktop' -Type 'DWord' -Value 0",
+      "reason": "Part of the same UAC 'Never notify' tweak: High risk, explicit warning, excluded from Run All."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "security-service-disabled",
+      "match": "Set-ServiceStartTypeSafe -Name $svc -StartupType 'Disabled' -StopNow -BestEffort:($svc -eq 'WaaSMedicSvc')",
+      "reason": "'Turn Off Updates (aggressive)': High risk with a SEVERE warning; the Default mode turns the services back on."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-off",
+      "match": "Set-RegDword -Path $WuPolicyAu -Name \"NoAutoUpdate\" -Value 1",
+      "reason": "'Turn Off Updates (aggressive)': High risk with a SEVERE warning; the Default mode clears the policy."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-pause",
+      "match": "Set-RegSz -Path $WuPolicy -Name \"PauseFeatureUpdatesEndTime\" -Value $end",
+      "reason": "'Pause Updates (35 days)': High risk, capped at the 35-day Windows maximum, resumes automatically."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-pause",
+      "match": "Set-RegSz -Path $WuPolicy -Name \"PauseFeatureUpdatesStartTime\" -Value $start",
+      "reason": "'Pause Updates (35 days)': High risk, capped at the 35-day Windows maximum, resumes automatically."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-pause",
+      "match": "Set-RegSz -Path $WuPolicy -Name \"PauseQualityUpdatesEndTime\" -Value $end",
+      "reason": "'Pause Updates (35 days)': High risk, capped at the 35-day Windows maximum, resumes automatically."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-pause",
+      "match": "Set-RegSz -Path $WuPolicy -Name \"PauseQualityUpdatesStartTime\" -Value $start",
+      "reason": "'Pause Updates (35 days)': High risk, capped at the 35-day Windows maximum, resumes automatically."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-pause",
+      "match": "Set-RegSz -Path $WuPolicy -Name \"PauseUpdatesExpiryTime\" -Value $end",
+      "reason": "'Pause Updates (35 days)': High risk, capped at the 35-day Windows maximum, resumes automatically."
+    },
+    {
+      "file": "scripts/Windows Update/windows-update.ps1",
+      "rule": "windows-update-pause",
+      "match": "Set-RegSz -Path $WuPolicy -Name \"PauseUpdatesStartTime\" -Value $start",
+      "reason": "'Pause Updates (35 days)': High risk, capped at the 35-day Windows maximum, resumes automatically."
+    }
+  ]
+}

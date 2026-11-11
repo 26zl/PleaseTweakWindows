@@ -4,6 +4,12 @@ namespace PleaseTweakWindows.Services;
 
 public sealed partial class TweakRegistry
 {
+    // LSA protection, Memory Integrity and Credential Guard save the values they change at Apply.
+    private const string SnapshotRevertWarning =
+        "'{0}' puts back the values this setting had before you applied it, then needs a reboot.\n\n" +
+        "If the tweak was applied by an older version, no values were saved: the setting is then turned off instead, " +
+        "even if Windows had it on by default. Check Windows Security > Device security after the reboot.";
+
     private static Tweak BuildDeviceGuard() => new(
         "Device Guard",
         $"Device Guard{S}device-guard.ps1",
@@ -17,15 +23,17 @@ public sealed partial class TweakRegistry
                 Warning =
                     "'{0}' runs LSASS as a Protected Process (RunAsPPL).\n\n" +
                     "Blocks credential dumping from LSASS memory. REQUIRES A REBOOT. Rare legacy authentication/SSO/smartcard plugins that inject into LSASS may stop working.",
+                RevertWarning = SnapshotRevertWarning,
             },
             new SubTweak("Memory Integrity (HVCI)", SubTweakType.Toggle,
                 "security-hvci-enable", "security-hvci-enable-revert",
-                "Enable Virtualization-Based Security + Hypervisor-Enforced Code Integrity. Requires REBOOT and compatible hardware. WARNING: blocks unsigned/incompatible kernel drivers (some anti-cheat, old drivers, VM tools). Not Mandatory mode, so Restore Default plus a reboot disables it")
+                "Enable Virtualization-Based Security + Hypervisor-Enforced Code Integrity. Requires REBOOT and compatible hardware. WARNING: blocks unsigned/incompatible kernel drivers (some anti-cheat, old drivers, VM tools). Not Mandatory mode, so Restore Default plus a reboot returns it to its previous setting")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' enables Virtualization-Based Security + Memory Integrity (HVCI).\n\n" +
-                    "REQUIRES A REBOOT and compatible hardware. HVCI blocks unsigned/incompatible kernel drivers — some anti-cheat, older hardware drivers and virtualization tools may stop working. Not Mandatory mode, so Restore Default plus a reboot disables it.",
+                    "REQUIRES A REBOOT and compatible hardware. HVCI blocks unsigned/incompatible kernel drivers — some anti-cheat, older hardware drivers and virtualization tools may stop working. Not Mandatory mode, so Restore Default plus a reboot returns it to its previous setting.",
+                RevertWarning = SnapshotRevertWarning,
             },
             new SubTweak("Credential Guard", SubTweakType.Toggle,
                 "security-credential-guard-enable", "security-credential-guard-enable-revert",
@@ -35,6 +43,7 @@ public sealed partial class TweakRegistry
                 Warning =
                     "'{0}' enables Credential Guard (VBS-isolated LSA).\n\n" +
                     "REQUIRES A REBOOT and compatible hardware. Can break legacy SSO, some VPN/credential providers and older Wi-Fi/RADIUS auth. Configured without a UEFI lock so it stays reversible from Windows.",
+                RevertWarning = SnapshotRevertWarning,
             },
             new SubTweak("Vulnerable Driver Blocklist", SubTweakType.Toggle,
                 "security-vuln-driver-blocklist", "security-vuln-driver-blocklist-revert",

@@ -9,20 +9,21 @@ public sealed partial class TweakRegistry
         $"Debloat{S}debloat.ps1",
         [
             new SubTweak("Remove Non-Core Store Apps", "bloatware-remove",
-                "Remove and de-provision every installed Store app except the explicit protected core/useful-app allowlist. This can remove apps you installed yourself")
+                "Remove and de-provision every installed Store app except the explicit protected core/useful-app allowlist (Xbox and Gaming Services are protected). This can remove apps you installed yourself")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
-                    "'{0}' removes ALL Store apps that are not on the protected allowlist, including apps you installed yourself.\n\n" +
+                    "'{0}' removes ALL Store apps that are not on the protected allowlist, including apps you installed yourself. Xbox, Gaming Services and their frameworks are kept.\n\n" +
                     "Packages are also de-provisioned for new users. The saved inventory is not a guaranteed offline restore; reinstalling some apps may require Microsoft Store. Create a restore point first.",
             },
             new SubTweak("Keep Bloatware Removed (persistent)", SubTweakType.Toggle, "bloatware-persist-on", "bloatware-persist-off",
-                "Install a logon task that re-removes bloatware Windows re-adds via updates. WARNING: runs as SYSTEM at every logon and removes all non-protected Store apps; Restore Default removes the task and its script")
+                "Install a logon task that removes the apps 'Remove Non-Core Store Apps' removed again if Windows re-adds them. Apps installed later are not touched. Run 'Remove Non-Core Store Apps' first; Restore Default removes the task and its script")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
                     "'{0}' installs a scheduled task that runs as SYSTEM at every logon.\n\n" +
-                    "WARNING: it removes and de-provisions ALL non-protected Store apps each time you sign in, so apps Windows re-adds via updates are removed again. " +
+                    "At each sign-in it removes and de-provisions, for all users, only the apps that 'Remove Non-Core Store Apps' removed, if Windows has re-added them. " +
+                    "Other apps, including ones you install later, are not touched; if you reinstall one of the removed apps yourself, it is removed again until you turn this off. " +
                     "Restore Default deletes the task and its script.",
             },
             new SubTweak("Install Microsoft Store", "store-install",
@@ -59,21 +60,24 @@ public sealed partial class TweakRegistry
                     "WARNING: both Apply and Restore Default can fail if a feature update is mid-flight. Run them only when no Windows update is installing. Without the reserve, a future feature update has to free the space itself.",
             },
             new SubTweak("Disable Unnecessary Services", "services-disable",
-                "Disable Windows services not needed for gaming. WARNING: also disables Printing (Print Spooler), File/Printer sharing hosting (LanmanServer), and Themes/visual styles")
+                "Disable Windows services not needed for gaming. WARNING: also disables Printing (Print Spooler), File/Printer sharing hosting (LanmanServer), Remote Desktop hosting and Themes/visual styles")
             {
                 Risk = SubTweakRisk.High,
                 Warning =
-                    "'{0}' will disable Windows services.\n\n" +
-                    "WARNING: This may break Windows features like printing, Bluetooth, or remote desktop.\n" +
+                    "'{0}' sets more than 150 Windows services to Disabled.\n\n" +
+                    "WARNING: this includes printing (Print Spooler), file sharing, Remote Desktop hosting, mobile broadband, Mobile Hotspot and Themes. " +
+                    "BitLocker, EFS, smart card, backup, disk management and System Guard services are not touched. " +
+                    "Your current start types are saved first, and Restore Default Services puts them back.\n" +
                     "A system restore point is STRONGLY recommended.",
             },
             new SubTweak("Restore Default Services", "services-restore",
-                "Restore all Windows services to default state")
+                "Put back the service start types saved by 'Disable Unnecessary Services' (Windows defaults if none were saved)")
             {
                 Risk = SubTweakRisk.Confirm,
                 Warning =
-                    "'{0}' rewrites Windows service start types to their defaults.\n\n" +
-                    "WARNING: any custom or organization-managed service configuration will be overwritten. Continue only if restoring Windows defaults is what you intend.",
+                    "'{0}' puts back the service start types saved when 'Disable Unnecessary Services' was applied.\n\n" +
+                    "If no saved start types exist (for example after an older version), it writes Windows defaults instead, " +
+                    "which overwrites any custom or organization-managed service configuration.",
             },
         ]);
 }
